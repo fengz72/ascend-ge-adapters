@@ -21,6 +21,7 @@ log/
 atb/models/*/air/
 atb/models/*/om/
 atb/models/*/input_data/
+atb/models/*/input_data_prefix/
 atb/models/*/output/
 atb/models/*/profiling_data/
 atb/models/*/profiling_data*

@@ -401,12 +401,13 @@ public:
             std::vector<int64_t> shape;
         };
 
+        // 顺序与图 Data 输入一致: actual_seq_lengths, input_ids, position_ids
         InputData inputs[3] = {
             {req.actual_seq_lengths.data(), req.actual_seq_lengths.size() * 8, ACL_INT64,
              {static_cast<int64_t>(req.actual_seq_lengths.size())}},
-            {req.position_ids.data(), req.position_ids.size() * 8, ACL_INT64,
-             {static_cast<int64_t>(req.total_tokens)}},
             {req.input_ids.data(), req.input_ids.size() * 8, ACL_INT64,
+             {static_cast<int64_t>(req.total_tokens)}},
+            {req.position_ids.data(), req.position_ids.size() * 8, ACL_INT64,
              {static_cast<int64_t>(req.total_tokens)}},
         };
 

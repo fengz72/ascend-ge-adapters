@@ -21,16 +21,16 @@ INPUT_0_DTYPE=int64
 INPUT_0_FORMAT=ND
 INPUT_0_FILE=input_data/actual_seq_lengths.bin
 
-INPUT_1_NAME=arg3_1
+INPUT_1_NAME=arg4_1
 INPUT_1_SHAPE=2080
 INPUT_1_DTYPE=int64
 INPUT_1_FORMAT=ND
-INPUT_1_FILE=input_data/position_ids.bin
+INPUT_1_FILE=input_data/input_ids.bin
 INPUT_1_SHAPE_ATC=-1
 
-INPUT_2_NAME=arg5_1
+INPUT_2_NAME=arg7_1
 INPUT_2_SHAPE=2080
 INPUT_2_DTYPE=int64
 INPUT_2_FORMAT=ND
-INPUT_2_FILE=input_data/input_ids.bin
+INPUT_2_FILE=input_data/position_ids.bin
 INPUT_2_SHAPE_ATC=-1

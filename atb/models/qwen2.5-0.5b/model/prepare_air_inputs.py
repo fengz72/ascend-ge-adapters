@@ -76,18 +76,18 @@ def main():
         ).cpu()
     print(f"golden_logits shape: {golden_logits.shape}")
 
-    # 4. 收集 3 个用户输入 (arg 名称导出后验证)
+    # 4. 收集 3 个用户输入 (顺序必须与图 Data 输入一致: actual_seq_lengths, input_ids, position_ids)
     inputs = [
         ("actual_seq_lengths", torch.tensor(cum_seq_lens, dtype=torch.int64).cpu()),
-        ("position_ids", concat_pos.squeeze(0).cpu()),
         ("input_ids", concat_ids.squeeze(0).cpu()),
+        ("position_ids", concat_pos.squeeze(0).cpu()),
     ]
 
     # 5. 保存
     os.makedirs(args.output_dir, exist_ok=True)
 
     list_lines = []
-    arg_names = ["arg1_1", "arg3_1", "arg5_1"]
+    arg_names = ["arg1_1", "arg4_1", "arg7_1"]
     for idx, (name, tensor) in enumerate(inputs):
         fname = f"{name}.bin"
         fpath = os.path.join(args.output_dir, fname)
