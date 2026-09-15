@@ -22,10 +22,10 @@ from transformers import AutoModelForCausalLM
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 from transformers.models.qwen2 import modeling_qwen2
 
-from .attention import register_npu_fia
-from .varlen_utils import setup_varlen_attention
+from .attention import register_npu_fia, register_prefix_ia
+from .varlen_utils import setup_varlen_attention, setup_prefix_attention
 from .fusion_ops import apply_fusion_ops
-from atb.tools.varlen import generate_varlen_inputs
+from atb.tools.varlen import generate_varlen_inputs, generate_prefix_varlen_inputs
 from atb.tools.atc_utils import run_atc
 from atb.tools.lm_head_prune import load_target_tokens, prune_lm_head
 
@@ -70,16 +70,20 @@ def patch_attention_for_dynamic():
     print("[patch] Qwen2Attention.forward → 动态导出版 (2D 模式, reshape 用 -1 避免 Pack)")
 
 
-def load_model(model_path, device):
-    """加载模型 (NPU, npu_fia, fp16), 应用融合算子 + attention patch。
+def load_model(model_path, device, attn_implementation="npu_fia"):
+    """加载模型 (NPU, fp16), 应用融合算子 + attention patch。
 
     export_air 和 prepare_air_inputs 共用此函数, 保证两条路径模型状态一致。
+    attn_implementation: "npu_fia" (FIA 基线) 或 "prefix_ia" (prefix 算子)。
     """
     torch.npu.set_device(device)
-    register_npu_fia()
-    print(f"=== 加载模型 (attn_implementation='npu_fia', device={device}) ===")
+    if attn_implementation == "prefix_ia":
+        register_prefix_ia()
+    else:
+        register_npu_fia()
+    print(f"=== 加载模型 (attn_implementation='{attn_implementation}', device={device}) ===")
     model = AutoModelForCausalLM.from_pretrained(
-        model_path, dtype=torch.float16, attn_implementation="npu_fia"
+        model_path, dtype=torch.float16, attn_implementation=attn_implementation
     ).npu()
     model.eval()
     model.config.use_cache = False
@@ -141,6 +145,50 @@ class ExportWrapper(nn.Module):
                 use_cache=False,
             )
         last_indices = actual_seq_lengths - 1
+        last_hidden = hidden.index_select(0, last_indices)
+        last_hidden = m.norm(last_hidden)
+        return self.model.lm_head(last_hidden)
+
+
+class PrefixExportWrapper(nn.Module):
+    """prefix 模式包装模型 — packed prefix-in-Q 布局, 3 个动态输入 (KV 内嵌版算子)。
+
+    packed 布局: hidden 全程 [T', D], T' = P + sum(L_i), 行序 [prefix, req0, req1, ...]。
+    RMSNorm/MLP/Embedding 逐 token 独立 → 与展开布局数学等价。prefix KV 位于 k/v 头部,
+    由算子内部处理, 无需切分。
+
+    动态输入 (forward 参数, 成为图 Data 节点):
+        input_ids:    [T'] int64 — prefix + 所有请求 token 拼接
+        position_ids: [T'] int64 — prefix 行 0..P-1, 每请求行 P..P+Li-1
+        act:          [N+1] int64 — cumsum([P, L0, L1, ...]), prefix 独立成 batch 0
+                      (P = act[0]; 请求 i 为 batch i+1; 形状固定 batch+1)
+
+    图常量: 权重 / cos/sin 表 / atten_mask
+
+    输出: logits [N, vocab] — 每请求最后一个 token
+        (last_indices = act[1:] - 1: 丢掉 prefix 段结束行, 请求 i 末行 = act[i+1]-1)
+    """
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, input_ids, position_ids, act):
+        for layer in self.model.model.layers:
+            layer.self_attn.act_tensor = act
+
+        m = self.model.model
+        hidden = m.embed_tokens(input_ids)
+        position_embeddings = m.rotary_emb(hidden, position_ids)
+        for layer in m.layers:
+            hidden = layer(
+                hidden,
+                attention_mask=None,
+                position_embeddings=position_embeddings,
+                position_ids=position_ids,
+                use_cache=False,
+            )
+        last_indices = act[1:] - 1
         last_hidden = hidden.index_select(0, last_indices)
         last_hidden = m.norm(last_hidden)
         return self.model.lm_head(last_hidden)
@@ -253,6 +301,85 @@ def export_air(model_path, output_dir, device, batch_size, seq_len,
     return air_path
 
 
+def export_prefix_air(model_path, output_dir, device, batch_size, seq_len,
+                      prefix_len, export_name="qwen2.5-0.5b-prefix", prune=False,
+                      target_token_file=None):
+    """导出 prefix 模式 AIR 模型 (KV 内嵌版 npu_prefix_infer_attention_score)。
+
+    与 export_air 的区别:
+      1. attention 实现为 prefix_ia (prefix-in-Q 算子), prefix KV 内嵌 k/v 头部
+      2. 输入为 packed 布局 [prefix, req0, ...], 3 个动态输入
+         (input_ids/position_ids/act), act = cumsum([P, L0, ...])
+      3. 与 FIA 基线语义等价: 每请求总长 = seq_len = prefix_len + own
+    """
+    logging.getLogger('torchair').setLevel(logging.INFO)
+
+    # 1. 加载模型 (prefix_ia)
+    model = load_model(model_path, device, attn_implementation="prefix_ia")
+
+    # 2. lm_head vocab 剪裁
+    if prune:
+        if not target_token_file or not os.path.exists(target_token_file):
+            raise FileNotFoundError(f"target_token_file 不存在: {target_token_file}")
+        token_ids = load_target_tokens(target_token_file)
+        prune_lm_head(model, token_ids)
+    else:
+        token_ids = None
+
+    # 3. 准备 packed varlen 输入 (act = cumsum([P, L0, ...]), prefix 独立 batch 0)
+    concat_ids, concat_pos, act, own_lens = generate_prefix_varlen_inputs(
+        batch_size, seq_len, prefix_len
+    )
+    setup_prefix_attention(model, act, 'npu')
+
+    total_tokens = prefix_len + sum(own_lens)
+    print(f"  batch_size={batch_size}, prefix_len={prefix_len}, own_len={own_lens[0]}, "
+          f"total_tokens={total_tokens} (FIA 基线: {batch_size * seq_len})")
+    print(f"  act={act[:4]}...")
+
+    # 4. 构造 dummy 输入 (NPU; P=20 仅示例值, 图对 P 完全动态)
+    input_ids = concat_ids.squeeze(0).npu()
+    position_ids = concat_pos.squeeze(0).npu()
+    act_tensor = torch.tensor(act, dtype=torch.int64, device='npu')
+
+    torch._dynamo.mark_dynamic(input_ids, 0)
+    torch._dynamo.mark_dynamic(position_ids, 0)
+
+    # 5. 包装模型 (prefix, 3 输入)
+    export_model = PrefixExportWrapper(model)
+
+    # 6. 配置 CompilerConfig
+    config = CompilerConfig()
+    config.experimental_config.frozen_parameter = 1
+
+    # 7. 导出 AIR
+    os.makedirs(output_dir, exist_ok=True)
+
+    print(f"=== 导出 prefix AIR (KV 内嵌, 动态 P): {output_dir}/{export_name}.air ===")
+    print(f"  input_ids: {input_ids.shape}, position_ids: {position_ids.shape}")
+    print(f"  act: {act_tensor.shape}")
+
+    dynamo_export(
+        input_ids, position_ids, act_tensor,
+        model=export_model,
+        export_path=output_dir,
+        export_name=export_name,
+        dynamic=True,
+        config=config,
+    )
+
+    torch.npu.synchronize()
+
+    air_path = os.path.join(output_dir, f"{export_name}.air")
+    if os.path.exists(air_path):
+        file_size = os.path.getsize(air_path) / 1024 / 1024
+        print(f"=== prefix AIR 导出完成: {air_path} ({file_size:.1f} MB) ===\n")
+    else:
+        print(f"=== [WARN] AIR 文件未生成: {air_path} ===\n")
+
+    return air_path
+
+
 def main():
     parser = argparse.ArgumentParser(description="导出 AIR 模型 (torchair.dynamo_export)")
     parser.add_argument("--model-path", default=DEFAULT_MODEL_PATH, help="模型路径")
@@ -274,14 +401,32 @@ def main():
                         help="开启 lm_head vocab 剪裁")
     parser.add_argument("--target-token-file", default=DEFAULT_TARGET_TOKEN_FILE,
                         help=f'target token JSON 文件 (默认: {DEFAULT_TARGET_TOKEN_FILE})')
+    parser.add_argument("--prefix", type=int, default=0,
+                        help="prefix 模式: 共享 prefix 长度 P (>0 启用), 每请求总长 = seq_len")
     args = parser.parse_args()
 
-    air_path = os.path.join(args.output_dir, f"{args.model_name}.air")
+    if args.prefix > 0:
+        export_name = f"{args.model_name}-prefix"
+    else:
+        export_name = args.model_name
+    air_path = os.path.join(args.output_dir, f"{export_name}.air")
     if args.skip_export:
         if not os.path.exists(air_path):
             print(f"[ERROR] AIR 文件不存在: {air_path}, 请先去掉 --skip-export 导出")
             return
         print(f"=== 跳过导出, 使用已有 AIR: {air_path} ===")
+    elif args.prefix > 0:
+        air_path = export_prefix_air(
+            args.model_path,
+            args.output_dir,
+            args.device,
+            args.batch_size,
+            args.seq_len,
+            prefix_len=args.prefix,
+            export_name=export_name,
+            prune=args.prune_lm_head,
+            target_token_file=args.target_token_file,
+        )
     else:
         air_path = export_air(
             args.model_path,
@@ -289,7 +434,7 @@ def main():
             args.device,
             args.batch_size,
             args.seq_len,
-            export_name=args.model_name,
+            export_name=export_name,
             prune=args.prune_lm_head,
             target_token_file=args.target_token_file,
         )

@@ -1,14 +1,19 @@
 # =============================================================================
-# Model: qwen2.5-0.5b (2D dynamic AIR export, Pack-free)
-# hidden_states 全程 2D [T, D], 消除 Pack 算子
-# 3 inputs: actual_seq_lengths + position_ids + input_ids (权重 + cos/sin 表已 frozen_parameter 冻结)
-# batch_size=10, seq_len=208, total_tokens=2080 (varlen packed)
-# 融合算子: npu_rms_norm + npu_ffn + npu_fused_infer_attention_score + npu_apply_rotary_pos_emb
-# RoPE cos/sin 表 [1, 1024, 64] 图常量 + Gather (消除图内 Cast+MatMul+Cos+Sin 5个kernel)
+# Model: qwen2.5-0.5b-prefix (prefix-attention 分支, KV 内嵌版算子)
+# packed prefix-in-Q 布局: [prefix(P), req0, req1, ...], 每请求总长 208
+# 3 inputs (与基线同构): act + input_ids + position_ids
+#   act = cumsum([P, L0, L1, ...]) — prefix 独立成 batch 0 (P=act[0])
+#   (权重 + cos/sin 表 + atten_mask 已 frozen_parameter 冻结)
+# batch_size=10, seq_len=208, prefix=20, own=188, total_tokens=1900
+#   (FIA 基线同语义负载 2080 token — prefix 只存/只算一份)
+# 融合算子: npu_rms_norm + npu_prefix_infer_attention_score(KV内嵌) + npu_apply_rotary_pos_emb
+# prefix KV 位于 k/v 头部由算子内部处理, 无需切分; P 运行时可变(如 20-25 随机)
+# 注意: 图输入顺序以 air/dynamo.pbtxt Data 节点为准 (acl_infer 按 --input 顺序映射,
+#       不校验名字)
 # =============================================================================
 
-MODEL_NAME=qwen2.5-0.5b
-MODEL_FILE=om/qwen2.5-0.5b_linux_aarch64.om
+MODEL_NAME=qwen2.5-0.5b-prefix
+MODEL_FILE=om/qwen2.5-0.5b-prefix_linux_aarch64.om
 FRAMEWORK=1
 SOC_VERSION=Ascend910_9382
 MODEL_TYPE=dynamic
@@ -16,21 +21,21 @@ MODEL_TYPE=dynamic
 INPUT_COUNT=3
 
 INPUT_0_NAME=arg1_1
-INPUT_0_SHAPE=10
+INPUT_0_SHAPE=11
 INPUT_0_DTYPE=int64
 INPUT_0_FORMAT=ND
-INPUT_0_FILE=input_data/actual_seq_lengths.bin
+INPUT_0_FILE=input_data_prefix/act.bin
 
 INPUT_1_NAME=arg4_1
-INPUT_1_SHAPE=2080
+INPUT_1_SHAPE=1900
 INPUT_1_DTYPE=int64
 INPUT_1_FORMAT=ND
-INPUT_1_FILE=input_data/input_ids.bin
+INPUT_1_FILE=input_data_prefix/input_ids.bin
 INPUT_1_SHAPE_ATC=-1
 
 INPUT_2_NAME=arg7_1
-INPUT_2_SHAPE=2080
+INPUT_2_SHAPE=1900
 INPUT_2_DTYPE=int64
 INPUT_2_FORMAT=ND
-INPUT_2_FILE=input_data/position_ids.bin
+INPUT_2_FILE=input_data_prefix/position_ids.bin
 INPUT_2_SHAPE_ATC=-1

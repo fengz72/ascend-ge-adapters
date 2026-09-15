@@ -20,6 +20,7 @@
 #   --sweep <list>    bench 串行扫描线程数, 逗号分隔 (如 1,2,4,8; 与 --threads 互斥)
 #   --prune           开启 lm_head vocab 剪裁
 #   --fixed-seq <len> 固定序列长度 (默认随机)
+#   --prefix <P>      prefix 模式: 共享 prefix 长度 P (AIR/OM 名追加 -prefix)
 #   --profiling       开启 profiling (infer/bench 生效)
 #   --debug           ATC 编译开启 --log=debug
 #   --dump            ATC 编译开启 GE 图 dump
@@ -57,6 +58,7 @@ THREADS=1
 SWEEP=""
 PRUNE=false
 FIXED_SEQ=""
+PREFIX=0
 PROFILING=false
 DEBUG=false
 DUMP=false
@@ -123,8 +125,9 @@ parse_common_args() {
             --requests)   REQUESTS="$2"; shift 2 ;;
             --threads)    THREADS="$2"; shift 2 ;;
             --sweep)      SWEEP="$2"; shift 2 ;;
-            --prune)      PRUNE=true; shift ;;
-            --fixed-seq)  FIXED_SEQ="$2"; shift 2 ;;
+            --prune)         PRUNE=true; shift ;;
+            --fixed-seq)    FIXED_SEQ="$2"; shift 2 ;;
+            --prefix)       PREFIX="$2"; shift 2 ;;
             --profiling)  PROFILING=true; shift ;;
             --debug)      DEBUG=true; shift ;;
             --dump)       DUMP=true; shift ;;
@@ -165,15 +168,19 @@ do_export() {
     log_step "Step 2: Export AIR (PyTorch → AIR)"
     local prune_flag=""
     [ "$PRUNE" = true ] && prune_flag="--prune-lm-head"
+    local prefix_flag=""
+    [ "$PREFIX" -gt 0 ] 2>/dev/null && prefix_flag="--prefix ${PREFIX}"
     cd "${MODEL_DIR}"
     run_or_echo "PYTHONPATH=${REPO_ROOT}:${PYTHONPATH} python3 -m model.export_air \
         --device ${DEVICE} \
         --output-dir ${AIR_DIR} \
         --om-dir ${OM_DIR} \
         --model-name ${MODEL_NAME} \
-        --soc ${SOC} ${prune_flag}"
+        --soc ${SOC} ${prune_flag} ${prefix_flag}"
     if [ "$DRY_RUN" != true ]; then
-        [ -f "${AIR_PATH}" ] && log_info "AIR exported: ${AIR_PATH}" || log_error "AIR not found: ${AIR_PATH}"
+        local air_name="${MODEL_NAME}"
+        [ "$PREFIX" -gt 0 ] 2>/dev/null && air_name="${MODEL_NAME}-prefix"
+        [ -f "${AIR_DIR}/${air_name}.air" ] && log_info "AIR exported: ${AIR_DIR}/${air_name}.air" || log_error "AIR not found: ${AIR_DIR}/${air_name}.air"
     fi
 }
 
@@ -182,14 +189,19 @@ do_export() {
 # =============================================================================
 do_atc() {
     log_step "Step 3: ATC compile (AIR → OM)"
-    if [ ! -f "${AIR_PATH}" ]; then
-        log_error "AIR not found: ${AIR_PATH}, run './run.sh export' first"
+    local air_name="${MODEL_NAME}"
+    [ "$PREFIX" -gt 0 ] 2>/dev/null && air_name="${MODEL_NAME}-prefix"
+    local air_path="${AIR_DIR}/${air_name}.air"
+    if [ ! -f "${air_path}" ]; then
+        log_error "AIR not found: ${air_path}, run './run.sh export [--prefix P]' first"
         exit 1
     fi
     local debug_flag=""
     [ "$DEBUG" = true ] && debug_flag="--debug"
     local aicore_flag=""
     [ -n "$AICORE_NUM" ] && aicore_flag="--aicore-num '${AICORE_NUM}'"
+    local prefix_flag=""
+    [ "$PREFIX" -gt 0 ] 2>/dev/null && prefix_flag="--prefix ${PREFIX}"
     local dump_env=""
     if [ "$DUMP" = true ]; then
         local dump_dir="${MODEL_DIR}/dump_graph"
@@ -204,7 +216,7 @@ do_atc() {
         --output-dir ${AIR_DIR} \
         --om-dir ${OM_DIR} \
         --model-name ${MODEL_NAME} \
-        --soc ${SOC} ${debug_flag} ${aicore_flag}"
+        --soc ${SOC} ${debug_flag} ${aicore_flag} ${prefix_flag}"
 }
 
 # =============================================================================
@@ -227,6 +239,8 @@ do_bench() {
     log_step "Step 5: Latency benchmark (bench_latency)"
 
     # 查找 OM 文件: 有 --aicore-num 时按后缀匹配, 否则用默认名
+    local model_stem="${MODEL_NAME}"
+    [ "$PREFIX" -gt 0 ] 2>/dev/null && model_stem="${MODEL_NAME}-prefix"
     local om_file
     if [ -n "$AICORE_NUM" ]; then
         local aic aiv
@@ -237,9 +251,9 @@ do_bench() {
             aic="$AICORE_NUM"
             aiv=$((aic * 2))
         fi
-        om_file="${OM_DIR}/${MODEL_NAME}_c${aic}_${aiv}_linux_aarch64.om"
+        om_file="${OM_DIR}/${model_stem}_c${aic}_${aiv}_linux_aarch64.om"
     else
-        om_file="${OM_DIR}/${MODEL_NAME}_linux_aarch64.om"
+        om_file="${OM_DIR}/${model_stem}_linux_aarch64.om"
     fi
     if [ ! -f "$om_file" ]; then
         if [ -n "$AICORE_NUM" ]; then
@@ -266,6 +280,9 @@ do_bench() {
     local fixed_seq_flag=""
     [ -n "$FIXED_SEQ" ] && fixed_seq_flag="--fixed-seq ${FIXED_SEQ}"
 
+    local prefix_flag=""
+    [ "$PREFIX" -gt 0 ] 2>/dev/null && prefix_flag="--prefix ${PREFIX}"
+
     local thread_arg="--threads ${THREADS}"
     [ -n "$SWEEP" ] && thread_arg="--sweep ${SWEEP}"
 
@@ -275,7 +292,7 @@ do_bench() {
         ${thread_arg} \
         --requests ${REQUESTS} \
         --warmup ${WARMUP} \
-        --device-id ${DEVICE} ${fixed_seq_flag} ${profiling_args}"
+        --device-id ${DEVICE} ${fixed_seq_flag} ${prefix_flag} ${profiling_args}"
 }
 
 # =============================================================================

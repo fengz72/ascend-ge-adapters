@@ -51,3 +51,25 @@ def setup_varlen_attention(model, cum_seq_lens, device, max_seq_len=1024):
     precompute_rope_cos_sin(model, max_seq_len, device)
 
     return atten_mask
+
+
+def setup_prefix_attention(model, act, device, max_seq_len=1024):
+    """packed prefix-in-Q varlen (KV 内嵌版算子): 注入 act dummy 与 mask。
+
+    act = cumsum([P, L0, L1, ...]) — prefix 独立成 batch 0 (P=act[0])。
+    初始为 dummy tensor, 导出时由 wrapper forward 以入参覆盖 (图 Data 节点,
+    换值/换 shape 不重编译)。
+
+    Returns:
+        atten_mask: 构建的因果掩码张量 (sparse_mode=2 压缩 causal)
+    """
+    atten_mask = build_causal_mask_2048(device)
+    act_tensor = torch.tensor(act, dtype=torch.int64, device=device)
+    for layer in model.model.layers:
+        layer.self_attn.act_tensor = act_tensor
+        layer.self_attn.register_buffer('atten_mask', atten_mask)
+    model.model._update_causal_mask = lambda *a, **kw: None
+
+    precompute_rope_cos_sin(model, max_seq_len, device)
+
+    return atten_mask

@@ -55,3 +55,39 @@ def prepare_varlen_inputs(tokenizer, input_texts):
         acc += s
         cum_seq_lens.append(acc)
     return concat_ids, concat_pos, seq_lens, cum_seq_lens
+
+
+def generate_prefix_varlen_inputs(batch_size, seq_len, prefix_len):
+    """生成 packed prefix-in-Q varlen 输入 (全 0 token, 不需要 tokenizer)。
+
+    布局: [prefix(P), req0(L), req1(L), ...], 每请求总长 = seq_len = P + L。
+    与 generate_varlen_inputs(batch, seq_len) 语义等价 (每条请求 = prefix + own,
+    prefix 逐条重复展开), 供 FIA 基线与 prefix 算子精度互证。
+
+    act 契约 (KV 内嵌版算子): cumsum([P, L0, L1, ...]) — prefix 独立成 batch 0
+    (P = act[0]), 请求 i 为 batch i+1, act_q ≡ act_kv。
+
+    Returns:
+        concat_ids:  [1, P + batch*L] 全 0 token ids
+        concat_pos:  [1, P + batch*L] prefix 行 0..P-1, 每请求行 P..seq_len-1
+        act:         list[int] cumsum([P, L, L, ...]) (batch+1 个元素)
+        own_lens:    list[int] 每请求自有长度 L
+    """
+    if prefix_len <= 0 or prefix_len >= seq_len:
+        raise ValueError(f"需要 0 < prefix_len < seq_len, got prefix={prefix_len}, seq={seq_len}")
+    own = seq_len - prefix_len
+    total = prefix_len + batch_size * own
+
+    concat_ids = torch.zeros(total, dtype=torch.long).unsqueeze(0)
+    pos_prefix = torch.arange(prefix_len)
+    pos_req = torch.arange(prefix_len, seq_len)
+    concat_pos = torch.cat([pos_prefix] + [pos_req] * batch_size).unsqueeze(0)
+
+    own_lens = [own] * batch_size
+    act, acc = [], 0
+    acc += prefix_len
+    act.append(acc)
+    for L in own_lens:
+        acc += L
+        act.append(acc)
+    return concat_ids, concat_pos, act, own_lens
