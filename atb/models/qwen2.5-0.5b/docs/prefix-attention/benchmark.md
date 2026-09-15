@@ -4,7 +4,7 @@
 > 测试环境: Ascend910_9382 (910_93), CANN 9.0.0, torch 2.9.0 / torch_npu 2.9.0.post2, transformers 5.10.1
 > 基线模型: qwen2.5-0.5b (FIA varlen, **sparse_mode=2 公平基线**, 见 3.1)
 > 测试模型: qwen2.5-0.5b-prefix (prefix-attention 分支)
-> 算子: npu_prefix_infer_attention_score (prefix-attention 工程 commit `d6a5a2d`, KV 内嵌版, .run + wheel 安装, 单测 PASS)
+> 算子: npu_prefix_infer_attention_score ([prefix-attention 仓库](https://github.com/fengz72/prefix-attention) commit `d6a5a2d`, KV 内嵌版, .run + wheel 安装, 单测 PASS)
 > 测试工具: `atb/build/bench_ge_latency` (GESession 在线路径, 12|24 限核)
 
 ## 1. 测试背景

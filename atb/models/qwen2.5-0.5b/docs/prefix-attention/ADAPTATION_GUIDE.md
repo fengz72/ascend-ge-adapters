@@ -1,6 +1,7 @@
 # Qwen2.5-0.5B prefix-attention 适配部署指南
 
-> 适用版本: prefix-attention 分支 (KV 内嵌版算子, prefix-attention 工程 `d6a5a2d`)
+> 适用版本: prefix-attention 分支 (KV 内嵌版算子)
+> 算子仓库: <https://github.com/fengz72/prefix-attention> (基线 commit `d6a5a2d`)
 > 性能与精度数据见同目录 [benchmark.md](benchmark.md), 本文档只讲怎么装、改了什么、怎么跑
 
 ## 1. PIA 算子安装与测试
@@ -8,7 +9,8 @@
 ### 1.1 构建 + 安装
 
 ```bash
-cd prefix-attention
+git clone https://github.com/fengz72/prefix-attention.git && cd prefix-attention
+git checkout d6a5a2d        # 本文档对应的算子版本
 source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
 
 bash build.sh          # ~4min → build_out/custom_opp_openEuler_aarch64.run
