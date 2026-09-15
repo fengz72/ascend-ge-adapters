@@ -100,6 +100,7 @@ static const int    VOCAB_SIZE         = 151936;
 static const int    MAX_BATCH_SIZE     = 11;
 static const int    MAX_SEQ_LEN        = 218;
 static const int    MAX_TOTAL_TOKENS   = MAX_BATCH_SIZE * MAX_SEQ_LEN;
+static const int    MAX_PREFIX_LEN     = 32;   // 动态 P 上限 (含余量)
 
 static const double BATCH_AVG   = 9.8;
 static const double BATCH_STD   = 0.35;
@@ -110,6 +111,13 @@ static const double SEQ_LOG_STD  = 0.167;
 
 static bool   g_seq_fixed = false;
 static int    g_seq_fixed_val = 208;
+
+// prefix 模式: packed prefix-in-Q 布局 [prefix(P), req0, req1, ...]
+// 每请求总长 = seq_len (prefix + own), 3 输入 (与基线图同构, 图 Data 节点顺序):
+//   act/input_ids/position_ids, act = cumsum([P, L0, ...]) (prefix 独立成 batch 0)
+// --prefix <P> 固定 P; --prefix <P1>-<P2> 每请求均匀随机 P∈[P1,P2]
+static int    g_prefix_len = 0;
+static int    g_prefix_max = 0;   // 随机上界 (固定时 = g_prefix_len)
 
 // ============================================================================
 // Timing helpers
@@ -129,7 +137,8 @@ static inline double elapsed_ms(TimePoint start, TimePoint end) {
 struct Request {
     int req_id;
     std::vector<int64_t> input_ids;
-    std::vector<int64_t> actual_seq_lengths;
+    std::vector<int64_t> actual_seq_lengths;   // 基线: cumsum(seq_lens)
+    std::vector<int64_t> act;                  // prefix: cumsum([P, L0, ...]) (batch+1 元素)
     std::vector<int64_t> position_ids;
     int total_tokens;
     int batch_size;
@@ -177,6 +186,42 @@ public:
             seq_lens[i] = sl;
             total += sl;
         }
+
+        if (g_prefix_len > 0) {
+            // packed prefix-in-Q: 每请求 own = seq_len - P, prefix 只算一份
+            // P: 固定值或 [g_prefix_len, g_prefix_max] 均匀随机
+            const int P = (g_prefix_max > g_prefix_len)
+                              ? (g_prefix_len + (int)(rng_() % (unsigned)(g_prefix_max - g_prefix_len + 1)))
+                              : g_prefix_len;
+            std::vector<int> own_lens(bs);
+            int own_total = 0;
+            for (int i = 0; i < bs; i++) {
+                own_lens[i] = std::max(1, seq_lens[i] - P);
+                own_total += own_lens[i];
+            }
+            req.total_tokens = P + own_total;
+
+            req.input_ids.assign(req.total_tokens, 0);
+
+            // position_ids: prefix 行 0..P-1, 每请求行 P..P+Li-1
+            std::vector<int64_t> pos_ids(req.total_tokens);
+            int idx = 0;
+            for (int p = 0; p < P; p++) pos_ids[idx++] = p;
+            for (int i = 0; i < bs; i++)
+                for (int p = 0; p < own_lens[i]; p++) pos_ids[idx++] = P + p;
+            req.position_ids = std::move(pos_ids);
+
+            // act = cumsum([P, L0, L1, ...]) — prefix 独立成 batch 0 (KV 内嵌版算子)
+            req.act.resize(bs + 1);
+            int acc = 0;
+            req.act[0] = (acc += P);
+            for (int i = 0; i < bs; i++) {
+                acc += own_lens[i];
+                req.act[i + 1] = acc;
+            }
+            return req;
+        }
+
         req.total_tokens = total;
 
         req.input_ids.resize(total, 0);
@@ -345,11 +390,20 @@ public:
         : thread_id(tid), model_id(0), model_desc(nullptr),
           stream(nullptr), input_dataset(nullptr), output_dataset(nullptr),
           output_buffer(nullptr), output_max_bytes(0) {
-        input_specs = {
-            {ACL_INT64,   {MAX_BATCH_SIZE},                    (size_t)MAX_BATCH_SIZE * 8},
-            {ACL_INT64,   {MAX_TOTAL_TOKENS},                  (size_t)MAX_TOTAL_TOKENS * 8},
-            {ACL_INT64,   {MAX_TOTAL_TOKENS},                  (size_t)MAX_TOTAL_TOKENS * 8},
-        };
+        // 图输入顺序 (Data 节点, prefix 与基线同构): [长度数组, input_ids, position_ids]
+        if (g_prefix_len > 0) {
+            input_specs = {
+                {ACL_INT64, {MAX_BATCH_SIZE + 1},                (size_t)(MAX_BATCH_SIZE + 1) * 8},
+                {ACL_INT64, {MAX_TOTAL_TOKENS},                  (size_t)MAX_TOTAL_TOKENS * 8},
+                {ACL_INT64, {MAX_TOTAL_TOKENS},                  (size_t)MAX_TOTAL_TOKENS * 8},
+            };
+        } else {
+            input_specs = {
+                {ACL_INT64,   {MAX_BATCH_SIZE},                    (size_t)MAX_BATCH_SIZE * 8},
+                {ACL_INT64,   {MAX_TOTAL_TOKENS},                  (size_t)MAX_TOTAL_TOKENS * 8},
+                {ACL_INT64,   {MAX_TOTAL_TOKENS},                  (size_t)MAX_TOTAL_TOKENS * 8},
+            };
+        }
         output_max_bytes = (size_t)MAX_BATCH_SIZE * VOCAB_SIZE * 2;
         model_path_ = model_path;
         device_id_ = device_id;
@@ -401,17 +455,26 @@ public:
             std::vector<int64_t> shape;
         };
 
-        // 顺序与图 Data 输入一致: actual_seq_lengths, input_ids, position_ids
-        InputData inputs[3] = {
-            {req.actual_seq_lengths.data(), req.actual_seq_lengths.size() * 8, ACL_INT64,
-             {static_cast<int64_t>(req.actual_seq_lengths.size())}},
-            {req.input_ids.data(), req.input_ids.size() * 8, ACL_INT64,
-             {static_cast<int64_t>(req.total_tokens)}},
-            {req.position_ids.data(), req.position_ids.size() * 8, ACL_INT64,
-             {static_cast<int64_t>(req.total_tokens)}},
-        };
+        // 顺序与图 Data 输入一致: [长度数组, input_ids, position_ids] (prefix 与基线同构)
+        InputData inputs[4] = {};
+        int n_inputs = 3;
+        if (g_prefix_len > 0) {
+            inputs[0] = {req.act.data(), req.act.size() * 8, ACL_INT64,
+                         {static_cast<int64_t>(req.act.size())}};
+            inputs[1] = {req.input_ids.data(), req.input_ids.size() * 8, ACL_INT64,
+                         {static_cast<int64_t>(req.total_tokens)}};
+            inputs[2] = {req.position_ids.data(), req.position_ids.size() * 8, ACL_INT64,
+                         {static_cast<int64_t>(req.total_tokens)}};
+        } else {
+            inputs[0] = {req.actual_seq_lengths.data(), req.actual_seq_lengths.size() * 8, ACL_INT64,
+                         {static_cast<int64_t>(req.actual_seq_lengths.size())}};
+            inputs[1] = {req.input_ids.data(), req.input_ids.size() * 8, ACL_INT64,
+                         {static_cast<int64_t>(req.total_tokens)}};
+            inputs[2] = {req.position_ids.data(), req.position_ids.size() * 8, ACL_INT64,
+                         {static_cast<int64_t>(req.total_tokens)}};
+        }
 
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < n_inputs; i++) {
             if (inputs[i].bytes > input_max_sizes[i]) {
                 std::cerr << "[ERROR] Input " << i << " size " << inputs[i].bytes
                           << " > buffer " << input_max_sizes[i] << std::endl;
@@ -673,6 +736,8 @@ static void print_usage(const char* prog) {
               << "  --device-id <id>     NPU device ID (default: 0)\n"
               << "  --warmup <N>         Warmup requests (default: 50)\n"
               << "  --fixed-seq <len>    Fix all sequence lengths to <len> (default: random)\n"
+              << "  --prefix <P>         Packed prefix-in-Q mode: shared prefix len P,\n"
+              << "                       per-request total = seq len (4 inputs: act_q/act_kv/ids/pos)\n"
               << "  --profiling          Enable CANN profiling (generates acl.json)\n"
               << "  --profiling_output <dir>  Profiling output directory (default: ./profiling_data)\n"
               << "  --profiling_no_task_time    Disable task_time collection\n"
@@ -711,6 +776,27 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--fixed-seq" && i + 1 < argc) {
             g_seq_fixed = true;
             g_seq_fixed_val = std::stoi(argv[++i]);
+        } else if (arg == "--prefix" && i + 1 < argc) {
+            // <P> 固定; <P1>-<P2> 每请求均匀随机
+            std::string spec = argv[++i];
+            auto dash = spec.find('-');
+            try {
+                if (dash != std::string::npos) {
+                    g_prefix_len = std::stoi(spec.substr(0, dash));
+                    g_prefix_max = std::stoi(spec.substr(dash + 1));
+                } else {
+                    g_prefix_len = std::stoi(spec);
+                    g_prefix_max = g_prefix_len;
+                }
+            } catch (const std::exception&) {
+                std::cerr << "[ERROR] Invalid --prefix spec: " << spec << std::endl;
+                return 1;
+            }
+            if (g_prefix_len <= 0 || g_prefix_max < g_prefix_len || g_prefix_max > MAX_PREFIX_LEN) {
+                std::cerr << "[ERROR] --prefix need 0 < P <= " << MAX_PREFIX_LEN
+                          << " and P1 <= P2, got: " << spec << std::endl;
+                return 1;
+            }
         } else if (arg == "--profiling") {
             // handled by ParseProfilingConfig
         } else if (arg == "--profiling_output" && i + 1 < argc) {

@@ -35,3 +35,41 @@ target_link_libraries(bench_latency
     stdc++
     pthread
 )
+
+# GESession 在线推理 AIR (参照 cann/ge PR#743 RunGraphAsync 样例)
+add_executable(ge_infer main_ge.cc)
+
+set_target_properties(ge_infer PROPERTIES CXX_STANDARD 17)
+
+target_compile_options(ge_infer PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+
+target_link_libraries(ge_infer
+    ge_compiler
+    ge_runner
+    ge_common
+    ge_common_base
+    graph
+    graph_base
+    ascendcl
+    stdc++
+    pthread
+)
+
+# GESession 多线程延迟/吞吐 benchmark (镜像 bench_latency, GE 在线路径)
+add_executable(bench_ge_latency bench_ge_latency.cpp)
+
+set_target_properties(bench_ge_latency PROPERTIES CXX_STANDARD 17)
+
+target_compile_options(bench_ge_latency PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+
+target_link_libraries(bench_ge_latency
+    ge_compiler
+    ge_runner
+    ge_common
+    ge_common_base
+    graph
+    graph_base
+    ascendcl
+    stdc++
+    pthread
+)
