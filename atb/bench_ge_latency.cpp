@@ -67,7 +67,7 @@
     } while (0)
 
 static const int    VOCAB_SIZE         = 151936;
-static const int    MAX_BATCH_SIZE     = 11;
+static const int    MAX_BATCH_SIZE     = 40;   // --batch-size 上限 (batch+1 的 act 数组也受此约束)
 static const int    MAX_SEQ_LEN        = 218;
 static const int    MAX_TOTAL_TOKENS   = MAX_BATCH_SIZE * MAX_SEQ_LEN;
 static const int    MAX_PREFIX_LEN     = 32;   // prefix 长度上限 (参数校验用)
@@ -75,7 +75,7 @@ static const int    MAX_PREFIX_LEN     = 32;   // prefix 长度上限 (参数校
 static const double BATCH_AVG   = 9.8;
 static const double BATCH_STD   = 0.35;
 static const bool   BATCH_FIXED = true;
-static const int    BATCH_FIXED_VAL = 10;
+static int          BATCH_FIXED_VAL = 10;   // --batch-size 可覆盖
 static const double SEQ_LOG_MEAN = 4.997;
 static const double SEQ_LOG_STD  = 0.167;
 
@@ -593,6 +593,8 @@ static void print_usage(const char* prog) {
               << "  --fixed-seq <len>    Fix all sequence lengths to <len> (default: random)\n"
               << "  --prefix <P|P1-P2>   Packed prefix-in-Q mode (dynamic-P graph, 7 inputs);\n"
               << "                       fixed P or per-request uniform random in [P1,P2]\n"
+              << "  --batch-size <N>     Fixed batch size per request (default 10, max "
+              << MAX_BATCH_SIZE << ")\n"
               << "  --aicore-num <spec>  Limit AI cores: int N (=N|2N, AIC|AIV 1:2) or 'aic|aiv';\n"
               << "                       empty = all cores (injected via AddGraph options)\n"
               << "  --profiling          Enable GE profiling (ge.exec.profilingMode via GEInitialize)\n"
@@ -614,6 +616,7 @@ int main(int argc, char* argv[]) {
     std::string aicore_num;
     bool profiling = false;
     std::string profiling_output = "./profiling_data";
+    int batch_size = 0;  // 0 = 默认 10
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -660,6 +663,14 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--profiling_output" && i + 1 < argc) {
             profiling_output = argv[++i];
             profiling = true;
+        } else if (arg == "--batch-size" && i + 1 < argc) {
+            batch_size = std::stoi(argv[++i]);
+            if (batch_size < 1 || batch_size > MAX_BATCH_SIZE) {
+                std::cerr << "[ERROR] --batch-size need 1.." << MAX_BATCH_SIZE
+                          << ", got " << batch_size << std::endl;
+                return 1;
+            }
+            BATCH_FIXED_VAL = batch_size;
         } else if (arg == "-h" || arg == "--help") {
             print_usage(argv[0]);
             return 0;
@@ -689,6 +700,7 @@ int main(int argc, char* argv[]) {
     std::cout << "========================================================================\n";
     std::cout << "GE Benchmark Config: model=" << model_path << ", device=" << device_id
               << ", requests=" << total_requests << ", warmup=" << warmup
+              << ", batch=" << BATCH_FIXED_VAL
               << ", fixed_seq=" << (g_seq_fixed ? std::to_string(g_seq_fixed_val) : "random")
               << ", prefix=" << (g_prefix_len > 0
                                      ? (g_prefix_max > g_prefix_len
