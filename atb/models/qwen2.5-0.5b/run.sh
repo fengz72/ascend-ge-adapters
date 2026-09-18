@@ -12,6 +12,7 @@
 #   all       全流程: pass → export → atc → infer
 #
 # 通用选项:
+#   --model-path <dir> 模型权重目录 (默认取环境变量 QWEN25_MODEL_PATH, 需已下载)
 #   --device N        NPU 设备号 (默认 8)
 #   --soc XXX         SoC 型号 (默认 Ascend910_9382)
 #   --warmup N        预热次数 (默认 10)
@@ -50,6 +51,7 @@ PROFILING_DIR="${MODEL_DIR}/profiling_data"
 AIR_PATH="${AIR_DIR}/${MODEL_NAME}.air"
 
 # ---- 默认参数 ----
+MODEL_PATH="${QWEN25_MODEL_PATH:-}"
 DEVICE=8
 SOC="Ascend910_9382"
 WARMUP=10
@@ -89,6 +91,7 @@ Subcommands:
   all       Full pipeline: pass → export → atc → infer
 
 Options:
+  --model-path <dir> Model weights directory (default: env QWEN25_MODEL_PATH)
   --device N        NPU device ID (default: 8)
   --soc XXX         SoC version (default: Ascend910_9382)
   --warmup N        Warmup runs (default: 10)
@@ -119,6 +122,7 @@ EOF
 parse_common_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --model-path) MODEL_PATH="$2"; shift 2 ;;
             --device)     DEVICE="$2"; shift 2 ;;
             --soc)        SOC="$2"; shift 2 ;;
             --warmup)     WARMUP="$2"; shift 2 ;;
@@ -170,13 +174,15 @@ do_export() {
     [ "$PRUNE" = true ] && prune_flag="--prune-lm-head"
     local prefix_flag=""
     [ "$PREFIX" -gt 0 ] 2>/dev/null && prefix_flag="--prefix ${PREFIX}"
+    local model_path_flag=""
+    [ -n "$MODEL_PATH" ] && model_path_flag="--model-path ${MODEL_PATH}"
     cd "${MODEL_DIR}"
     run_or_echo "PYTHONPATH=${REPO_ROOT}:${PYTHONPATH} python3 -m model.export_air \
         --device ${DEVICE} \
         --output-dir ${AIR_DIR} \
         --om-dir ${OM_DIR} \
         --model-name ${MODEL_NAME} \
-        --soc ${SOC} ${prune_flag} ${prefix_flag}"
+        --soc ${SOC} ${model_path_flag} ${prune_flag} ${prefix_flag}"
     if [ "$DRY_RUN" != true ]; then
         local air_name="${MODEL_NAME}"
         [ "$PREFIX" -gt 0 ] 2>/dev/null && air_name="${MODEL_NAME}-prefix"

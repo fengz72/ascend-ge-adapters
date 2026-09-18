@@ -22,12 +22,12 @@ import torch
 import torch_npu
 
 from .varlen_utils import setup_varlen_attention, setup_prefix_attention
-from .export_air import load_model, ExportWrapper, PrefixExportWrapper
+from .export_air import load_model, resolve_model_path, ExportWrapper, PrefixExportWrapper
 from atb.tools.varlen import generate_varlen_inputs, generate_prefix_varlen_inputs
 from atb.tools.lm_head_prune import load_target_tokens, prune_lm_head
 
 _MODEL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_MODEL_PATH = "/export/home/models/Qwen2.5-0.5B"
+DEFAULT_MODEL_PATH = os.environ.get("QWEN25_MODEL_PATH")
 DEFAULT_OUTPUT_DIR = os.path.join(_MODEL_DIR, "input_data")
 DEFAULT_PREFIX_OUTPUT_DIR = os.path.join(_MODEL_DIR, "input_data_prefix")
 DEFAULT_TARGET_TOKEN_FILE = os.path.join(_MODEL_DIR, "target_tokens.json")
@@ -50,6 +50,7 @@ def main():
     parser.add_argument("--target-token-file", default=DEFAULT_TARGET_TOKEN_FILE,
                         help=f'target token JSON 文件 (默认: {DEFAULT_TARGET_TOKEN_FILE})')
     args = parser.parse_args()
+    resolve_model_path(args.model_path)
 
     if args.prefix > 0 and args.output_dir == DEFAULT_OUTPUT_DIR:
         args.output_dir = DEFAULT_PREFIX_OUTPUT_DIR

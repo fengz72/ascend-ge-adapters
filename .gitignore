@@ -23,6 +23,7 @@ atb/models/*/om/
 atb/models/*/input_data/
 atb/models/*/input_data_prefix/
 atb/models/*/output/
+atb/models/*/output_ge_*/
 atb/models/*/profiling_data/
 atb/models/*/profiling_data*
 atb/models/*/dump_graph/

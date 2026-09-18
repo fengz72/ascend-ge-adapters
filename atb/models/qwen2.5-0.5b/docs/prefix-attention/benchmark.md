@@ -4,7 +4,7 @@
 > 测试环境: Ascend910_9382 (910_93), CANN 9.0.0, torch 2.9.0 / torch_npu 2.9.0.post2, transformers 5.10.1
 > 基线模型: qwen2.5-0.5b (FIA varlen, **sparse_mode=2 公平基线**, 见 3.1)
 > 测试模型: qwen2.5-0.5b-prefix (prefix-attention 分支)
-> 算子: npu_prefix_infer_attention_score ([prefix-attention 仓库](https://github.com/fengz72/prefix-attention) commit `d6a5a2d`, KV 内嵌版, .run + wheel 安装, 单测 PASS)
+> 算子: npu_prefix_infer_attention_score ([prefix-attention 仓库](https://github.com/fengz72/prefix-attention) commit `8e79993` (prefix-merged), 初始数据测自 `d6a5a2d` — 新旧 kernel 端到端持平 ±1%, 见 3.5; .run + wheel 安装, 单测 PASS)
 > 测试工具: `atb/build/bench_ge_latency` (GESession 在线路径, 12|24 限核)
 
 ## 1. 测试背景
@@ -125,36 +125,41 @@ bench 方向一致: seq=150 时 1.29×, seq=218 时 1.07×)。PIA 的端到端�
 ## 5. 复现路径
 
 ```bash
-# ---- 算子 (prefix-attention 工程) ----
+# ---- 算子 (prefix-attention 工程, 详见 ADAPTATION_GUIDE §1) ----
+git clone https://github.com/fengz72/prefix-attention.git && cd prefix-attention
+git checkout 8e79993
 bash build.sh && bash build_out/custom_opp_openEuler_aarch64.run --quiet \
     --install-path=$ASCEND_HOME_PATH/opp
 pip install torch_binding/dist/*.whl
 python3 tests/test_torch_binding.py        # 需 PASS
 
-# ---- 基线: FIA (sparse_mode=2 公平基线, 本分支 attention.py 已改; main 分支为 sm3) ----
+# ---- 模型工程 (工具编译/权重下载/环境说明见 ADAPTATION_GUIDE §5 ⓪) ----
 cd atb/models/qwen2.5-0.5b
-./run.sh export --device 12
+source ./env.sh
+bash ../../build.sh                        # 首次: → atb/build/{ge_infer, bench_ge_latency}
+
+# ---- 基线: FIA (sparse_mode=2 公平基线, 本分支 attention.py 已改; main 分支为 sm3) ----
+./run.sh export --device 12 --model-path ${MODEL_PATH}
 
 # ---- prefix ----
-./run.sh export --device 12 --prefix 20
-PYTHONPATH=<repo> python3 -m model.prepare_air_inputs --device 12 --prefix 20   # 输入+eager golden
+./run.sh export --device 12 --model-path ${MODEL_PATH} --prefix 20
+PYTHONPATH=<repo> python3 -m model.prepare_air_inputs --device 12 \
+    --model-path ${MODEL_PATH} --prefix 20   # 输入+eager golden
 
-# ---- GE 限核 (12|24) 性能 (需 vendor set_env.bash + PYTHONPATH, 见下) ----
-export PYTHONPATH=/usr/local/python3.11.15/lib/python3.11/site-packages:$PYTHONPATH
-# prefix 命令前: source $ASCEND_HOME_PATH/opp/vendors/custom_prefix_attn/bin/set_env.bash
-./build/bench_ge_latency --model air/qwen2.5-0.5b.air --sweep 1,2,3,4,5,6 \
+# ---- GE 限核 (12|24) 性能 ----
+../../build/bench_ge_latency --model air/qwen2.5-0.5b.air --sweep 1,2,3,4,5,6 \
     --requests 8000 --warmup 50 --aicore-num 12 --device-id 12
-./build/bench_ge_latency --model air/qwen2.5-0.5b-prefix.air --sweep 1,2,3,4,5,6 \
+../../build/bench_ge_latency --model air/qwen2.5-0.5b-prefix.air --sweep 1,2,3,4,5,6 \
     --requests 8000 --warmup 50 --prefix 20-25 --aicore-num 12 --device-id 12
 
 # ---- 精度验证 ----
-./build/ge_infer --model air/qwen2.5-0.5b-prefix.air --device_id 2 --output_dir <dir> \
+../../build/ge_infer --model air/qwen2.5-0.5b-prefix.air --device_id 12 --output_dir <dir> \
     --input "arg1_1:11:int64:ND:input_data_prefix/act.bin" \
     --input "arg4_1:1900:int64:ND:input_data_prefix/input_ids.bin" \
     --input "arg7_1:1900:int64:ND:input_data_prefix/position_ids.bin"   # vs golden 对比
 
 # ---- 算子级 profiling (PipeUtilization) ----
-./build/bench_ge_latency --model air/<m>.air --threads 1 --requests 100 --warmup 10 \
+../../build/bench_ge_latency --model air/<m>.air --threads 1 --requests 100 --warmup 10 \
     --fixed-seq 150 [--prefix 20] --device-id 12 \
     --profiling --profiling_output profiling_data/<tag>
 python3 tools/parse_profiling.py parse-and-export --profiling_dir profiling_data/<tag>

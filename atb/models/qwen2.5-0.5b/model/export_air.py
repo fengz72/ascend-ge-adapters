@@ -94,13 +94,24 @@ def load_model(model_path, device, attn_implementation="npu_fia"):
 
 
 _MODEL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_MODEL_PATH = "/export/home/models/Qwen2.5-0.5B"
+DEFAULT_MODEL_PATH = os.environ.get("QWEN25_MODEL_PATH")
 DEFAULT_MODEL_NAME = "qwen2.5-0.5b"
 DEFAULT_OUTPUT_DIR = os.path.join(_MODEL_DIR, "air")
 DEFAULT_OM_DIR = os.path.join(_MODEL_DIR, "om")
 DEFAULT_TARGET_TOKEN_FILE = os.path.join(_MODEL_DIR, "target_tokens.json")
 DEFAULT_SOC = "Ascend910_9382"
 DEFAULT_DEVICE = 8
+
+
+def resolve_model_path(model_path):
+    """校验模型权重路径, 未指定时直接报错并给出下载指引。"""
+    if not model_path:
+        raise SystemExit(
+            "[ERROR] 未指定模型权重目录: 请通过 --model-path 或环境变量 QWEN25_MODEL_PATH 指定\n"
+            "        下载: huggingface-cli download Qwen/Qwen2.5-0.5B --local-dir <dir>\n"
+            "        或:   modelscope download --model Qwen/Qwen2.5-0.5B --local_dir <dir>"
+        )
+    return model_path
 
 
 class ExportWrapper(nn.Module):
@@ -404,6 +415,9 @@ def main():
     parser.add_argument("--prefix", type=int, default=0,
                         help="prefix 模式: 共享 prefix 长度 P (>0 启用), 每请求总长 = seq_len")
     args = parser.parse_args()
+
+    if not args.skip_export:
+        resolve_model_path(args.model_path)
 
     if args.prefix > 0:
         export_name = f"{args.model_name}-prefix"

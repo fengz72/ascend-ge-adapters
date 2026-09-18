@@ -1,7 +1,7 @@
 # Qwen2.5-0.5B prefix-attention 适配部署指南
 
 > 适用版本: prefix-attention 分支 (KV 内嵌版算子)
-> 算子仓库: <https://github.com/fengz72/prefix-attention> (基线 commit `d6a5a2d`)
+> 算子仓库: <https://github.com/fengz72/prefix-attention> (基线 commit `8e79993`)
 > 性能与精度数据见同目录 [benchmark.md](benchmark.md), 本文档只讲怎么装、改了什么、怎么跑
 
 ## 1. PIA 算子安装与测试
@@ -10,7 +10,7 @@
 
 ```bash
 git clone https://github.com/fengz72/prefix-attention.git && cd prefix-attention
-git checkout d6a5a2d        # 本文档对应的算子版本
+git checkout 8e79993        # 本文档对应的算子版本
 source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
 
 bash build.sh          # ~4min → build_out/custom_opp_openEuler_aarch64.run
@@ -23,6 +23,10 @@ pip install --force-reinstall --no-deps dist/*.whl
 
 安装后算子位于 `$ASCEND_HOME_PATH/opp/vendors/custom_prefix_attn/`。
 
+> 升级/覆盖安装过其他版本算子的机器, 建议清理 GE JIT 缓存后重跑:
+> `rm -rf ~/.cache/ascend` — 否则可能命中旧版 kernel 编译缓存导致结果错乱
+> (batch_scaling.md 的精度数据即为清理后复测结果; 全新机器首次安装可跳过)。
+
 ### 1.2 测试 (验收口径: 全 PASS)
 
 ```bash
@@ -33,13 +37,20 @@ python3 tests/test_torch_binding.py
 三项覆盖: eager vs CPU golden (<2e-3)、`.tensor` vs `.default` (bit 级)、
 GE 整图 max-autotune (含图复用) vs eager (bit 级)。
 
-**运行前置环境** (后续所有 prefix 相关命令通用):
+**运行前置环境** (后续所有 prefix 相关命令通用, 已封装为模型目录下 `env.sh`):
+
+```bash
+cd atb/models/qwen2.5-0.5b && source ./env.sh
+```
+
+`env.sh` 等价于以下三行 (python 安装路径不同的机器直接 source 即可, 无需改路径):
 
 ```bash
 source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
 source $ASCEND_HOME_PATH/opp/vendors/custom_prefix_attn/bin/set_env.bash   # prefix 必须
-# CANN tbe pywrapper 内嵌 /usr/bin/python3 无 numpy, GE 编译必需:
-export PYTHONPATH=/usr/local/python3.11.15/lib/python3.11/site-packages:$PYTHONPATH
+# CANN tbe pywrapper 内嵌 /usr/bin/python3 无 numpy, GE 编译必需,
+# 故注入当前 python3 的 site-packages:
+export PYTHONPATH=$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])"):$PYTHONPATH
 ```
 
 ## 2. 模型侧改动
@@ -100,10 +111,13 @@ AIR 免 ATC 在线执行 (参照 cann/ge PR#743 RunGraphAsync 样例), 已提供
 
 ### 4.1 工具
 
+以下二进制均由仓库根 `atb/build.sh` 构建 (cmake, 见 §5 第 ⓪ 步):
+`cd atb && bash build.sh` → `build/{acl_infer, ge_infer, bench_ge_latency}`。
+
 - **`atb/build/ge_infer`** (单发验证/计时):
 
 ```bash
-./build/ge_infer --model air/qwen2.5-0.5b-prefix.air --device_id 12 \
+../../build/ge_infer --model air/qwen2.5-0.5b-prefix.air --device_id 12 \
     --output_dir <dir> --warmup 10 --bench 100 \
     --input "arg1_1:11:int64:ND:input_data_prefix/act.bin" \
     --input "arg4_1:1900:int64:ND:input_data_prefix/input_ids.bin" \
@@ -113,7 +127,7 @@ AIR 免 ATC 在线执行 (参照 cann/ge PR#743 RunGraphAsync 样例), 已提供
 - **`atb/build/bench_ge_latency`** (多线程 sweep, 口径镜像 bench_latency):
 
 ```bash
-./build/bench_ge_latency --model air/qwen2.5-0.5b-prefix.air \
+../../build/bench_ge_latency --model air/qwen2.5-0.5b-prefix.air \
     --sweep 1,2,3,4,5,6 --requests 8000 --warmup 50 \
     --prefix 20-25 --aicore-num 12 --device-id 12
 # --prefix <P> 固定或 <P1>-<P2> 每请求均匀随机; --profiling 开算子级采集
@@ -141,14 +155,22 @@ GESession 在线路径与 ATC OM 离线路径**精度逐位一致**, 稳态 exec
 
 ```bash
 cd atb/models/qwen2.5-0.5b
-source <1.2 节完整环境>
+source ./env.sh                    # = 1.2 节三行环境 (CANN + PIA 算子 + numpy)
+
+# ⓪ 首次准备 (工具编译 + 模型权重)
+bash ../../build.sh                # → atb/build/{acl_infer, ge_infer, bench_ge_latency}
+# 权重下载 (任选其一, 假设存到 /data/Qwen2.5-0.5B):
+#   huggingface-cli download Qwen/Qwen2.5-0.5B --local-dir /data/Qwen2.5-0.5B
+#   modelscope download --model Qwen/Qwen2.5-0.5B --local_dir /data/Qwen2.5-0.5B
+MODEL_PATH=/data/Qwen2.5-0.5B      # 或 export QWEN25_MODEL_PATH=... 后可省 --model-path
 
 # ① 导出 prefix AIR (动态 shape, 冻结权重/mask/cos-sin 表)
-./run.sh export --device 12 --prefix 20
+./run.sh export --device 12 --model-path ${MODEL_PATH} --prefix 20
 # → air/qwen2.5-0.5b-prefix.air
 
 # ② 生成 packed 输入 + eager golden (固定 P=20, seq=208, batch 10)
-PYTHONPATH=<repo根> python3 -m model.prepare_air_inputs --device 12 --prefix 20
+PYTHONPATH=<repo根> python3 -m model.prepare_air_inputs --device 12 \
+    --model-path ${MODEL_PATH} --prefix 20
 # → input_data_prefix/{act,input_ids,position_ids}.bin + golden_logits_prefix.bin
 
 # ③ 精度验证 (GE 在线, vs 基线 golden)

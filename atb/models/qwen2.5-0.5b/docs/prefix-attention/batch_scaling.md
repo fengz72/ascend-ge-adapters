@@ -133,12 +133,11 @@ batch=32 的 Token 吞吐峰值 253k tok/s (3T) 为全 batch 最高。
 ## 8. 复现命令
 
 ```bash
-source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
-source $ASCEND_HOME_PATH/opp/vendors/custom_prefix_attn/bin/set_env.bash
-export PYTHONPATH=/usr/local/python3.11.15/lib/python3.11/site-packages:$PYTHONPATH
+cd atb/models/qwen2.5-0.5b
+source ./env.sh    # CANN + PIA 算子 + numpy (即 ADAPTATION_GUIDE §1.2 环境)
 
 for BS in 10 12 16 20 24 28 32; do
-    ./build/bench_ge_latency \
+    ../../build/bench_ge_latency \
         --model air/qwen2.5-0.5b-prefix.air \
         --sweep 1,2,3,4,5,6 \
         --requests 8000 --warmup 50 \
