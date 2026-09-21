@@ -133,19 +133,19 @@ Examples:
 
 Profiling Data Analysis:
   # List profiling sessions
-  python3 tools/parse_profiling.py list --profiling_dir ./profiling_data
+  python3 ../tools/parse_profiling.py list --profiling_dir ./profiling_data
 
   # Show profiling summary
-  python3 tools/parse_profiling.py summary --profiling_dir ./profiling_data
+  python3 ../tools/parse_profiling.py summary --profiling_dir ./profiling_data
 
   # Show specific operator details
-  python3 tools/parse_profiling.py show --profiling_dir ./profiling_data --op "Softmax"
+  python3 ../tools/parse_profiling.py show --profiling_dir ./profiling_data --op "Softmax"
 
   # Export to CSV
-  python3 tools/parse_profiling.py export --profiling_dir ./profiling_data --output profiling.csv
+  python3 ../tools/parse_profiling.py export --profiling_dir ./profiling_data --output profiling.csv
 
   # Plot execution time
-  python3 tools/parse_profiling.py plot --profiling_dir ./profiling_data --output profiling.png
+  python3 ../tools/parse_profiling.py plot --profiling_dir ./profiling_data --output profiling.png
 EOF
 }
 

@@ -1,6 +1,5 @@
 #!/bin/bash
-# prefix 链路运行环境 (见 docs/prefix-attention/ADAPTATION_GUIDE.md §1.2)
-# 用法: source ./env.sh   (在 atb/models/qwen2.5-0.5b 目录下)
+# 运行环境 (CANN + PIA 算子 + numpy) — 由 run.sh 自动 source, 也可手动 source。
 
 # 1. CANN 基础环境
 source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh

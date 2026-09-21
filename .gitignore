@@ -6,6 +6,7 @@ __pycache__/
 
 # ===== C++ / CMake 构建产物 =====
 atb/build/
+runtime/build/
 kernel_meta/
 
 # ===== 运行时 dump / 输出 =====
@@ -27,6 +28,17 @@ atb/models/*/output_ge_*/
 atb/models/*/profiling_data/
 atb/models/*/profiling_data*
 atb/models/*/dump_graph/
+models/*/air/
+models/*/om/
+models/*/deploy/
+models/*/verification/
+models/*/input_data/
+models/*/input_data_prefix/
+models/*/output/
+models/*/output_ge_*/
+models/*/profiling_data/
+models/*/profiling_data*
+models/*/dump_graph/
 **/*.so
 
 # ===== 会话日志 =====
@@ -37,3 +49,9 @@ session-ses_*.md
 .idea/
 .joycode/
 .DS_Store
+
+# ===== pass 构建缓存 (out-of-source, 不污染 submodule) =====
+.pass_build/
+
+# ===== 归档用 fork clone (独立 git 仓, 非 submodule; 归档目标见 tools/archive_monkey_patch.py) =====
+/custom_development_code/

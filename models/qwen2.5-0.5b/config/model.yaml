@@ -1,0 +1,40 @@
+# qwen2.5-0.5b onboarding 声明 (人工维护)
+# 契约见 docs/architecture.md §5.2
+
+model:
+  name: qwen2.5-0.5b
+  soc: Ascend910_9382
+
+source:
+  type: torch                      # name | torch | onnx
+  ref: /export/home/models/Qwen2.5-0.5B   # 本地权重目录
+
+adapt:
+  adapter_class: Qwen25Adapter     # 同目录 model.py 里的类
+  params:                          # 直接作为 adapter 构造 kwargs
+    prefix: false
+    prune_token_file: null         # 启用 lm_head 剪裁则填 config/target_tokens.json
+
+inputs:                            # 输入生成 (export trace 与 verify golden 共用)
+  batch_size: 10
+  seq_len: 208
+  prefix_len: 0
+  seed: 0
+
+graph:
+  format: air
+  dynamic:
+    max_seq_len: 2048
+
+passes:
+  - WeightNzAndMatMulV3Pass
+
+backend:
+  type: om_acl                     # om_acl | ge_session
+  aicore_num: null
+
+runtime:
+  device: 0
+
+verify:
+  enabled: true
