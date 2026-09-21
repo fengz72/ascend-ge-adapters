@@ -1,48 +1,25 @@
-"""执行后端: 把 Graph 编译为可执行产物, 并构造 C++ 运行时命令。
+"""执行后端: 把 Graph 编译为可执行产物, 并构造/启动 C++ 运行时。
 
 契约见 docs/architecture.md §1/§6/§9/§11/§15:
     两后端 — OM/ACL (离线: ATC 编译 Graph→OM, C++ ACL 执行)
-             GeSession (在线: C++ 直接加载 AIR/ONNX, 无离线产物)。
-    Backend.from_config(cfg) 按 cfg.backend.type 分发 (只需 cfg, 不需 manifest);
-    compile(graph, env) 返回 om_path (om_acl) 或 None (ge_session);
-    runtime_argv(manifest) 在 manifest 写好后构造 C++ 运行时命令。
+             GeSession (在线: C++ 直接加载 AIR, 无离线产物)。
+    compile_graph(cfg, graph) 按 cfg.backend.type 分发, 返回 om_path 或 None;
+    runtime_argv/run_runtime 在 manifest 写好后构造并启动 C++ 运行时。
 
-    ATC 编译留 Python (§9), 包装 tools.atc_utils.run_atc; env 为 passes.prepare()
-    返回的激活环境, 编译时临时注入 ATC 子进程。
+**不抽 Backend 基类** (与 C++ 侧同一标准, docs §9): 两后端的差异只是"要不要 ATC",
+一个分支足够; 在线后端仍要校验 图形态×后端 组合 (ONNX 不支持 GeSession)。
+ATC 编译留 Python (§9), 包装 tools.atc_utils.run_atc; fusion pass 装进 opp/vendors 后
+由 CANN 自动扫描加载, 不需要 env 注入 (core/passes.py, docs §7)。
 """
 
-import contextlib
 import os
 import subprocess
-from abc import ABC, abstractmethod
 
 from tools.atc_utils import FRAMEWORK_AIR, FRAMEWORK_ONNX, run_atc
 
 # C++ 运行时二进制 (§9/§14): runtime/ 构建产物 (bash runtime/build.sh)。
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNTIME_BIN = os.path.join(_REPO_ROOT, "runtime", "build", "ge_runtime")
-
-
-@contextlib.contextmanager
-def _injected_env(env):
-    """临时把 env (pass 激活变量) 注入 os.environ, finally 还原。
-
-    run_atc 不收 env 参数 (内部 os.environ.copy() 传给 ATC 子进程),
-    故在此更新 os.environ, 让子进程继承 pass env (§7)。
-    """
-    if not env:
-        yield
-        return
-    saved = {k: os.environ.get(k) for k in env}
-    os.environ.update(env)
-    try:
-        yield
-    finally:
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
 
 
 def _input_shape_arg(io_spec):
@@ -64,66 +41,32 @@ def _input_shape_arg(io_spec):
     return ";".join(parts) or None
 
 
-class Backend(ABC):
-    """执行后端基类。from_config 按 cfg.backend.type 分发到具体后端。"""
+def compile_graph(cfg, graph, base_dir=None):
+    """按 cfg.backend.type 把 graph 编译为后端产物: om_acl → OM 路径; ge_session → None。
 
-    @staticmethod
-    def from_config(cfg, base_dir=None) -> "Backend":
-        btype = cfg.backend.type
-        if btype == "om_acl":
-            return OmAclBackend(cfg, base_dir)
-        if btype == "ge_session":
-            return GeSessionBackend(cfg)
-        raise ValueError(f"未知 backend.type: {btype!r}")
-
-    @abstractmethod
-    def compile(self, graph, env: dict):
-        """编译 graph 为后端产物。返回 om_path 或 None。"""
-        raise NotImplementedError
-
-
-class OmAclBackend(Backend):
-    """OM/ACL 离线后端: ATC 编译 Graph(AIR/ONNX) → OM (§1/§9)。"""
-
-    def __init__(self, cfg, base_dir=None):
-        self.cfg = cfg
-        self.soc = cfg.model.soc
-        self.aicore_num = cfg.backend.aicore_num
-        self.om_dir = os.path.join(base_dir or cfg.model_dir, "om")
-
-    def compile(self, graph, env: dict):
-        """调 run_atc 把 graph 编译为 OM, 返回 om_path (失败 None)。
-
-        env (pass 激活变量) 临时注入 ATC 子进程。
-        动态图 (torchair dynamic 导出, io_spec 含 -1 维) **不传 --input_shape** —
-        由 GE 处理动态维, ACL 运行时经 aclmdlSetDynamicInputTensorDesc 设实际 shape
-        (旧验证流即如此); 仅静态图才传具体 input_shape。
-        """
-        # graph.kind → ATC framework: air=1 (GE 原生图), onnx=5 (docs §15 已定)
-        is_dynamic = any(n.dynamic_dims for n in graph.io_spec.inputs)
-        input_shape = None if is_dynamic else _input_shape_arg(graph.io_spec)
-        with _injected_env(env):
-            return run_atc(graph.path, self.om_dir, self.soc,
-                           input_shape=input_shape, aicore_num=self.aicore_num,
-                           framework=FRAMEWORK_ONNX if graph.kind == "onnx" else FRAMEWORK_AIR)
-
-
-class GeSessionBackend(Backend):
-    """GeSession 在线后端: C++ 直接加载 AIR/ONNX 在线执行, 无离线编译 (§1/§9)。"""
-
-    def __init__(self, cfg):
-        self.cfg = cfg
-
-    def compile(self, graph, env: dict):
-        # 形态③ ONNX 走不了在线后端: ge::Graph::LoadFromFile 只解析 GE 图 (.air/.pbtxt)。
-        # 在**配置期**就拦下来 (而不是等 C++ 运行期报错), 附可操作的出路。
+    om_acl: 动态图 (io_spec 含 -1 维) **不传 --input_shape** — GE 运行期自行特化,
+            同一 OM 可跨 shape 复用 (docs §6②); 仅静态图传具体 shape。
+            framework 按 graph.kind 取 (air=1 / onnx=5)。
+    ge_session: 无离线产物; 但仍在此校验 图形态×后端 组合 — 形态③ ONNX 走不了在线后端
+            (ge::Graph::LoadFromFile 只解析 GE 图), 在**配置期**报错而不是等 C++ 运行期。
+    """
+    if cfg.backend.type == "ge_session":
         if graph.kind == "onnx":
             raise ValueError(
                 "backend.type=ge_session 不支持 ONNX 图 (GeSession 只加载 GE 图 .air/.pbtxt)。"
                 "形态③ ONNX 请用 backend.type=om_acl — ATC 以 --framework=5 编译为 OM 后执行 "
                 "(docs §1/§9)")
-        # 在线后端无离线编译产物 (C++ 直接加载 AIR, API 序列见 docs §15), 返回 None。
         return None
+
+    if cfg.backend.type != "om_acl":
+        raise ValueError(f"未知 backend.type: {cfg.backend.type!r} (期望 om_acl | ge_session)")
+
+    is_dynamic = any(n.dynamic_dims for n in graph.io_spec.inputs)
+    input_shape = None if is_dynamic else _input_shape_arg(graph.io_spec)
+    om_dir = os.path.join(base_dir or cfg.model_dir, "om")
+    return run_atc(graph.path, om_dir, cfg.model.soc, input_shape=input_shape,
+                   aicore_num=cfg.backend.aicore_num,
+                   framework=FRAMEWORK_ONNX if graph.kind == "onnx" else FRAMEWORK_AIR)
 
 
 def default_output_dir(manifest_path: str) -> str:

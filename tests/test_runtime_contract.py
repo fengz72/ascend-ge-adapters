@@ -180,3 +180,44 @@ def test_deploy_mode_malformed_spec(tmp_path):
     manifest = build_tree(root, bundle=False, n_inputs=1)
     p = run(manifest, "--device", "99", "--input", "input_ids:4")     # 缺 file 段
     assert p.returncode != 0 and "--input 格式应为" in p.stderr, p.stderr
+
+
+# ---------------------------------------------------------------- dump / profiling (acl.json)
+
+def test_acl_json_generated_for_dump_and_profiling(tmp_path):
+    """om_acl + --dump/--profiling → 在 output_dir 生成 acl.json (dump 段 + profiler 段)。"""
+    root = str(tmp_path)
+    manifest = build_tree(root)
+    out_dir = f"{root}/out"
+    p = run(manifest, "--device", "99", "--output_dir", out_dir,
+            "--dump", "--dump_path", f"{root}/dump", "--dump_mode", "all", "--dump_level", "kernel",
+            "--profiling", "--profiling_output", f"{root}/prof",
+            "--profiling_aic_metrics", "PipeUtilization")
+    assert p.returncode != 0                      # device 99 必然失败, 但 acl.json 应先落地
+    cfg = json.load(open(f"{out_dir}/acl.json"))
+    assert cfg["dump"]["dump_mode"] == "all" and cfg["dump"]["dump_level"] == "kernel"
+    assert cfg["dump"]["dump_path"] == f"{root}/dump"
+    assert cfg["dump"]["dump_list"] == [{}]       # 未指定 model_name/layer 时是空对象
+    assert cfg["profiler"]["switch"] == "on" and cfg["profiler"]["output"] == f"{root}/prof"
+    assert cfg["profiler"]["aic_metrics"] == "PipeUtilization"
+    assert cfg["profiler"]["task_time"] == "on" and cfg["profiler"]["ascendcl"] == "on"
+    assert "dump 与 profiling 同开" in p.stdout, p.stdout     # 两套机制同开须告警
+
+
+def test_profiling_no_flags(tmp_path):
+    root = str(tmp_path)
+    manifest = build_tree(root)
+    out_dir = f"{root}/out"
+    run(manifest, "--device", "99", "--output_dir", out_dir, "--profiling",
+        "--profiling_no_task_time", "--profiling_no_ascendcl")
+    cfg = json.load(open(f"{out_dir}/acl.json"))
+    assert cfg["profiler"]["task_time"] == "off" and cfg["profiler"]["ascendcl"] == "off"
+    assert "aic_metrics" not in cfg["profiler"]               # 未指定就不写该键
+    assert "dump" not in cfg
+
+
+def test_dump_ignored_on_ge_session(tmp_path):
+    """dump 是 OM/ACL 专属 (aclmdl*Dump API) — 在线后端须 WARN 忽略而不是静默丢弃。"""
+    manifest = build_tree(str(tmp_path), backend="ge_session")
+    p = run(manifest, "--device", "99", "--dump")
+    assert "dump 是 OM/ACL 专属能力" in p.stdout, p.stdout

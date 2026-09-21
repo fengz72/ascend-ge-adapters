@@ -22,6 +22,7 @@ add_executable(ge_runtime
     main.cpp
     io_spec.cpp
     bench.cpp
+    acl_json.cpp
     backends/acl_backend.cpp
     backends/gesession_backend.cpp
 )

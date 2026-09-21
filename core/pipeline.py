@@ -20,7 +20,7 @@ from core.source import load_source
 from core.graph import Graph, IoNode, IoSpec
 from core.exporter import GeExporter
 from core.passes import PassManager
-from core.backend import Backend, default_output_dir, run_runtime
+from core.backend import compile_graph, default_output_dir, run_runtime
 from core.verify import Verifier, bundle_has_golden, collect_provenance
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,8 +74,9 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
                 "(--framework=5) 编译为 OM 后执行 — docs §1/§9")
         graph = load_source(cfg, md)
         graph.io_spec.to_json(io_spec_path)
-        env = PassManager(cfg.model.name, cfg.passes, _THIRD_PARTY).prepare() if "passes" not in skip else {}
-        om = _compile(cfg, graph, env, base, skip)
+        if "passes" not in skip:
+            PassManager(cfg.model.name, cfg.passes, _THIRD_PARTY).prepare()
+        om = _compile(cfg, graph, base, skip)
         mp = write_manifest(cfg, graph.path, om, io_spec_path, None, base_dir=base, device=eff_device)
 
         # 形态③ 无 adapter/build_inputs → 没有 bundle (无 golden, 也无 .bin)。
@@ -124,8 +125,9 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
         bundle_path = verify.save_bundle(bundle_dir, inputs, golden, graph.io_spec, prov,
                                          logical_order=[n.logical for n in in_nodes])
 
-    env = PassManager(cfg.model.name, cfg.passes, _THIRD_PARTY).prepare() if "passes" not in skip else {}
-    om = _compile(cfg, graph, env, base, skip)
+    if "passes" not in skip:
+        PassManager(cfg.model.name, cfg.passes, _THIRD_PARTY).prepare()
+    om = _compile(cfg, graph, base, skip)
     mp = write_manifest(cfg, graph.path, om, io_spec_path, bundle_path, base_dir=base, device=eff_device)
 
     outputs_dir = default_output_dir(mp)
@@ -156,11 +158,11 @@ def _output_node(golden):
                   shape=[-1] + list(golden.shape[1:]), dynamic_dims=[0])
 
 
-def _compile(cfg, graph, env, base_dir, skip):
+def _compile(cfg, graph, base_dir, skip):
     """om_acl → ATC 编译出 om_path; ge_session → None (但仍校验 图形态×后端 组合)。"""
     if "compile" in skip:
         return None
-    return Backend.from_config(cfg, base_dir=base_dir).compile(graph, env)
+    return compile_graph(cfg, graph, base_dir=base_dir)
 
 
 def main():

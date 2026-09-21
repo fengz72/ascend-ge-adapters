@@ -1,14 +1,14 @@
 """
 GE 导出基类 — PyTorch → AIR 的通用管线
 
-管线: adapter.load → build_inputs → mark_dynamic
-    → dynamo_export (frozen_parameter + dynamic=True) → 校验
+管线: adapter.load/adapt → build_inputs → golden → trace (mark_dynamic
+    → dynamo_export, frozen_parameter + dynamic=True) → 校验
 图的边界由模型文件的 patched forward 决定 (适配后 model(...) 即图接口)。
 子类钩子 (模型相关):
     build_inputs(model, **kw)    dummy 输入 (与 patched forward 签名一致, NPU 张量)
     mark_dynamic(inputs, **kw)   标记动态维度 (默认 no-op)
 
-ATC 编译 (AIR → OM) 由 compile_air 完成, 委托 tools.atc_utils。
+ATC 编译 (AIR/ONNX → OM) 不在此处 — 归 core/backend.compile_graph (委托 tools.atc_utils)。
 """
 
 import os
@@ -26,7 +26,7 @@ class GeExporter:
     mark_dynamic 后的 dynamo_export 通用流程。
 
     用法:
-        air = GeExporter(adapter, export_dir, export_name).export(path, **input_kwargs)
+        air = GeExporter(adapter, export_dir, export_name).trace(model, inputs, **input_kwargs)
     """
 
     def __init__(self, adapter, export_dir, export_name, frozen_parameter=1):
@@ -36,12 +36,6 @@ class GeExporter:
         self.frozen_parameter = frozen_parameter
 
     # ---- 管线 ----
-
-    def export(self, model_path, dtype=torch.float16, **input_kwargs):
-        """便捷全量: adapter.load + build_inputs + trace → air_path。"""
-        model = self.adapter.load(model_path, dtype=dtype)
-        inputs = self.adapter.build_inputs(model, **input_kwargs)
-        return self.trace(model, inputs, **input_kwargs)
 
     def trace(self, model, inputs, **input_kwargs):
         """adapter.mark_dynamic + dynamo_export → air_path (model/inputs 已就绪)。
@@ -82,9 +76,3 @@ class GeExporter:
             print(f"=== [WARN] AIR 文件未生成: {air_path} "
                   f"(请检查上方日志中的 'export error!') ===")
         return air_path
-
-
-def compile_air(air_path, om_dir, soc, is_debug=False, aicore_num=None):
-    """ATC 编译 AIR → OM, 委托 tools.atc_utils.run_atc。"""
-    from tools.atc_utils import run_atc
-    return run_atc(air_path, om_dir, soc, is_debug=is_debug, aicore_num=aicore_num)

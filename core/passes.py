@@ -4,7 +4,7 @@
     源码   fusion_pass/<PassName>/ (CMakeLists.txt + src/*.cpp)
     构建   cmake out-of-source (缓存 <repo>/.pass_build/) → lib*.so
     安装   cp lib*.so → $ASCEND_HOME_PATH/opp/vendors/<model>/custom_fusion_passes/
-    激活   CANN 自动扫描 opp/vendors/* 全部加载, 无需 env (prepare() 返回 {})
+    激活   CANN 自动扫描 opp/vendors/* 全部加载, 无需 env (prepare() 无返回值)
 
 两个实测要点:
   1. fusion pass 是**全局**的: opp/vendors/* 下所有 custom_fusion_passes 都被自动
@@ -30,27 +30,28 @@ DEFAULT_ASCEND_HOME = "/usr/local/Ascend/ascend-toolkit/latest"
 
 
 class PassManager:
-    """构建 + 安装启用的 pass 到 per-model vendor 目录, 返回激活 env。"""
+    """构建 + 安装启用的 pass 到 per-model vendor 目录 (CANN 自动扫描, 无需 env)。"""
 
     def __init__(self, model_name: str, pass_names: list, third_party_dir: str):
         self.model_name = model_name
         self.pass_names = list(pass_names or [])
         self.third_party_dir = third_party_dir
 
-    def prepare(self) -> dict:
+    def prepare(self) -> None:
         """构建 + 安装全部启用 pass 到 per-model vendor 的 custom_fusion_passes/。
 
-        返回 {} —— fusion pass 由 CANN 自动扫描 opp/vendors/* 加载, 无需 env
-        (ASCEND_CUSTOM_OPP_PATH 是给自定义算子的, 不用于 fusion pass)。
+        无返回值 —— fusion pass 由 CANN 自动扫描 opp/vendors/* 加载, **不需要 env 注入**
+        (ASCEND_CUSTOM_OPP_PATH 是给自定义算子的, 不用于 fusion pass; 自定义算子的 env
+        由 models/<model>/env.sh 负责)。
         pass_names 为空 / 源目录缺失 (submodule 未克隆) / 构建失败 → WARN 跳过不抛异常。
         """
         if not self.pass_names:
-            return {}
+            return
 
         src_root = os.path.join(self.third_party_dir, FUSION_PASS_SUBDIR)
         if not os.path.isdir(src_root):
             print(f"[passes][WARN] pass 源码目录不存在 (submodule 未克隆?): {src_root}")
-            return {}
+            return
 
         fusion_dst = os.path.join(self._vendor_dir(), CUSTOM_FUSION_SUBDIR)
         for name in self.pass_names:
@@ -60,8 +61,6 @@ class PassManager:
                 continue
             for so in self._build(name, src_dir):
                 self._install(so, fusion_dst)
-
-        return {}
 
     def _vendor_dir(self) -> str:
         """per-model vendor 目录: $ASCEND_HOME_PATH/opp/vendors/<model_name>。"""

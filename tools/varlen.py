@@ -32,31 +32,6 @@ def generate_varlen_inputs(batch_size, seq_len):
     return concat_ids, concat_pos, seq_lens, cum_seq_lens
 
 
-def prepare_varlen_inputs(tokenizer, input_texts):
-    """将多条文本拼接为 varlen 格式的输入。
-
-    Returns:
-        concat_ids:  [1, total_len] 拼接后的 token ids
-        concat_pos:  [1, total_len] 拼接后的 position ids
-        seq_lens:    list[int] 每条文本的长度
-        cum_seq_lens: list[int] 累积长度 (用于 actual_seq_lengths)
-    """
-    all_ids, pos_ids = [], []
-    for text in input_texts:
-        ids = tokenizer(text, return_tensors="pt")["input_ids"][0]
-        all_ids.append(ids)
-        pos_ids.append(torch.arange(ids.shape[0]))
-    seq_lens = [x.shape[0] for x in all_ids]
-    concat_ids = torch.cat(all_ids).unsqueeze(0)
-    concat_pos = torch.cat(pos_ids).unsqueeze(0)
-    cum_seq_lens = []
-    acc = 0
-    for s in seq_lens:
-        acc += s
-        cum_seq_lens.append(acc)
-    return concat_ids, concat_pos, seq_lens, cum_seq_lens
-
-
 def generate_prefix_varlen_inputs(batch_size, seq_len, prefix_len):
     """生成 packed prefix-in-Q varlen 输入 (全 0 token, 不需要 tokenizer)。
 

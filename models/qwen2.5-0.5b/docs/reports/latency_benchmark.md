@@ -1,5 +1,7 @@
 # Qwen2.5-0.5B 延迟与吞吐测试报告 (独立线程闭环模型)
 
+> 历史报告：数据与命令基于已退役的 `atb/` 工具链（`acl_infer` / `bench_latency` / `bench_ge_latency`，见 git 历史 `8b7ce86:atb/`）。当前等价入口为 `models/qwen2.5-0.5b/run.sh` + `runtime/build/ge_runtime`，口径见 `../DEPLOYMENT_GUIDE.md` §6。
+
 > 测试日期: 2026-07-21
 > 测试环境: Ascend910_9382, NPU device 14
 > 模型: qwen2.5-0.5b (varlen, 2D TND, frozen_parameter, fp16)

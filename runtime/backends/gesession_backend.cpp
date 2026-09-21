@@ -5,8 +5,10 @@
 #include <graph/graph.h>
 #include <exe_graph/runtime/tensor.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -71,13 +73,27 @@ std::string AicoreSpec(const std::string &raw) {
     return raw + "|" + std::to_string(aic * 2);
 }
 
+// 每线程一份执行资源: 独立 stream + LoadGraph 绑定 + 输入 device 缓冲/gert::Tensor。
+// Session 与已编译图全局共享 (单 Session 多 stream, 与 atb/bench_ge_latency 同构)。
+struct GeContext {
+    uint32_t graphId = 0;
+    aclrtStream stream = nullptr;
+    std::vector<gert::Tensor> devInputs;
+    std::vector<void *> inPtrs;
+    std::vector<gert::Tensor> devOutputs;
+    std::set<void *> outAddrs;
+    bool warnedAddrGrowth = false;
+};
+
 class GeRunner {
 public:
     explicit GeRunner(const GeSessionOptions &opt) : opt_(opt) {}
 
     ~GeRunner() { Destroy(); }
 
-    bool Init(const std::string &graphPath) {
+    aclrtContext Context() const { return aclCtx_; }
+
+    bool Init(const std::string &graphPath, int numGraphs) {
         std::map<ge::AscendString, ge::AscendString> globalOptions = {
             {ge::AscendString("ge.graphRunMode"),
              ge::AscendString(std::to_string(opt_.graph_run_mode).c_str())},
@@ -89,6 +105,24 @@ public:
             globalOptions.emplace(ge::AscendString(ge::ir_option::AICORE_NUM),
                                   ge::AscendString(aicore.c_str()));
             std::cout << "[INFO] GEInitialize " << ge::ir_option::AICORE_NUM << "=" << aicore << std::endl;
+        }
+        if (opt_.profiling.enabled) {
+            // GE profiling 经 GEInitialize 全局选项开启, 产出 msprof 可解析的 PROF_* 会话
+            MakeDirs(opt_.profiling.outputPath);
+            globalOptions.emplace(ge::AscendString(ge::OPTION_EXEC_PROFILING_MODE),
+                                  ge::AscendString("1"));
+            nlohmann::json profJson;
+            profJson["output"] = opt_.profiling.outputPath;
+            profJson["task_time"] = "on";
+            profJson["runtime_api"] = "on";
+            if (!opt_.profiling.aicMetrics.empty()) {
+                profJson["aic_metrics"] = opt_.profiling.aicMetrics;
+            }
+            std::string profOpt = profJson.dump();
+            globalOptions.emplace(ge::AscendString(ge::OPTION_EXEC_PROFILING_OPTIONS),
+                                  ge::AscendString(profOpt.c_str()));
+            std::cout << "[INFO] GE profiling enabled -> " << opt_.profiling.outputPath
+                      << " (aic_metrics=" << opt_.profiling.aicMetrics << ")" << std::endl;
         }
         if (ge::GEInitialize(globalOptions) != ge::SUCCESS) {
             fprintf(stderr, "[ERROR] GEInitialize failed: %s\n", ge::GEGetErrorMsg().c_str());
@@ -111,24 +145,35 @@ public:
         };
         session_ = std::make_shared<ge::Session>(sessionOptions);
 
-        auto t0 = Clock::now();
-        ge::Graph graph;
-        if (graph.LoadFromFile(graphPath.c_str()) != ge::GRAPH_SUCCESS) {
-            fprintf(stderr, "[ERROR] Graph::LoadFromFile failed: %s\n", graphPath.c_str());
-            return false;
+        // 每线程一个图实例: LoadGraph 不支持对同一 graphId 重复加载 (ge_api.h 约束),
+        // 故并发 N 路就要 N 份 AddGraph+CompileGraph (串行, 单份 ~10s — 在线后端的固有代价)。
+        // CompileGraph 必须在 aclrtSetDevice **之前** (对齐 atb/bench_ge_latency 实测序列)。
+        numGraphs_ = std::max(1, numGraphs);
+        auto tAll = Clock::now();
+        for (uint32_t gid = 1; gid <= static_cast<uint32_t>(numGraphs_); gid++) {
+            auto t0 = Clock::now();
+            ge::Graph graph;
+            if (graph.LoadFromFile(graphPath.c_str()) != ge::GRAPH_SUCCESS) {
+                fprintf(stderr, "[ERROR] Graph::LoadFromFile failed: %s\n", graphPath.c_str());
+                return false;
+            }
+            ge::Status st = session_->AddGraph(gid, graph);
+            if (st != ge::SUCCESS) {
+                fprintf(stderr, "[ERROR] AddGraph(gid=%u) failed, ret=%d\n", gid, st);
+                return false;
+            }
+            st = session_->CompileGraph(gid);
+            if (st != ge::SUCCESS) {
+                fprintf(stderr, "[ERROR] CompileGraph(gid=%u) failed, ret=%d\n", gid, st);
+                return false;
+            }
+            std::cout << "[INFO] CompileGraph ok (gid=" << gid << "/" << numGraphs_ << "), cost "
+                      << ElapsedMs(t0, Clock::now()) << " ms" << std::endl;
         }
-        ge::Status st = session_->AddGraph(graphId_, graph);
-        if (st != ge::SUCCESS) {
-            fprintf(stderr, "[ERROR] AddGraph failed, ret=%d\n", st);
-            return false;
+        if (numGraphs_ > 1) {
+            std::cout << "[INFO] " << numGraphs_ << " 份图实例编译总耗时 "
+                      << ElapsedMs(tAll, Clock::now()) << " ms (" << graphPath << ")" << std::endl;
         }
-        st = session_->CompileGraph(graphId_);
-        if (st != ge::SUCCESS) {
-            fprintf(stderr, "[ERROR] CompileGraph failed, ret=%d\n", st);
-            return false;
-        }
-        std::cout << "[INFO] CompileGraph ok (" << graphPath << "), cost "
-                  << ElapsedMs(t0, Clock::now()) << " ms" << std::endl;
 
         ret = aclrtSetDevice(opt_.device);
         if (ret != ACL_SUCCESS) {
@@ -137,56 +182,95 @@ public:
         }
         deviceSet_ = true;
 
-        ret = aclrtCreateStream(&stream_);
+        // stream 必须建在**默认 context** 上 (显式 CreateContext 会让 GE executor 报
+        // "stream is not in current ctx"); 工作线程用 aclrtSetCurrentContext 共享它
+        ret = aclrtGetCurrentContext(&aclCtx_);
         if (ret != ACL_SUCCESS) {
-            fprintf(stderr, "[ERROR] aclrtCreateStream failed, ret=%d\n", ret);
+            fprintf(stderr, "[ERROR] aclrtGetCurrentContext failed, ret=%d\n", ret);
             return false;
         }
-        t0 = Clock::now();
-        st = session_->LoadGraph(graphId_, {}, stream_);
-        if (st != ge::SUCCESS) {
-            fprintf(stderr, "[ERROR] LoadGraph failed, ret=%d\n", st);
-            return false;
-        }
-        std::cout << "[INFO] LoadGraph ok, cost " << ElapsedMs(t0, Clock::now()) << " ms" << std::endl;
         return true;
     }
 
-    bool PrepareInputs(const std::vector<TensorPlan> &plans) {
+    bool LoadInputs(const std::vector<TensorPlan> &plans) {
+        plans_ = plans;
+        hostInputs_.clear();
+        hostInputs_.reserve(plans.size());
+        dtypes_.clear();
         for (size_t i = 0; i < plans.size(); i++) {
             const TensorPlan &p = plans[i];
             ge::DataType dtype;
             if (!ToGeDtype(p.dtype, dtype)) {
-                fprintf(stderr, "[ERROR] unsupported dtype '%s' for input '%s'\n",
+                fprintf(stderr, "[ERROR] 不支持的 dtype '%s' (输入 '%s')\n",
                         p.dtype.c_str(), p.logical.c_str());
                 return false;
             }
             std::vector<char> host;
             if (!ReadBinFile(p.file, host)) {
-                fprintf(stderr, "[ERROR] cannot read input file: %s\n", p.file.c_str());
+                fprintf(stderr, "[ERROR] 读不到输入文件: %s\n", p.file.c_str());
                 return false;
             }
-            size_t bytes = p.Bytes();
-            if (host.size() != bytes) {
-                fprintf(stderr, "[ERROR] input '%s' file size %zu != %zu bytes\n",
-                        p.logical.c_str(), host.size(), bytes);
+            if (host.size() != p.Bytes()) {
+                fprintf(stderr, "[ERROR] 输入 '%s' 文件字节数 %zu != %zu\n",
+                        p.logical.c_str(), host.size(), p.Bytes());
                 return false;
             }
+            dtypes_.push_back(dtype);
+            hostInputs_.push_back(std::move(host));
+            std::cout << "[INFO] Input[" << i << "] '" << p.logical << "' node=" << p.node
+                      << " shape=" << ShapeToString(p.shape) << " dtype=" << p.dtype
+                      << " bytes=" << p.Bytes() << std::endl;
+        }
+        return true;
+    }
 
+    bool CreateContext(int tid) {
+        if (FindContext(tid) != nullptr) {
+            return true;                       // 幂等: sweep 各档复用同一份图绑定
+        }
+        if (tid + 1 > numGraphs_) {
+            fprintf(stderr, "[ERROR] tid=%d 超出已编译图实例数 %d\n", tid, numGraphs_);
+            return false;
+        }
+        auto ctx = std::make_unique<GeContext>();
+        ctx->graphId = static_cast<uint32_t>(tid + 1);
+        aclError ret = aclrtCreateStream(&ctx->stream);
+        if (ret != ACL_SUCCESS) {
+            fprintf(stderr, "[ERROR] aclrtCreateStream failed (tid=%d), ret=%d\n", tid, ret);
+            return false;
+        }
+        // 每个 stream 都要 LoadGraph 绑定一次 (图已 CompileGraph, 此处只加载)
+        auto t0 = Clock::now();
+        ge::Status st = session_->LoadGraph(ctx->graphId, {}, ctx->stream);
+        if (st != ge::SUCCESS) {
+            fprintf(stderr, "[ERROR] LoadGraph(gid=%u) failed (tid=%d), ret=%d\n",
+                    ctx->graphId, tid, st);
+            ReleaseContext(*ctx);
+            return false;
+        }
+        std::cout << "[INFO] LoadGraph ok (gid=" << ctx->graphId << ", tid=" << tid << "), cost "
+                  << ElapsedMs(t0, Clock::now()) << " ms" << std::endl;
+
+        for (size_t i = 0; i < plans_.size(); i++) {
+            const TensorPlan &p = plans_[i];
+            size_t bytes = p.Bytes();
             void *dev = nullptr;
-            aclError ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
+            ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
             if (ret != ACL_SUCCESS || dev == nullptr) {
-                fprintf(stderr, "[ERROR] aclrtMalloc(%zu) failed for input '%s', ret=%d\n",
-                        bytes, p.logical.c_str(), ret);
+                fprintf(stderr, "[ERROR] aclrtMalloc(%zu) failed (tid=%d, input '%s'), ret=%d\n",
+                        bytes, tid, p.logical.c_str(), ret);
+                ReleaseContext(*ctx);
                 return false;
             }
-            ret = aclrtMemcpy(dev, bytes, host.data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE);
+            ret = aclrtMemcpy(dev, bytes, hostInputs_[i].data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE);
             if (ret != ACL_SUCCESS) {
-                fprintf(stderr, "[ERROR] H2D failed for input '%s', ret=%d\n", p.logical.c_str(), ret);
+                fprintf(stderr, "[ERROR] H2D failed (tid=%d, input '%s'), ret=%d\n",
+                        tid, p.logical.c_str(), ret);
                 aclrtFree(dev);
+                ReleaseContext(*ctx);
                 return false;
             }
-            inputPtrs_.push_back(dev);
+            ctx->inPtrs.push_back(dev);
 
             gert::Tensor t;
             gert::StorageShape ss;
@@ -196,54 +280,55 @@ public:
             }
             t.GetShape() = ss;
             t.MutableFormat() = gert::StorageFormat(ge::FORMAT_ND, ge::FORMAT_ND, {});
-            t.SetDataType(dtype);
+            t.SetDataType(dtypes_[i]);
             t.SetData(gert::TensorData(dev, nullptr, bytes, gert::kOnDeviceHbm));
-            devInputs_.emplace_back(std::move(t));
-
-            std::cout << "[INFO] Input[" << i << "] '" << p.logical << "' node=" << p.node
-                      << " shape=" << ShapeToString(p.shape) << " dtype=" << p.dtype
-                      << " bytes=" << bytes << std::endl;
+            ctx->devInputs.emplace_back(std::move(t));
         }
+
+        ctxs_[tid] = std::move(ctx);
         return true;
     }
 
-    bool ExecuteFirst() {
-        auto t0 = Clock::now();
-        ge::Status st = session_->ExecuteGraphWithStreamAsync(graphId_, stream_, devInputs_, devOutputs_);
+    bool Execute(int tid) {
+        GeContext *ctx = FindContext(tid);
+        if (ctx == nullptr) {
+            fprintf(stderr, "[ERROR] tid=%d 无执行资源\n", tid);
+            return false;
+        }
+        ctx->devOutputs.clear();
+        ge::Status st = session_->ExecuteGraphWithStreamAsync(ctx->graphId, ctx->stream,
+                                                             ctx->devInputs, ctx->devOutputs);
         if (st != ge::SUCCESS) {
-            fprintf(stderr, "[ERROR] ExecuteGraphWithStreamAsync failed, ret=%d\n", st);
+            fprintf(stderr, "[ERROR] ExecuteGraphWithStreamAsync failed (tid=%d), ret=%d\n", tid, st);
             return false;
         }
-        aclError ret = aclrtSynchronizeStream(stream_);
+        aclError ret = aclrtSynchronizeStream(ctx->stream);
         if (ret != ACL_SUCCESS) {
-            fprintf(stderr, "[ERROR] aclrtSynchronizeStream failed, ret=%d\n", ret);
+            fprintf(stderr, "[ERROR] aclrtSynchronizeStream failed (tid=%d), ret=%d\n", tid, ret);
             return false;
         }
-        TrackOutputs(devOutputs_);
-        std::cout << "[INFO] First execute (incl. shape specialization), cost "
-                  << ElapsedMs(t0, Clock::now()) << " ms" << std::endl;
+        for (auto &t : ctx->devOutputs) {
+            if (t.GetAddr() != nullptr) {
+                ctx->outAddrs.insert(t.GetAddr());
+            }
+        }
+        // 实测 GE 每轮复用同一输出地址 (set 去重后恒为 1); 若将来改成每轮新分配, 先告警
+        if (!ctx->warnedAddrGrowth && ctx->outAddrs.size() > 64) {
+            ctx->warnedAddrGrowth = true;
+            fprintf(stderr, "[WARN] tid=%d 已累计 %zu 个不同输出 device 地址 (GE 未复用缓冲?), "
+                            "HBM 会随请求数线性增长\n", tid, ctx->outAddrs.size());
+        }
         return true;
     }
 
-    bool Execute() {
-        std::vector<gert::Tensor> tmp;
-        ge::Status st = session_->ExecuteGraphWithStreamAsync(graphId_, stream_, devInputs_, tmp);
-        if (st != ge::SUCCESS) {
-            fprintf(stderr, "[ERROR] ExecuteGraphWithStreamAsync failed, ret=%d\n", st);
+    bool CollectOutputs(int tid, const IoSpec &spec, std::vector<HostTensor> &outputs) {
+        GeContext *ctx = FindContext(tid);
+        if (ctx == nullptr) {
+            fprintf(stderr, "[ERROR] tid=%d 无执行资源, 无法取输出\n", tid);
             return false;
         }
-        aclError ret = aclrtSynchronizeStream(stream_);
-        if (ret != ACL_SUCCESS) {
-            fprintf(stderr, "[ERROR] aclrtSynchronizeStream failed, ret=%d\n", ret);
-            return false;
-        }
-        TrackOutputs(tmp);
-        return true;
-    }
-
-    bool CollectOutputs(const IoSpec &spec, std::vector<HostTensor> &outputs) {
-        for (size_t i = 0; i < devOutputs_.size(); i++) {
-            const gert::Tensor &t = devOutputs_[i];
+        for (size_t i = 0; i < ctx->devOutputs.size(); i++) {
+            const gert::Tensor &t = ctx->devOutputs[i];
             size_t bytes = t.GetSize();
             const auto &shape = t.GetShape().GetStorageShape();
 
@@ -272,25 +357,16 @@ public:
         return true;
     }
 
+    // 不逐份释放: LoadGraph 对同一 graphId 只能调一次, sweep 各档必须复用图绑定;
+    // 全部资源在 Destroy() 里统一释放。
+    void ReleaseContext(int) {}
+
     void Destroy() {
-        for (void *p : inputPtrs_) {
-            if (p != nullptr) {
-                aclrtFree(p);
-            }
+        for (auto &kv : ctxs_) {
+            ReleaseContext(*kv.second);
         }
-        inputPtrs_.clear();
-        devInputs_.clear();
-        devOutputs_.clear();
-        for (void *p : outputAddrs_) {
-            if (p != nullptr) {
-                aclrtFree(p);
-            }
-        }
-        outputAddrs_.clear();
-        if (stream_ != nullptr) {
-            aclrtDestroyStream(stream_);
-            stream_ = nullptr;
-        }
+        ctxs_.clear();
+        hostInputs_.clear();
         session_.reset();
         if (deviceSet_) {
             aclrtResetDevice(opt_.device);
@@ -307,33 +383,43 @@ public:
     }
 
 private:
-    void TrackOutputs(std::vector<gert::Tensor> &tensors) {
-        for (auto &t : tensors) {
-            if (t.GetAddr() != nullptr) {
-                outputAddrs_.insert(t.GetAddr());
+    static void ReleaseContext(GeContext &ctx) {
+        for (void *p : ctx.inPtrs) {
+            if (p != nullptr) {
+                aclrtFree(p);
             }
         }
-        // 实测 GE 每轮复用同一输出地址 (set 去重后恒为 1, 20000 轮 HBM 不涨)。
-        // 若将来 GE 改成每轮新分配, 这里会先告警而不是静默吃满 HBM。
-        if (!warnedAddrGrowth_ && outputAddrs_.size() > 64) {
-            warnedAddrGrowth_ = true;
-            fprintf(stderr, "[WARN] 已累计 %zu 个不同的输出 device 地址 (GE 未复用缓冲?), "
-                            "HBM 占用会随 --bench 线性增长\n", outputAddrs_.size());
+        ctx.inPtrs.clear();
+        ctx.devInputs.clear();
+        ctx.devOutputs.clear();
+        for (void *p : ctx.outAddrs) {
+            if (p != nullptr) {
+                aclrtFree(p);
+            }
+        }
+        ctx.outAddrs.clear();
+        if (ctx.stream != nullptr) {
+            aclrtDestroyStream(ctx.stream);
+            ctx.stream = nullptr;
         }
     }
 
+    GeContext *FindContext(int tid) {
+        auto it = ctxs_.find(tid);
+        return it == ctxs_.end() ? nullptr : it->second.get();
+    }
+
     GeSessionOptions opt_;
-    uint32_t graphId_ = 1;
+    int numGraphs_ = 1;
     bool geInited_ = false;
     bool aclInited_ = false;
     bool deviceSet_ = false;
     std::shared_ptr<ge::Session> session_;
-    aclrtStream stream_ = nullptr;
-    std::vector<gert::Tensor> devInputs_;
-    std::vector<gert::Tensor> devOutputs_;
-    std::vector<void *> inputPtrs_;
-    std::set<void *> outputAddrs_;
-    bool warnedAddrGrowth_ = false;
+    aclrtContext aclCtx_ = nullptr;
+    std::vector<TensorPlan> plans_;
+    std::vector<std::vector<char>> hostInputs_;
+    std::vector<ge::DataType> dtypes_;
+    std::map<int, std::unique_ptr<GeContext>> ctxs_;
 };
 
 }  // namespace
@@ -342,36 +428,70 @@ bool RunGeSessionBackend(const Manifest &manifest, const IoSpec &spec,
                          const std::vector<TensorPlan> &inputs, const GeSessionOptions &opt,
                          std::vector<HostTensor> &outputs) {
     if (manifest.graph_path.empty()) {
-        fprintf(stderr, "[ERROR] manifest has no graph_path (backend=ge_session needs AIR/ONNX)\n");
+        fprintf(stderr, "[ERROR] manifest 无 graph_path (backend=ge_session 需要 AIR/ONNX)\n");
         return false;
     }
     std::string graphPath = manifest.Resolve(manifest.graph_path);
     if (graphPath.size() >= 5 &&
         graphPath.compare(graphPath.size() - 5, 5, ".onnx") == 0) {
         fprintf(stderr, "[ERROR] GeSession 在线后端只吃 GE 图 (.air/.pbtxt), 收到 ONNX: %s\n"
-                        "        ONNX 请先经 ATC (--framework=5) 转 OM 走 om_acl 后端 (docs §15 待定)\n",
+                        "        ONNX 请先经 ATC (--framework=5) 转 OM 走 om_acl 后端 (docs §1/§15)\n",
                 graphPath.c_str());
         return false;
     }
 
+    int numGraphs = opt.bench.sweep.empty() ? std::max(1, opt.bench.threads)
+                                           : *std::max_element(opt.bench.sweep.begin(),
+                                                               opt.bench.sweep.end());
     GeRunner runner(opt);
-    if (!runner.Init(graphPath)) {
+    if (!runner.Init(graphPath, numGraphs)) {
         return false;
     }
-    if (!runner.PrepareInputs(inputs)) {
-        return false;
-    }
-    if (!runner.ExecuteFirst()) {
+    if (!runner.LoadInputs(inputs)) {
         return false;
     }
 
+    ThreadResources res;
+    res.setup = [&runner](int tid) { return runner.CreateContext(tid); };
+    res.step = [&runner](int tid) { return runner.Execute(tid); };
+    res.release = [&runner](int tid) { runner.ReleaseContext(tid); };
+    // 工作线程共享主线程的默认 context (CANN 无 reset 接口; 线程退出即释放)
+    res.threadEnter = [&runner](int) { aclrtSetCurrentContext(runner.Context()); };
+
+    if (IsThroughputMode(opt.bench)) {
+        std::vector<ThroughputStats> all;
+        if (!BenchSweep(opt.bench, res, all)) {
+            return false;
+        }
+        for (const auto &s : all) {
+            PrintThroughputStats("GeSession execute+sync throughput", s);
+        }
+        if (!runner.CreateContext(0) || !runner.Execute(0)) {
+            return false;
+        }
+        bool ok = runner.CollectOutputs(0, spec, outputs);
+        runner.ReleaseContext(0);
+        return ok;
+    }
+
+    if (!runner.CreateContext(0)) {
+        return false;
+    }
+    auto t0 = Clock::now();
+    if (!runner.Execute(0)) {
+        return false;
+    }
+    std::cout << "[INFO] First execute (incl. shape specialization), cost "
+              << ElapsedMs(t0, Clock::now()) << " ms" << std::endl;
+
     BenchStats stats;
-    if (!BenchRun(opt.bench, [&runner]() { return runner.Execute(); }, stats)) {
+    if (!BenchRun(opt.bench, [&runner]() { return runner.Execute(0); }, stats)) {
         return false;
     }
     PrintBenchStats("GeSession execute+sync", stats);
-
-    return runner.CollectOutputs(spec, outputs);
+    bool ok = runner.CollectOutputs(0, spec, outputs);
+    runner.ReleaseContext(0);
+    return ok;
 }
 
 }  // namespace ge_runtime

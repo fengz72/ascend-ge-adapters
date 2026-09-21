@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "../acl_json.h"
 #include "../bench.h"
 #include "../io_spec.h"
 
@@ -14,6 +15,7 @@ struct GeSessionOptions {
     std::string precision_mode = "force_fp16";
     std::string aicore_num;
     BenchOptions bench;
+    GeProfilingConfig profiling;    // GE 在线路径经 GEInitialize 全局选项开启 (不走 acl.json)
 };
 
 bool RunGeSessionBackend(const Manifest &manifest, const IoSpec &spec,

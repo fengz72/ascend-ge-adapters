@@ -4,7 +4,7 @@
     Python: golden = NPU-eager 前向 (patched 模型 is_compiling()=False, 走 torch_npu 算子)
             save_bundle 把 inputs/golden .bin + 具体 shape + provenance 落盘 → bundle.json
     C++:    backend 跑 OM/GeSession on inputs → outputs (.bin)
-    Python: compare(outputs, golden) → report (复用 tools/compare.py, 不重写比对数学)
+    Python: compare_bundle(bundle, outputs_dir) → report (复用 tools/compare.py, 不重写比对数学)
 
 两层 shape (docs §6): io_spec 记动态维声明 (-1), bundle 记**具体 shape** (驱动 .bin 加载)。
 bundle.json schema 严格按 docs §5.4: {inputs:[{logical,shape,file}], golden:{...}, provenance:{...}}。
@@ -24,7 +24,7 @@ class Verifier:
         v = Verifier()
         golden = v.golden(model, inputs)                          # NPU-eager logits (在 NPU)
         bundle = v.save_bundle(dir, inputs, golden, io_spec, prov)  # → bundle.json 路径
-        report = v.compare(outputs, golden)                       # 复用 tools/compare.py
+        report = v.compare_bundle(bundle, outputs_dir, dtype)      # 复用 tools/compare.py
     """
 
     def __init__(self, rtol=1e-3, atol=1e-5):
@@ -91,26 +91,6 @@ class Verifier:
         return bundle_path
 
     # ---- compare ----
-
-    def compare(self, outputs, golden, rtol=None, atol=None,
-                dtype="float16", shape=None, verbose=False):
-        """精度比对, 复用 tools/compare.py 的 PrecisionComparator (不重写比对数学)。
-
-        outputs/golden 可为张量 / numpy / .bin 路径 — 路径经 compare.py 的 load_file 加载
-        (.bin 需 dtype/shape, 默认 float16; io_spec 才是 dtype 的事实源, bundle 不记 dtype)。
-        返回 compare.py 的指标 dict (含 cosine_similarity / relative_l2_error / pass_overall 等)。
-        """
-        from tools.compare import PrecisionComparator
-
-        rtol = self.rtol if rtol is None else rtol
-        atol = self.atol if atol is None else atol
-
-        g = _to_numpy(golden, dtype, shape)
-        t = _to_numpy(outputs, dtype, shape)
-        g, t = _align(g, t)
-
-        return PrecisionComparator.compare_and_report(
-            g, t, target_name="outputs", rtol=rtol, atol=atol, verbose=verbose)
 
     def compare_bundle(self, bundle_path, outputs_dir, dtype="float16",
                        rtol=None, atol=None, verbose=True):
@@ -181,27 +161,6 @@ def _dump(t, path):
     """张量 → .cpu().numpy().tofile(path) (原始字节, 保留 dtype)。"""
     arr = t.detach().cpu().numpy() if hasattr(t, "detach") else np.asarray(t)
     arr.tofile(path)
-
-
-def _to_numpy(x, dtype="float16", shape=None):
-    """张量 / numpy / .bin·.npy 路径 → numpy (路径走 compare.py 的 load_file)。"""
-    if isinstance(x, np.ndarray):
-        return x
-    if hasattr(x, "detach"):                       # torch.Tensor
-        return x.detach().cpu().numpy()
-    if isinstance(x, str):                         # .bin / .npy 路径
-        from tools.compare import load_file
-        return load_file(x, dtype, shape)
-    return np.asarray(x)
-
-
-def _align(g, t):
-    """shape 不一致时 flatten + 截断到 min 长度 (与 tools/compare.py main 的处理一致)。"""
-    if g.shape == t.shape:
-        return g, t
-    g, t = g.flatten(), t.flatten()
-    n = min(g.size, t.size)
-    return g[:n], t[:n]
 
 
 def bundle_has_golden(bundle_path) -> bool:

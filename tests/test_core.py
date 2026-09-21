@@ -338,23 +338,32 @@ def test_compare_bundle_missing_outputs(tmp_path):
 
 def test_ge_session_rejects_onnx():
     """形态③ ONNX 走不了在线后端 — 必须在编译/配置期报错, 而不是等 C++ 运行期。"""
-    from core.backend import Backend
+    from core.backend import compile_graph
     from core.config import BackendCfg
 
     cfg = ModelConfig(model=ModelMeta(name="m"), source=SourceCfg(type="onnx", ref="m.onnx"),
                       backend=BackendCfg(type="ge_session"))
-    backend = Backend.from_config(cfg)
     with pytest.raises(ValueError, match="ge_session 不支持 ONNX"):
-        backend.compile(Graph(kind="onnx", path="m.onnx"), {})
+        compile_graph(cfg, Graph(kind="onnx", path="m.onnx"))
 
 
 def test_ge_session_accepts_air():
-    from core.backend import Backend
+    from core.backend import compile_graph
     from core.config import BackendCfg
 
     cfg = ModelConfig(model=ModelMeta(name="m"), source=SourceCfg(type="torch"),
                       backend=BackendCfg(type="ge_session"))
-    assert Backend.from_config(cfg).compile(Graph(kind="air", path="m.air"), {}) is None
+    assert compile_graph(cfg, Graph(kind="air", path="m.air")) is None
+
+
+def test_unknown_backend_type():
+    from core.backend import compile_graph
+    from core.config import BackendCfg
+
+    cfg = ModelConfig(model=ModelMeta(name="m"), source=SourceCfg(type="torch"),
+                      backend=BackendCfg(type="nope"))
+    with pytest.raises(ValueError, match="未知 backend.type"):
+        compile_graph(cfg, Graph(kind="air", path="m.air"))
 
 
 # ---------------------------------------------------------------- verify.save_bundle (A3a)

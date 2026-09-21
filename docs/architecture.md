@@ -180,6 +180,9 @@ verify:
 
 C++ 用 bundle 的**具体 shape** 分配内存、按 `file` 读 .bin；按 **logical 名**（不是位置）与 io_spec 的输入配对，再按 io_spec 的图序喂给 OM/图。bundle 的 inputs 顺序 = forward 入参序（与 io_spec 的图序可不同）。
 
+> **单输出假设**：`golden` 是单个对象（不是列表），文件名固定 `golden_logits.bin` —— 当前契约只支持单输出模型（CausalLM logits）。多输出需扩展为 `golden_<logical>.bin` + 逐输出比对（§10 已知限制）。
+> `golden` 可为 `null`（`verify.enabled: false`）：此时 bundle 只含 inputs，运行时照跑，compare 阶段自动跳过。
+
 ### 5.5 manifest.json（生成，C++ 运行时契约，部署期入口）
 
 ```json
@@ -278,31 +281,42 @@ load()/adapt():  apply_patches()   ← patch_specs:  类级行为替换 (怎么�
 
 ## 9. C++ 运行时（重建，通用）
 
-现有 `atb/` C++ 过于定制，重建为配置驱动的通用运行时（**已落地**，`bash runtime/build.sh` → `runtime/build/ge_runtime`）：
+旧 `atb/` 定制 C++ 已**退役删除**（能力全部移植进来；未移植项见 §10 已知限制），重建为配置驱动的通用运行时（`bash runtime/build.sh` → `runtime/build/ge_runtime`）：
 
 ```
 runtime/
-  main.cpp                 # 单入口: 读 manifest → io_spec/bundle → 按 backend 分发 → 落盘输出
+  main.cpp                 # 单入口: 读 manifest → io_spec/bundle(或 --input) → 按 backend 分发 → 落盘输出
   backends/
     acl_backend.{h,cpp}        # OM → ACL 加载+执行 (动态维经 aclmdlSetDatasetTensorDesc)
-    gesession_backend.{h,cpp}  # AIR/ONNX → GeSession 在线执行
-  io_spec.{h,cpp}          # 三份契约解析 (manifest/io_spec/bundle) + .bin 喂入/取出 + outputs.json
-  bench.{h,cpp}            # warmup + 计时统计 (avg/min/p50/p99/max), 两后端共用
+    gesession_backend.{h,cpp}  # AIR → GeSession 在线执行 (ONNX 不支持)
+  io_spec.{h,cpp}          # 三份契约解析 (manifest/io_spec/bundle) + TensorPlan + .bin IO + outputs.json
+  bench.{h,cpp}            # 延迟 (warmup+分位数) 与吞吐 (多线程闭环 sweep), 两后端共用
+  acl_json.{h,cpp}         # dump/profiling 的 acl.json 生成 (OM/ACL 路径)
   CMakeLists.txt build.sh
 ```
 
 ```
-ge_runtime <manifest.json> [--output_dir DIR] [--device N] [--warmup N] [--bench N]
+ge_runtime <manifest.json> [--output_dir DIR] [--device N]
                            [--input logical:d0,d1,...:file.bin]   # 部署态(manifest 无 bundle)必填, 可重复
-                           [--graph_run_mode M] [--precision_mode P] [--aicore_num SPEC]
-                           [--output_reserve MB]
+                           # 延迟: [--warmup N] [--bench N]
+                           # 吞吐: [--threads N] [--requests M] [--sweep 1,2,4,8]
+                           # 在线后端: [--graph_run_mode M] [--precision_mode P] [--aicore_num SPEC]
+                           # 输出缓冲: [--output_reserve MB]
+                           # 观测: [--dump --dump_path/--dump_mode/--dump_level/--dump_data/--dump_layer]
+                                   [--profiling --profiling_output/--profiling_aic_metrics]
 ```
 
-- 读取链（§5.5）：`manifest.json` → backend/路径/device → `io_spec.json`（node/dtype/format + 动态维声明）→ 输入二选一：**验证态** `bundle.json`（具体 shape + .bin，按 logical 名配对）/ **部署态** `--input`（CLI 给具体 shape + .bin，dtype/format/node 仍取自 io_spec）→ 合成 `TensorPlan`（逐输入 stat 校验字节数 == shape×dtype）→ 执行 → `output_<i>.bin` + `outputs.json`（logical/dtype/shape/file，供 Python compare）。
+- 读取链（§5.5）：`manifest.json` → backend/路径/device → `io_spec.json`（node/dtype/format + 动态维声明）→ 输入二选一：**验证态** `bundle.json`（具体 shape + .bin，按 logical 名配对）/ **部署态** `--input`（CLI 给具体 shape + .bin，dtype/format/node 仍取自 io_spec）→ 合成 `TensorPlan`（逐输入 stat 校验字节数 == shape×dtype，不重复读盘）→ 执行 → `output_<i>.bin` + `outputs.json`（logical/dtype/shape/file，供 Python compare）。
 - ATC 编译（AIR/ONNX → OM）留在 **Python**（`tools/atc_utils`，argv 列表直传 subprocess，不走 shell；`--framework` 按 `graph.kind` 取 1/5）；C++ 只做运行时。
-- OM/ACL 后端：Python 先 ATC 编译出 OM，C++ ACL 加载 OM 执行；io_spec 声明动态维时逐输入 `aclCreateTensorDesc` + `aclmdlSetDatasetTensorDesc`（CANN 9.0.0 无 `aclmdlSetDynamicInputTensorDesc`）。输出缓冲：验证态按 `bundle.golden` 的具体 shape **精确推导**，部署态用 `--output_reserve`（默认 256MB）；执行后校验实际 size ≤ 分配，超出即硬失败（否则是静默 HBM 越界）。输出 desc 动态图取 `aclmdlGetDatasetTensorDesc`、静态图取 `aclmdlGetOutputDims/DataType`（静态 OM 的 dataset 上不挂 desc）。
+- OM/ACL 后端：io_spec 声明动态维时逐输入 `aclCreateTensorDesc` + `aclmdlSetDatasetTensorDesc`（CANN 9.0.0 无 `aclmdlSetDynamicInputTensorDesc`）。输出缓冲：验证态按 `bundle.golden` 的具体 shape **精确推导**，部署态用 `--output_reserve`（默认 256MB）；执行后校验实际 size ≤ 分配，超出即硬失败（否则是静默 HBM 越界）。输出 desc 动态图取 `aclmdlGetDatasetTensorDesc`、静态图取 `aclmdlGetOutputDims/DataType`（静态 OM 的 dataset 上不挂 desc）。
 - GeSession 后端：C++ 直接加载 AIR 在线执行（API 序列见 §15）；ONNX 不支持（§1）。
-- **抽象时机（YAGNI）**：两后端各暴露一个自由函数（`RunAclBackend` / `RunGeSessionBackend`），`main.cpp` 按 `manifest.backend` switch 分发，**不预设 Backend 基类**——公共部分（契约解析、.bin IO、bench）已下沉到 `io_spec`/`bench`，剩下的差异（ACL dataset vs gert::Tensor）不值得抽象。
+- **并发的资源模型（实测约束）**：
+  - ACL：**每线程独立 `aclmdlLoadFromFile`**（共享 modelId 并发 `aclmdlExecuteAsync` 实测返回 500002）+ 独立 stream/dataset/缓冲 → HBM ≈ N × OM 大小；模型元数据由首个 context 的 desc 顺带打印（不做 probe 加载，省一次 ~2s 重复加载）。
+  - GeSession：**单 Session 多图**——`LoadGraph` 对同一 graphId **不可重复调用**（ge_api.h 约束），故 N 路并发要 N 份 `AddGraph`+`CompileGraph`（串行，qwen2.5-0.5b 约 10s/份）+ 每线程独立 stream 与 `LoadGraph(gid, {}, stream)`；`CompileGraph` 必须在 `aclrtSetDevice` **之前**。
+  - 工作线程共享主线程的**默认 context**（`aclrtGetCurrentContext` → 各线程 `aclrtSetCurrentContext`）；显式 `aclrtCreateContext` 会让 GE executor 报 "stream is not in current ctx"。CANN 无 reset 接口，线程退出即释放。
+  - `--sweep` 各档复用同一批图绑定/模型实例（GE 的 `setup` 幂等、`release` 为 no-op，统一在退出时释放）。
+- **观测**：dump/profiling 在 OM/ACL 路径经 `acl_json.cpp` 生成 `acl.json` 交 `aclInit(configPath)`；GeSession 的 profiling 走 `GEInitialize` 的 `OPTION_EXEC_PROFILING_MODE/OPTIONS`（dump 是 ACL 专属，给了会 WARN 忽略）。产物 `PROF_*` 用 `tools/parse_profiling.py` 解析，dump 数据用 `tools/parse_dump.py`。
+- **抽象时机（YAGNI）**：两后端各暴露一个自由函数（`RunAclBackend` / `RunGeSessionBackend`），`main.cpp` 按 `manifest.backend` switch 分发，**不预设 Backend 基类**——公共部分（契约解析、.bin IO、bench）已下沉到 `io_spec`/`bench`，剩下的差异（ACL dataset vs gert::Tensor）不值得抽象。两后端各自的 dtype 枚举映射表**故意不合并**（ACL 与 GE 是两套枚举，合并要引中间层，比重复更贵）。
 - 构建：C++17 + `-D_GLIBCXX_USE_CXX11_ABI=0`（GE 头/库为旧 ABI）；JSON 用 vendored `third_party/nlohmann/json.hpp`（header-only，离线可构建）。
 - GE 在线路径的运行环境额外要求：`source <model>/env.sh`（CANN + vendor 算子 + 把本地 site-packages 注入 `PYTHONPATH`，否则 GEInitialize 因 tbe pywrapper 缺 numpy 返回 -1）。
 
@@ -325,8 +339,18 @@ Python: compare(outputs, golden) → report   (verify.compare_bundle → tools/c
 
 ### 性能验收
 
-- 管线含 **bench 阶段**（C++ `bench.{h,cpp}`）：OM/GeSession 路径的延迟/吞吐，相对 NPU-eager 基线。
+- 管线含 **bench 阶段**（C++ `bench.{h,cpp}`），两种口径都已落地：
+  - **延迟**：`--warmup N --bench M`，单线程 execute+sync，报 avg/min/p50/p99/max。
+  - **吞吐**：`--threads N --requests M`（闭环并发，每线程独立资源）或 `--sweep 1,2,4,8`（串行扫档，每档一份报告），报 wall/QPS/e2e 分位数/errors。
+- 口径统一为 **execute + sync**（两后端可比）；首次执行含懒初始化/shape 特化（OM ~330ms、GE ~250ms），故延迟测量必须配 `--warmup`。
 - **基线数据归 `models/<model>/docs/`**（逐模型），架构层只规定"有 bench 阶段 + 基线归档位置 + 报告格式"，**不写死全局阈值**——具体验收线（如 OM 相对 eager 的加速比下限）逐模型定。
+- 观测：`--profiling`（两后端）/`--dump`（仅 OM/ACL）产出 `PROF_*` 与逐算子数据，交 `tools/parse_profiling.py`、`tools/parse_dump.py` 解析。
+
+### 已知限制（当前契约的边界）
+
+- **单输出假设**：bundle 只记一个 golden（`golden_logits.bin`）、`pipeline._output_node` 固定 `logical="logits"`、compare 只比一个输出、C++ 仅在 `outputs.size()==1` 时精确推导输出缓冲 —— 即当前只支持"单 logits 的 CausalLM"。多输出模型需扩展 bundle schema（`golden_<logical>.bin`）+ 逐输出比对，等出现第二个实例再做（YAGNI）。
+- **随机 varlen 负载生成未移植**：旧 `atb/bench_latency.cpp` 的 RequestGenerator（对数正态序列长度 + 闭环随机请求）随 `atb/` 退役删除，需要时从 git 历史取（`8b7ce86:atb/bench_latency.cpp`）；通用替代是用 `tools/varlen.py` 生成多组 bundle 逐组跑。
+- **形态② PyTorch 源码**（`source.py:_from_source_code`）的加载约定（无参构造 + 单文件 `torch.load`）是**未经实例验证的猜测**，遇到真客户需按实际约定改写（docs §15）。
 
 ## 11. core/ 模块接口
 
@@ -374,13 +398,11 @@ class PassManager:
     def __init__(self, model_name, pass_names, third_party_dir)
     def prepare(self) -> dict[str, str]          # 构建+装 per-model vendor, 返回 env
 
-# backend.py  (接口按实际时序: from_config → compile → write_manifest → run_runtime)
-class Backend(ABC):
-    @staticmethod from_config(cfg) -> Backend            # 只需 cfg, 不需 manifest
-    def compile(self, graph, env) -> om_path | None      # om_acl: atc_utils; ge_session: None
-class OmAclBackend(Backend); class GeSessionBackend(Backend)
+# backend.py  (时序: compile_graph → write_manifest → run_runtime; 无 Backend 基类, 与 C++ 侧同标准)
+def compile_graph(cfg, graph, base_dir=None) -> om_path | None   # om_acl: run_atc; ge_session: None
+                                                                 # (并校验 图形态×后端: onnx 不走 ge_session)
 def default_output_dir(manifest_path) -> str             # <manifest 根>/verification/outputs
-def runtime_argv(manifest, output_dir, device, warmup, bench, extra) -> list[str]
+def runtime_argv(manifest, output_dir, device, warmup, bench, extra, inputs) -> list[str]
 def run_runtime(manifest, ...) -> output_dir             # 子进程跑 ge_runtime (继承 CANN env)
 
 # verify.py
@@ -388,39 +410,46 @@ class Verifier:
     def golden(self, model, inputs) -> Tensor            # eager forward (NPU)
     def save_bundle(self, dir, inputs, golden, io_spec, provenance,
                     logical_order=None) -> bundle_path   # 写 bundle.json + .bin (forward 序标签)
-    def compare(self, outputs, golden) -> report         # 调 tools/compare.py
-    def compare_bundle(self, bundle_path, outputs_dir, dtype) -> report   # 闭环第三段
+                                                         # golden=None → 只落 inputs (部署/无验证态)
+    def compare_bundle(self, bundle_path, outputs_dir, dtype) -> report   # 闭环第三段 (shape 不符即抛)
+def bundle_has_golden(bundle_path) -> bool               # pipeline 据此决定是否 compare
 
 # pipeline.py  (YAGNI: 全量 + --skip, 不做 6 阶段枚举)
-def run(config_path, skip: set[str] = ())                # skip ⊂ {export, passes, verify, compile, run, compare}
+def run(config_path, skip=(), dtype, device, batch_size, seq_len, work_dir,
+        warmup, bench, runtime_extra, runtime_inputs)     # skip ⊂ {export,passes,compile,run,compare}
+                                                          # runtime_inputs: 部署态 --input 规格 (形态③ 用)
 ```
 
-## 12. 目录结构（目标）
+## 12. 目录结构（现状）
 
 ```
 ascend-ge-adapters/
+├── README.md                      # 入口: 目录导览 + 快速开始 + 契约速查
+├── requirements.txt pytest.ini    # Python 依赖 (实测版本) / pytest 配置 (含 npu marker)
 ├── core/                          # 通用框架 (Python)
 │   ├── source.py adapter.py exporter.py graph.py
 │   ├── passes.py backend.py verify.py config.py pipeline.py
 │   └── _torchair_source_name.py   # 回移 torchair PR#3675: Data 节点带 forward 入参名
-├── runtime/                       # 通用执行运行时 (C++, 已落地)
+├── runtime/                       # 通用执行运行时 (C++)
 │   ├── main.cpp CMakeLists.txt build.sh
 │   ├── backends/{acl_backend, gesession_backend}.{h,cpp}   # 无 Backend 基类, main 按 manifest 分发
-│   ├── io_spec.{h,cpp} bench.{h,cpp}
+│   ├── io_spec.{h,cpp} bench.{h,cpp} acl_json.{h,cpp}
 ├── third_party/
 │   ├── nlohmann/json.hpp          # vendored header-only JSON (C++ 读三份契约)
 │   └── custom_development_code/   # gitcode submodule
 │       └── fusion_pass/           # pass 源码库
 ├── models/
-│   ├── common/                    # (演进为 core/ 的适配基类, 或并入 core/)
 │   └── qwen2.5-0.5b/
-│       ├── model.py               # Adapter (模型专属)
-│       └── config/model.yaml      # 声明 (人工)
-├── tools/                         # varlen / atc_utils / compare / parse_*
-└── docs/
+│       ├── model.py               # Adapter (模型专属, 唯一手写代码之一)
+│       ├── config/model.yaml      # 声明 (唯一手写配置)
+│       ├── run.sh env.sh          # 薄封装 core/pipeline + 运行环境
+│       └── docs/                  # DEPLOYMENT_GUIDE.md + reports/ aicore/ prefix-attention/
+├── tools/                         # varlen / atc_utils / compare / parse_dump / parse_profiling
+├── tests/                         # test_*.py (CPU, pytest) + tiny_e2e/tiny_onnx_e2e/smoke (NPU 脚本)
+└── docs/architecture.md
 ```
 
-映射现状 → 目标：`models/common` → `core/`（适配基类），`atb/` → `runtime/`（重建），`models/*/pass/` → `third_party/.../fusion_pass/`，新增 source/graph/passes/backend/verify/config/pipeline。
+演进映射（已完成）：`models/common` → `core/`（适配基类），`atb/` → `runtime/`（**已删除**，能力全部移植；未移植项见 §10 已知限制），`atb/models/*` → `models/*`，`atb/tools/*` → `tools/*`，`models/*/pass/` → `third_party/.../fusion_pass/`。
 
 ## 13. 设计原则汇总
 
@@ -445,7 +474,7 @@ ascend-ge-adapters/
 7. **Verify 成体系**：`core/verify.py`——golden + bundle（含 seed/provenance）+ compare + bench 阶段
 8. **Pipeline CLI**：`core/pipeline.py`——读 config 编排全流程（全量 + `--skip`）；退役 per-model `export_air.py`/`prepare_air_inputs.py`
 9. **qwen2.5-0.5b 收敛**为：`model.py`（Adapter）+ `config/model.yaml`
-10. **C++ 运行时重建**（阶段二，**已落地**）：`runtime/`——`acl_backend` + `gesession_backend` 各为具体实现，`main.cpp` 按 manifest 分发；公共部分下沉到 `io_spec`/`bench`，**未抽 Backend 基类**（两后端差异只在执行 API，抽象无收益）。`atb/` 暂留（多线程吞吐 bench、dump/profiling 尚未移植）。
+10. **C++ 运行时重建**（阶段二，**已落地**）：`runtime/`——`acl_backend` + `gesession_backend` 各为具体实现，`main.cpp` 按 manifest 分发；公共部分下沉到 `io_spec`/`bench`/`acl_json`，**未抽 Backend 基类**（两后端差异只在执行 API，抽象无收益）。`atb/` 已**移植后删除**：OM/GE 执行、延迟与多线程吞吐 bench、dump、profiling 全部进 `runtime/`；唯一未移植的是 `bench_latency.cpp` 里的随机 varlen 负载生成器（模型专属，见 §10 已知限制）。
 
 ### 阶段建议
 

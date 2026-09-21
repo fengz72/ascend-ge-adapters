@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <iostream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -58,14 +59,36 @@ aclFormat ToAclFormat(const std::string &s) {
     return ACL_FORMAT_UNDEFINED;
 }
 
+// 每线程一份执行资源 (stream + input/output dataset + device 缓冲); modelId/desc 全局共享 —
+// ACL 多线程推理的标准形态 (每线程独立 dataset/stream, 共享已加载模型)。
+struct AclContext {
+    bool valid = false;
+    bool modelLoaded = false;
+    uint32_t modelId = 0;
+    aclmdlDesc *desc = nullptr;
+    aclrtStream stream = nullptr;
+    aclmdlDataset *in = nullptr;
+    aclmdlDataset *out = nullptr;
+    std::vector<void *> inBufs;
+    std::vector<void *> outBufs;
+    std::vector<size_t> outSizes;
+};
+
 class AclRunner {
 public:
-    AclRunner(const AclOptions &opt) : opt_(opt) {}
+    explicit AclRunner(const AclOptions &opt) : opt_(opt) {}
 
     ~AclRunner() { Destroy(); }
 
+    aclrtContext Context() const { return aclCtx_; }
+
     bool Init(const std::string &omPath) {
-        aclError ret = aclInit(nullptr);
+        // dump/profiling 经 aclInit(configPath) 生效 (acl.json 由 main 生成, 见 acl_json.cpp)
+        const char *cfgPath = opt_.aclConfigPath.empty() ? nullptr : opt_.aclConfigPath.c_str();
+        if (cfgPath != nullptr) {
+            std::cout << "[INFO] aclInit with config: " << cfgPath << std::endl;
+        }
+        aclError ret = aclInit(cfgPath);
         if (ret != ACL_SUCCESS && ret != ACL_ERROR_REPEAT_INITIALIZE) {
             fprintf(stderr, "[ERROR] aclInit failed, ret=%d\n", ret);
             return false;
@@ -79,180 +102,218 @@ public:
         }
         deviceSet_ = true;
 
-        ret = aclmdlLoadFromFile(omPath.c_str(), &modelId_);
+        // 工作线程要 aclrtSetCurrentContext 才能调 ACL API; 用**默认** context
+        // (GE 在线路径要求默认 context, 两后端统一口径)
+        ret = aclrtGetCurrentContext(&aclCtx_);
         if (ret != ACL_SUCCESS) {
-            fprintf(stderr, "[ERROR] aclmdlLoadFromFile failed: %s, ret=%d\n", omPath.c_str(), ret);
+            fprintf(stderr, "[ERROR] aclrtGetCurrentContext failed, ret=%d\n", ret);
             return false;
         }
-        modelLoaded_ = true;
 
-        desc_ = aclmdlCreateDesc();
-        if (desc_ == nullptr) {
-            fprintf(stderr, "[ERROR] aclmdlCreateDesc returned nullptr\n");
-            return false;
-        }
-        ret = aclmdlGetDesc(desc_, modelId_);
-        if (ret != ACL_SUCCESS) {
-            fprintf(stderr, "[ERROR] aclmdlGetDesc failed, ret=%d\n", ret);
-            return false;
-        }
-        inputCount_ = aclmdlGetNumInputs(desc_);
-        outputCount_ = aclmdlGetNumOutputs(desc_);
-        std::cout << "[INFO] OM loaded: " << omPath << " (modelId=" << modelId_
-                  << ", inputs=" << inputCount_ << ", outputs=" << outputCount_ << ")" << std::endl;
-        for (size_t i = 0; i < inputCount_; i++) {
-            const char *name = aclmdlGetInputNameByIndex(desc_, i);
-            size_t size = aclmdlGetInputSizeByIndex(desc_, i);
-            std::cout << "[INFO]   OM input[" << i << "] name=" << (name ? name : "?")
-                      << " staticSize=" << size << (size == 0 ? " (dynamic)" : "") << std::endl;
-        }
-        for (size_t i = 0; i < outputCount_; i++) {
-            const char *name = aclmdlGetOutputNameByIndex(desc_, i);
-            size_t size = aclmdlGetOutputSizeByIndex(desc_, i);
-            std::cout << "[INFO]   OM output[" << i << "] name=" << (name ? name : "?")
-                      << " staticSize=" << size << (size == 0 ? " (dynamic)" : "") << std::endl;
-        }
+        // 不在此加载模型: ACL 多线程要求每线程独立 modelId, 元数据 (输入/输出个数与名字)
+        // 由首个 CreateContext 的 desc 顺带打印 — 省一次 ~2s 的重复加载与一份 HBM。
+        omPath_ = omPath;
         return true;
     }
 
-    bool PrepareInputs(const std::vector<TensorPlan> &plans, bool dynamic) {
-        if (plans.size() != inputCount_) {
-            fprintf(stderr, "[ERROR] io_spec/bundle give %zu inputs but OM has %zu\n",
-                    plans.size(), inputCount_);
-            return false;
-        }
-        input_ = aclmdlCreateDataset();
-        if (input_ == nullptr) {
-            fprintf(stderr, "[ERROR] aclmdlCreateDataset(input) failed\n");
-            return false;
-        }
-
+    // 读盘 + 校验一次, host 数据缓存供各线程 H2D 复用 (避免每线程重复读盘)
+    bool LoadInputs(const std::vector<TensorPlan> &plans, bool dynamic) {
+        plans_ = plans;
+        dynamic_ = dynamic;
+        hostInputs_.clear();
+        hostInputs_.reserve(plans.size());
         for (size_t i = 0; i < plans.size(); i++) {
             const TensorPlan &p = plans[i];
-            aclDataType dtype = ToAclDtype(p.dtype);
-            if (dtype == ACL_DT_UNDEFINED) {
-                fprintf(stderr, "[ERROR] unsupported dtype '%s' for input '%s'\n",
+            if (ToAclDtype(p.dtype) == ACL_DT_UNDEFINED) {
+                fprintf(stderr, "[ERROR] 不支持的 dtype '%s' (输入 '%s')\n",
                         p.dtype.c_str(), p.logical.c_str());
                 return false;
             }
-
             std::vector<char> host;
             if (!ReadBinFile(p.file, host)) {
-                fprintf(stderr, "[ERROR] cannot read input file: %s\n", p.file.c_str());
+                fprintf(stderr, "[ERROR] 读不到输入文件: %s\n", p.file.c_str());
                 return false;
             }
-            size_t bytes = p.Bytes();
-            if (host.size() != bytes) {
-                fprintf(stderr, "[ERROR] input '%s' file size %zu != %zu bytes\n",
-                        p.logical.c_str(), host.size(), bytes);
+            if (host.size() != p.Bytes()) {
+                fprintf(stderr, "[ERROR] 输入 '%s' 文件字节数 %zu != %zu\n",
+                        p.logical.c_str(), host.size(), p.Bytes());
                 return false;
             }
-
-            void *dev = nullptr;
-            aclError ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
-            if (ret != ACL_SUCCESS || dev == nullptr) {
-                fprintf(stderr, "[ERROR] aclrtMalloc(%zu) failed for input '%s', ret=%d\n",
-                        bytes, p.logical.c_str(), ret);
-                return false;
-            }
-            ret = aclrtMemcpy(dev, bytes, host.data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE);
-            if (ret != ACL_SUCCESS) {
-                fprintf(stderr, "[ERROR] H2D failed for input '%s', ret=%d\n", p.logical.c_str(), ret);
-                aclrtFree(dev);
-                return false;
-            }
-
-            aclDataBuffer *buf = aclCreateDataBuffer(dev, bytes);
-            if (buf == nullptr) {
-                fprintf(stderr, "[ERROR] aclCreateDataBuffer failed for input '%s'\n", p.logical.c_str());
-                aclrtFree(dev);
-                return false;
-            }
-            ret = aclmdlAddDatasetBuffer(input_, buf);
-            if (ret != ACL_SUCCESS) {
-                fprintf(stderr, "[ERROR] aclmdlAddDatasetBuffer(input[%zu]) failed, ret=%d\n", i, ret);
-                aclDestroyDataBuffer(buf);
-                aclrtFree(dev);
-                return false;
-            }
-            inputBuffers_.push_back(dev);
-
-            if (dynamic) {
-                aclTensorDesc *td = aclCreateTensorDesc(dtype, static_cast<int32_t>(p.shape.size()),
-                                                        p.shape.data(), ToAclFormat(p.format));
-                if (td == nullptr) {
-                    fprintf(stderr, "[ERROR] aclCreateTensorDesc failed for input '%s'\n", p.logical.c_str());
-                    return false;
-                }
-                ret = aclmdlSetDatasetTensorDesc(input_, td, i);
-                aclDestroyTensorDesc(td);
-                if (ret != ACL_SUCCESS) {
-                    fprintf(stderr, "[ERROR] aclmdlSetDatasetTensorDesc(input[%zu]) failed, ret=%d\n", i, ret);
-                    return false;
-                }
-            }
+            hostInputs_.push_back(std::move(host));
             std::cout << "[INFO] Input[" << i << "] '" << p.logical << "' node=" << p.node
                       << " shape=" << ShapeToString(p.shape) << " dtype=" << p.dtype
-                      << " bytes=" << bytes << std::endl;
+                      << " bytes=" << p.Bytes() << std::endl;
         }
         return true;
     }
 
-    bool PrepareOutputs() {
-        output_ = aclmdlCreateDataset();
-        if (output_ == nullptr) {
-            fprintf(stderr, "[ERROR] aclmdlCreateDataset(output) failed\n");
+    bool CreateContext(int tid) {
+        AclContext ctx;
+        aclError ret = aclmdlLoadFromFile(omPath_.c_str(), &ctx.modelId);
+        if (ret != ACL_SUCCESS) {
+            fprintf(stderr, "[ERROR] aclmdlLoadFromFile failed (tid=%d), ret=%d\n", tid, ret);
             return false;
         }
-        for (size_t i = 0; i < outputCount_; i++) {
-            size_t bytes = aclmdlGetOutputSizeByIndex(desc_, i);
-            if (bytes == 0) {
-                bytes = opt_.output_reserve;
-                std::cout << "[INFO] Output[" << i << "] size unknown (dynamic), reserving "
-                          << bytes << " bytes" << std::endl;
+        ctx.modelLoaded = true;
+        ctx.desc = aclmdlCreateDesc();
+        if (ctx.desc == nullptr || aclmdlGetDesc(ctx.desc, ctx.modelId) != ACL_SUCCESS) {
+            fprintf(stderr, "[ERROR] aclmdlGetDesc failed (tid=%d)\n", tid);
+            ReleaseContext(ctx);
+            return false;
+        }
+        if (inputCount_ == 0) {                     // 首个 context: 取元数据并校验输入个数
+            inputCount_ = aclmdlGetNumInputs(ctx.desc);
+            outputCount_ = aclmdlGetNumOutputs(ctx.desc);
+            std::cout << "[INFO] OM loaded: " << omPath_ << " (inputs=" << inputCount_
+                      << ", outputs=" << outputCount_ << ")" << std::endl;
+            for (size_t i = 0; i < inputCount_; i++) {
+                const char *name = aclmdlGetInputNameByIndex(ctx.desc, i);
+                size_t size = aclmdlGetInputSizeByIndex(ctx.desc, i);
+                std::cout << "[INFO]   OM input[" << i << "] name=" << (name ? name : "?")
+                          << " staticSize=" << size << (size == 0 ? " (dynamic)" : "") << std::endl;
             }
+            for (size_t i = 0; i < outputCount_; i++) {
+                const char *name = aclmdlGetOutputNameByIndex(ctx.desc, i);
+                size_t size = aclmdlGetOutputSizeByIndex(ctx.desc, i);
+                std::cout << "[INFO]   OM output[" << i << "] name=" << (name ? name : "?")
+                          << " staticSize=" << size << (size == 0 ? " (dynamic)" : "") << std::endl;
+            }
+            if (plans_.size() != inputCount_) {
+                fprintf(stderr, "[ERROR] io_spec/bundle 给出 %zu 个输入, 但 OM 有 %zu 个\n",
+                        plans_.size(), inputCount_);
+                ReleaseContext(ctx);
+                return false;
+            }
+        }
+        ret = aclrtCreateStream(&ctx.stream);
+        if (ret != ACL_SUCCESS) {
+            fprintf(stderr, "[ERROR] aclrtCreateStream failed (tid=%d), ret=%d\n", tid, ret);
+            return false;
+        }
+        ctx.in = aclmdlCreateDataset();
+        ctx.out = aclmdlCreateDataset();
+        if (ctx.in == nullptr || ctx.out == nullptr) {
+            fprintf(stderr, "[ERROR] aclmdlCreateDataset failed (tid=%d)\n", tid);
+            ReleaseContext(ctx);
+            return false;
+        }
+
+        for (size_t i = 0; i < plans_.size(); i++) {
+            const TensorPlan &p = plans_[i];
+            size_t bytes = p.Bytes();
             void *dev = nullptr;
-            aclError ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
+            ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
             if (ret != ACL_SUCCESS || dev == nullptr) {
-                fprintf(stderr, "[ERROR] aclrtMalloc(%zu) failed for output[%zu], ret=%d\n", bytes, i, ret);
+                fprintf(stderr, "[ERROR] aclrtMalloc(%zu) failed for input '%s' (tid=%d), ret=%d\n",
+                        bytes, p.logical.c_str(), tid, ret);
+                ReleaseContext(ctx);
+                return false;
+            }
+            ret = aclrtMemcpy(dev, bytes, hostInputs_[i].data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE);
+            if (ret != ACL_SUCCESS) {
+                fprintf(stderr, "[ERROR] H2D failed for input '%s' (tid=%d), ret=%d\n",
+                        p.logical.c_str(), tid, ret);
+                aclrtFree(dev);
+                ReleaseContext(ctx);
                 return false;
             }
             aclDataBuffer *buf = aclCreateDataBuffer(dev, bytes);
-            if (buf == nullptr) {
-                fprintf(stderr, "[ERROR] aclCreateDataBuffer failed for output[%zu]\n", i);
+            if (buf == nullptr || aclmdlAddDatasetBuffer(ctx.in, buf) != ACL_SUCCESS) {
+                fprintf(stderr, "[ERROR] add input dataset buffer failed (tid=%d, input %zu)\n", tid, i);
+                if (buf != nullptr) {
+                    aclDestroyDataBuffer(buf);
+                }
                 aclrtFree(dev);
+                ReleaseContext(ctx);
                 return false;
             }
-            ret = aclmdlAddDatasetBuffer(output_, buf);
-            if (ret != ACL_SUCCESS) {
-                fprintf(stderr, "[ERROR] aclmdlAddDatasetBuffer(output[%zu]) failed, ret=%d\n", i, ret);
-                aclDestroyDataBuffer(buf);
-                aclrtFree(dev);
-                return false;
+            ctx.inBufs.push_back(dev);
+
+            if (dynamic_) {
+                aclTensorDesc *td = aclCreateTensorDesc(ToAclDtype(p.dtype),
+                                                        static_cast<int32_t>(p.shape.size()),
+                                                        p.shape.data(), ToAclFormat(p.format));
+                if (td == nullptr) {
+                    fprintf(stderr, "[ERROR] aclCreateTensorDesc failed (tid=%d, input '%s')\n",
+                            tid, p.logical.c_str());
+                    ReleaseContext(ctx);
+                    return false;
+                }
+                ret = aclmdlSetDatasetTensorDesc(ctx.in, td, i);
+                aclDestroyTensorDesc(td);
+                if (ret != ACL_SUCCESS) {
+                    fprintf(stderr, "[ERROR] aclmdlSetDatasetTensorDesc failed (tid=%d, input %zu), ret=%d\n",
+                            tid, i, ret);
+                    ReleaseContext(ctx);
+                    return false;
+                }
             }
-            outputBuffers_.push_back(dev);
-            outputSizes_.push_back(bytes);
         }
+
+        for (size_t i = 0; i < outputCount_; i++) {
+            size_t bytes = aclmdlGetOutputSizeByIndex(ctx.desc, i);
+            if (bytes == 0) {
+                bytes = opt_.output_reserve;
+            }
+            void *dev = nullptr;
+            ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
+            if (ret != ACL_SUCCESS || dev == nullptr) {
+                fprintf(stderr, "[ERROR] aclrtMalloc(%zu) failed for output[%zu] (tid=%d), ret=%d\n",
+                        bytes, i, tid, ret);
+                ReleaseContext(ctx);
+                return false;
+            }
+            aclDataBuffer *buf = aclCreateDataBuffer(dev, bytes);
+            if (buf == nullptr || aclmdlAddDatasetBuffer(ctx.out, buf) != ACL_SUCCESS) {
+                fprintf(stderr, "[ERROR] add output dataset buffer failed (tid=%d, output %zu)\n", tid, i);
+                if (buf != nullptr) {
+                    aclDestroyDataBuffer(buf);
+                }
+                aclrtFree(dev);
+                ReleaseContext(ctx);
+                return false;
+            }
+            ctx.outBufs.push_back(dev);
+            ctx.outSizes.push_back(bytes);
+        }
+
+        ctx.valid = true;
+        StoreContext(tid, ctx);
         return true;
     }
 
-    bool Execute() {
-        aclError ret = aclmdlExecute(modelId_, input_, output_);
+    bool Execute(int tid) {
+        AclContext *ctx = FindContext(tid);
+        if (ctx == nullptr) {
+            fprintf(stderr, "[ERROR] tid=%d 无执行资源\n", tid);
+            return false;
+        }
+        aclError ret = aclmdlExecuteAsync(ctx->modelId, ctx->in, ctx->out, ctx->stream);
         if (ret != ACL_SUCCESS) {
-            fprintf(stderr, "[ERROR] aclmdlExecute failed, ret=%d\n", ret);
+            fprintf(stderr, "[ERROR] aclmdlExecuteAsync failed (tid=%d), ret=%d\n", tid, ret);
+            return false;
+        }
+        ret = aclrtSynchronizeStream(ctx->stream);
+        if (ret != ACL_SUCCESS) {
+            fprintf(stderr, "[ERROR] aclrtSynchronizeStream failed (tid=%d), ret=%d\n", tid, ret);
             return false;
         }
         return true;
     }
 
-    bool CollectOutputs(const IoSpec &spec, std::vector<HostTensor> &outputs) {
+    bool CollectOutputs(int tid, const IoSpec &spec, std::vector<HostTensor> &outputs) {
+        AclContext *ctx = FindContext(tid);
+        if (ctx == nullptr) {
+            fprintf(stderr, "[ERROR] tid=%d 无执行资源, 无法取输出\n", tid);
+            return false;
+        }
         for (size_t i = 0; i < outputCount_; i++) {
             size_t bytes = 0;
             std::vector<int64_t> shape;
             aclDataType dtype = ACL_DT_UNDEFINED;
 
-            // 动态图: 执行后 dataset 上挂着实际 desc; 静态图: dataset 无 desc → 取 model desc
-            aclTensorDesc *td = aclmdlGetDatasetTensorDesc(output_, i);
+            // 动态图: 执行后 dataset 上挂实际 desc; 静态图: dataset 无 desc → 取 model desc
+            aclTensorDesc *td = aclmdlGetDatasetTensorDesc(ctx->out, i);
             if (td != nullptr) {
                 bytes = aclGetTensorDescSize(td);
                 dtype = aclGetTensorDescType(td);
@@ -263,21 +324,20 @@ public:
                     shape.push_back(dim);
                 }
             } else {
-                bytes = aclmdlGetOutputSizeByIndex(desc_, i);
-                dtype = aclmdlGetOutputDataType(desc_, i);
+                bytes = aclmdlGetOutputSizeByIndex(ctx->desc, i);
+                dtype = aclmdlGetOutputDataType(ctx->desc, i);
                 aclmdlIODims dims;
-                if (aclmdlGetOutputDims(desc_, i, &dims) == ACL_SUCCESS) {
+                if (aclmdlGetOutputDims(ctx->desc, i, &dims) == ACL_SUCCESS) {
                     for (int32_t d = 0; d < dims.dimCount; d++) {
                         shape.push_back(dims.dims[d]);
                     }
                 }
             }
 
-            // 动态输出按 reserve 预分配, 实际 size 超出即越界 (执行时已写坏 HBM) → 硬失败
-            if (i < outputSizes_.size() && bytes > outputSizes_[i]) {
+            if (i < ctx->outSizes.size() && bytes > ctx->outSizes[i]) {
                 fprintf(stderr, "[ERROR] output[%zu] 实际需要 %zu 字节 > 预留 %zu 字节 "
                                 "(--output_reserve %zu MB); 输出已可能越界, 结果不可信\n",
-                        i, bytes, outputSizes_[i], outputSizes_[i] / (1024 * 1024));
+                        i, bytes, ctx->outSizes[i], ctx->outSizes[i] / (1024 * 1024));
                 return false;
             }
 
@@ -289,7 +349,7 @@ public:
             t.shape = shape;
             t.data.resize(bytes);
 
-            aclDataBuffer *buf = aclmdlGetDatasetBuffer(output_, i);
+            aclDataBuffer *buf = aclmdlGetDatasetBuffer(ctx->out, i);
             void *dev = aclGetDataBufferAddr(buf);
             if (bytes > 0 && dev != nullptr) {
                 aclError ret = aclrtMemcpy(t.data.data(), bytes, dev, bytes, ACL_MEMCPY_DEVICE_TO_HOST);
@@ -299,26 +359,31 @@ public:
                 }
             }
             std::cout << "[INFO] Output[" << i << "] '" << t.logical << "' shape="
-                      << ShapeToString(t.shape) << " dtype=" << t.dtype << " bytes=" << bytes << std::endl;
+                      << ShapeToString(t.shape) << " dtype=" << t.dtype << " bytes=" << bytes
+                      << std::endl;
             outputs.push_back(std::move(t));
         }
         return true;
     }
 
+    void ReleaseContext(int tid) {
+        AclContext *ctx = FindContext(tid);
+        if (ctx == nullptr) {
+            return;
+        }
+        ReleaseContext(*ctx);
+        ctx->valid = false;
+    }
+
     void Destroy() {
-        DestroyDataset(input_, inputBuffers_);
-        DestroyDataset(output_, outputBuffers_);
-        outputSizes_.clear();
-        input_ = nullptr;
-        output_ = nullptr;
-        if (desc_ != nullptr) {
-            aclmdlDestroyDesc(desc_);
-            desc_ = nullptr;
+        for (auto &kv : ctxs_) {
+            if (kv.second.valid) {
+                ReleaseContext(kv.second);
+                kv.second.valid = false;
+            }
         }
-        if (modelLoaded_) {
-            aclmdlUnload(modelId_);
-            modelLoaded_ = false;
-        }
+        ctxs_.clear();
+        hostInputs_.clear();
         if (deviceSet_) {
             aclrtResetDevice(opt_.device);
             deviceSet_ = false;
@@ -330,6 +395,28 @@ public:
     }
 
 private:
+    static void ReleaseContext(AclContext &ctx) {
+        DestroyDataset(ctx.in, ctx.inBufs);
+        DestroyDataset(ctx.out, ctx.outBufs);
+        ctx.outSizes.clear();
+        ctx.in = nullptr;
+        ctx.out = nullptr;
+        if (ctx.stream != nullptr) {
+            aclrtSynchronizeStream(ctx.stream);
+            aclrtDestroyStream(ctx.stream);
+            ctx.stream = nullptr;
+        }
+        if (ctx.desc != nullptr) {
+            aclmdlDestroyDesc(ctx.desc);
+            ctx.desc = nullptr;
+        }
+        if (ctx.modelLoaded) {
+            aclmdlUnload(ctx.modelId);
+            ctx.modelLoaded = false;
+            ctx.modelId = 0;
+        }
+    }
+
     static void DestroyDataset(aclmdlDataset *&ds, std::vector<void *> &devBuffers) {
         if (ds != nullptr) {
             for (size_t i = 0; i < aclmdlGetDatasetNumBuffers(ds); i++) {
@@ -345,19 +432,24 @@ private:
         devBuffers.clear();
     }
 
+    void StoreContext(int tid, const AclContext &ctx) { ctxs_[tid] = ctx; }
+
+    AclContext *FindContext(int tid) {
+        auto it = ctxs_.find(tid);
+        return (it == ctxs_.end() || !it->second.valid) ? nullptr : &it->second;
+    }
+
     AclOptions opt_;
     bool aclInited_ = false;
     bool deviceSet_ = false;
-    bool modelLoaded_ = false;
-    uint32_t modelId_ = 0;
-    aclmdlDesc *desc_ = nullptr;
-    aclmdlDataset *input_ = nullptr;
-    aclmdlDataset *output_ = nullptr;
+    bool dynamic_ = false;
+    std::string omPath_;
+    aclrtContext aclCtx_ = nullptr;
     size_t inputCount_ = 0;
     size_t outputCount_ = 0;
-    std::vector<void *> inputBuffers_;
-    std::vector<void *> outputBuffers_;
-    std::vector<size_t> outputSizes_;
+    std::vector<TensorPlan> plans_;
+    std::vector<std::vector<char>> hostInputs_;
+    std::map<int, AclContext> ctxs_;
 };
 
 }  // namespace
@@ -365,30 +457,55 @@ private:
 bool RunAclBackend(const Manifest &manifest, const IoSpec &spec,
                    const std::vector<TensorPlan> &inputs, const AclOptions &opt,
                    std::vector<HostTensor> &outputs) {
-    std::string omPath = manifest.Resolve(manifest.om_path);
     if (manifest.om_path.empty()) {
-        fprintf(stderr, "[ERROR] manifest has no om_path (backend=om_acl needs ATC-compiled OM)\n");
+        fprintf(stderr, "[ERROR] manifest 无 om_path (backend=om_acl 需要 ATC 编译出的 OM)\n");
         return false;
     }
+    std::string omPath = manifest.Resolve(manifest.om_path);
 
     AclRunner runner(opt);
     if (!runner.Init(omPath)) {
         return false;
     }
-    if (!runner.PrepareInputs(inputs, spec.HasDynamicInput())) {
-        return false;
-    }
-    if (!runner.PrepareOutputs()) {
+    if (!runner.LoadInputs(inputs, spec.HasDynamicInput())) {
         return false;
     }
 
+    ThreadResources res;
+    res.setup = [&runner](int tid) { return runner.CreateContext(tid); };
+    res.step = [&runner](int tid) { return runner.Execute(tid); };
+    res.release = [&runner](int tid) { runner.ReleaseContext(tid); };
+    // 工作线程共享主线程的默认 context (CANN 无 reset 接口; 线程退出即释放)
+    res.threadEnter = [&runner](int) { aclrtSetCurrentContext(runner.Context()); };
+
+    if (IsThroughputMode(opt.bench)) {
+        std::vector<ThroughputStats> all;
+        if (!BenchSweep(opt.bench, res, all)) {
+            return false;
+        }
+        for (const auto &s : all) {
+            PrintThroughputStats("ACL OM execute+sync throughput", s);
+        }
+        // 吞吐跑完后资源已释放: 单开一份资源跑一次, 取输出落盘
+        if (!runner.CreateContext(0) || !runner.Execute(0)) {
+            return false;
+        }
+        bool ok = runner.CollectOutputs(0, spec, outputs);
+        runner.ReleaseContext(0);
+        return ok;
+    }
+
+    if (!runner.CreateContext(0)) {
+        return false;
+    }
     BenchStats stats;
-    if (!BenchRun(opt.bench, [&runner]() { return runner.Execute(); }, stats)) {
+    if (!BenchRun(opt.bench, [&runner]() { return runner.Execute(0); }, stats)) {
         return false;
     }
-    PrintBenchStats("ACL OM execute", stats);
-
-    return runner.CollectOutputs(spec, outputs);
+    PrintBenchStats("ACL OM execute+sync", stats);
+    bool ok = runner.CollectOutputs(0, spec, outputs);
+    runner.ReleaseContext(0);
+    return ok;
 }
 
 }  // namespace ge_runtime

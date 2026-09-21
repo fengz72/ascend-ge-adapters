@@ -3,42 +3,29 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 *.npy
+.pytest_cache/
 
 # ===== C++ / CMake 构建产物 =====
-atb/build/
 runtime/build/
 kernel_meta/
 
-# ===== 运行时 dump / 输出 =====
-atb/dump_graph/
+# ===== 运行时 dump / profiling 输出 =====
+dump_data/
+dump_graph/
 fusion_result.json
 ge_check_op.json
 prof_output/
 prof_*/
+profiling_data/
 log/
 *.log
 
-# ===== 模型编译产物与数据（体积大，可重新生成）=====
-atb/models/*/air/
-atb/models/*/om/
-atb/models/*/input_data/
-atb/models/*/input_data_prefix/
-atb/models/*/output/
-atb/models/*/output_ge_*/
-atb/models/*/profiling_data/
-atb/models/*/profiling_data*
-atb/models/*/dump_graph/
+# ===== 模型编译产物与验证数据（体积大，可重新生成）=====
+# air/(AIR + pbtxt + io_spec) om/(OM) deploy/(manifest) verification/(bundle + inputs + golden + outputs)
 models/*/air/
 models/*/om/
 models/*/deploy/
 models/*/verification/
-models/*/input_data/
-models/*/input_data_prefix/
-models/*/output/
-models/*/output_ge_*/
-models/*/profiling_data/
-models/*/profiling_data*
-models/*/dump_graph/
 **/*.so
 
 # ===== 会话日志 =====
