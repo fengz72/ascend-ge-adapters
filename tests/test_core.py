@@ -334,6 +334,36 @@ def test_compare_bundle_missing_outputs(tmp_path):
         Verifier().compare_bundle(bundle, out, dtype="float16", verbose=False)
 
 
+# ---------------------------------------------------------------- passes 路径解析
+
+def test_resolve_pass_dir(tmp_path):
+    """yaml 的 passes 条目: 路径 (绝对/相对仓库根/相对 CWD) 与 只写名字 都要能解析。"""
+    from core.passes import resolve_pass_dir
+
+    tp = tmp_path / "third_party"
+    src = tp / "custom_development_code" / "fusion_pass" / "FooPass"
+    src.mkdir(parents=True)
+
+    rel = "third_party/custom_development_code/fusion_pass/FooPass"
+    assert resolve_pass_dir(rel, str(tp)) == ("FooPass", str(src))       # 相对仓库根
+    assert resolve_pass_dir(str(src), str(tp)) == ("FooPass", str(src))  # 绝对路径
+    assert resolve_pass_dir(str(src) + "/", str(tp)) == ("FooPass", str(src))  # 尾斜杠
+    assert resolve_pass_dir("FooPass", str(tp)) == ("FooPass", str(src))  # 只写名字 (向后兼容)
+    assert resolve_pass_dir("Nope", str(tp)) is None
+    assert resolve_pass_dir("", str(tp)) is None
+    assert resolve_pass_dir(None, str(tp)) is None
+
+
+def test_pass_manager_skips_missing(tmp_path, capsys):
+    """找不到源码只 WARN 不抛 (管线不因 pass 缺失而崩)。"""
+    from core.passes import PassManager
+
+    tp = tmp_path / "third_party"
+    tp.mkdir()
+    PassManager("m", ["Nope"], str(tp)).prepare()
+    assert "找不到 pass 源码" in capsys.readouterr().out
+
+
 # ---------------------------------------------------------------- backend 组合校验 (B1)
 
 def test_ge_session_rejects_onnx():

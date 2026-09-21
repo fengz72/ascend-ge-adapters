@@ -26,8 +26,8 @@ graph:
   dynamic:
     max_seq_len: 2048
 
-passes:
-  - WeightNzAndMatMulV3Pass
+passes:                            # 写路径 (相对仓库根) 或只写目录名, 见 core/passes.resolve_pass_dir
+  - third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
 
 backend:
   type: om_acl                     # om_acl | ge_session

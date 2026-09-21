@@ -1,10 +1,15 @@
 """GE fusion pass 管理: 构建 + 安装图优化 pass。
 
 机制 (实测 third_party/custom_development_code/fusion_pass):
-    源码   fusion_pass/<PassName>/ (CMakeLists.txt + src/*.cpp)
-    构建   cmake out-of-source (缓存 <repo>/.pass_build/) → lib*.so
+    源码   <PassName>/ (CMakeLists.txt + src/*.cpp)
+    构建   cmake out-of-source (缓存 <repo>/.pass_build/<PassName>/) → lib*.so
     安装   cp lib*.so → $ASCEND_HOME_PATH/opp/vendors/<model>/custom_fusion_passes/
     激活   CANN 自动扫描 opp/vendors/* 全部加载, 无需 env (prepare() 无返回值)
+
+yaml 的 `passes:` 条目两种写法都认 (resolve_pass_dir):
+    路径   third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
+           (绝对路径 / 相对仓库根 / 相对 CWD 均可)
+    名字   WeightNzAndMatMulV3Pass → <third_party>/custom_development_code/fusion_pass/<名字>
 
 两个实测要点:
   1. fusion pass 是**全局**的: opp/vendors/* 下所有 custom_fusion_passes 都被自动
@@ -16,7 +21,7 @@
 注: ASCEND_CUSTOM_OPP_PATH 是给"自定义算子"(custom_op/)的搜索路径 (冒号分隔,
 <path>/vendors/<name> 或 <path>/op_api/lib/), 与 fusion pass 自动扫描是两套机制。
 
-缺 submodule / 缺 CANN / 构建失败时 graceful 降级 (WARN, 不崩管线)。
+路径写错 / 缺 submodule / 缺 CANN / 构建失败时 graceful 降级 (WARN, 不崩管线)。
 """
 
 import glob
@@ -27,6 +32,35 @@ import subprocess
 FUSION_PASS_SUBDIR = os.path.join("custom_development_code", "fusion_pass")
 CUSTOM_FUSION_SUBDIR = "custom_fusion_passes"      # vendor 下融合 pass 子目录
 DEFAULT_ASCEND_HOME = "/usr/local/Ascend/ascend-toolkit/latest"
+
+
+def resolve_pass_dir(entry, third_party_dir):
+    """把 yaml 里的 pass 条目解析成源码目录 → (pass_name, src_dir); 找不到返回 None。
+
+    两种写法都支持:
+      **路径** — 绝对路径, 或相对仓库根/CWD 的路径, 如
+                 `third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass`
+      **名字** — 只写目录名 (如 `WeightNzAndMatMulV3Pass`), 按
+                 `<third_party>/custom_development_code/fusion_pass/<名字>` 找
+    pass_name 取目录 basename (用作 .pass_build/ 下的构建缓存名与日志标识)。
+    """
+    if not entry:
+        return None
+    entry = str(entry).strip()
+    if not entry:
+        return None
+    repo_root = os.path.dirname(os.path.abspath(third_party_dir))
+    if os.path.isabs(entry):
+        candidates = [entry]
+    else:
+        candidates = [os.path.join(repo_root, entry),                       # 相对仓库根
+                      os.path.abspath(entry),                               # 相对 CWD
+                      os.path.join(third_party_dir, FUSION_PASS_SUBDIR, entry)]  # 只给名字
+    for path in candidates:
+        if os.path.isdir(path):
+            normalized = os.path.normpath(path)          # 去掉尾斜杠/多余分隔符
+            return os.path.basename(normalized), normalized
+    return None
 
 
 class PassManager:
@@ -43,22 +77,22 @@ class PassManager:
         无返回值 —— fusion pass 由 CANN 自动扫描 opp/vendors/* 加载, **不需要 env 注入**
         (ASCEND_CUSTOM_OPP_PATH 是给自定义算子的, 不用于 fusion pass; 自定义算子的 env
         由 models/<model>/env.sh 负责)。
-        pass_names 为空 / 源目录缺失 (submodule 未克隆) / 构建失败 → WARN 跳过不抛异常。
+        pass 条目为空 / 源码目录找不到 (路径写错或 submodule 未克隆) / 构建失败 →
+        WARN 跳过不抛异常 (逐条解析, 见 resolve_pass_dir)。
         """
         if not self.pass_names:
             return
 
-        src_root = os.path.join(self.third_party_dir, FUSION_PASS_SUBDIR)
-        if not os.path.isdir(src_root):
-            print(f"[passes][WARN] pass 源码目录不存在 (submodule 未克隆?): {src_root}")
-            return
-
         fusion_dst = os.path.join(self._vendor_dir(), CUSTOM_FUSION_SUBDIR)
-        for name in self.pass_names:
-            src_dir = os.path.join(src_root, name)
-            if not os.path.isdir(src_dir):
-                print(f"[passes][WARN] pass 源码缺失, 跳过: {src_dir}")
+        for entry in self.pass_names:
+            resolved = resolve_pass_dir(entry, self.third_party_dir)
+            if resolved is None:
+                print(f"[passes][WARN] 找不到 pass 源码, 跳过: {entry!r} (试过: 绝对路径 / "
+                      f"相对仓库根 / 相对 CWD / "
+                      f"{os.path.join(self.third_party_dir, FUSION_PASS_SUBDIR)})")
                 continue
+            name, src_dir = resolved
+            print(f"[passes] {name} ← {src_dir}")
             for so in self._build(name, src_dir):
                 self._install(so, fusion_dst)
 

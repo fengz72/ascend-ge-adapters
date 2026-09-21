@@ -123,8 +123,8 @@ graph:
     max_seq_len: 2048            # 图常量长度 (RoPE 表 / 因果 mask), 经 adapt(setup_kwargs) 透传
     # 注: 不参与 ATC 分档 — 动态图不传 --input_shape, 见 §6②
 
-passes:                          # 启用集, 来自 third_party/.../fusion_pass
-  - nz_weight
+passes:                          # 启用集; 写路径 (相对仓库根) 或只写目录名, 见 §7
+  - third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
 
 backend:
   type: om_acl                   # om_acl | ge_session
@@ -237,10 +237,13 @@ pass 源码来自 gitcode submodule `third_party/custom_development_code`，库�
 third_party/custom_development_code/fusion_pass/<PassName>/   # CMakeLists.txt + src/*.cpp
 
 每模型 (PassManager.prepare):
-  读 yaml.passes → cmake out-of-source 构建 (缓存在 <repo>/.pass_build/, 不污染 submodule)
+  读 yaml.passes → 逐条解析源码目录 (resolve_pass_dir) → cmake out-of-source 构建
+  (缓存在 <repo>/.pass_build/<PassName>/, 不污染 submodule)
   → lib*.so 拷到 $ASCEND_HOME_PATH/opp/vendors/<model_name>/custom_fusion_passes/
   → CANN 自动扫描 opp/vendors/* 加载 (无需 env)
 ```
+
+- **`passes:` 条目两种写法**（`core/passes.resolve_pass_dir`）：**路径**（绝对 / 相对仓库根 / 相对 CWD，如 `third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass`）或**只写目录名**（`WeightNzAndMatMulV3Pass` → 到 `<third_party>/custom_development_code/fusion_pass/` 下找）。pass 名取目录 basename（用作构建缓存名与日志标识）；解析不到只 WARN 跳过，不崩管线。
 
 - **构建/部署机制（已实测确认）**：cmake `mkdir build && cmake <src> && make` → `lib*.so`；拷到 vendor 的 `custom_fusion_passes/`；`opp/vendors/*` 被 CANN **自动扫描加载**（全局 `custom_nz_pass` 即如此，无需 env）。
 - **fusion pass 是全局的、CANN 层无 per-model 隔离（实测）**：`opp/vendors/*` 下所有 `custom_fusion_passes` 全部自动加载，per-model vendor 目录只是组织归类。**同名 pass 跨 vendor 会重复注册 → ATC/TBE 崩**（实测：全局 `custom_nz_pass` 与 per-model `WeightNzAndMatMulV3Pass` 都注册 `MatMulWeightNZPass`）。本项目**靠"每项目全新 CANN 环境"保证不冲突**（clean env 下只有本模型装的 pass），不做去重；脏环境（残留旧 pass）才会撞，属环境问题。
@@ -394,9 +397,10 @@ class GeExporter:
     def logical_inputs(self) -> list[str]          # forward 签名的逻辑输入序, 供 graph.from_air
 
 # passes.py
+def resolve_pass_dir(entry, third_party_dir) -> (name, src_dir) | None   # 路径或名字两种写法
 class PassManager:
     def __init__(self, model_name, pass_names, third_party_dir)
-    def prepare(self) -> dict[str, str]          # 构建+装 per-model vendor, 返回 env
+    def prepare(self) -> None                    # 构建+装 per-model vendor (CANN 自动扫描, 无需 env)
 
 # backend.py  (时序: compile_graph → write_manifest → run_runtime; 无 Backend 基类, 与 C++ 侧同标准)
 def compile_graph(cfg, graph, base_dir=None) -> om_path | None   # om_acl: run_atc; ge_session: None
