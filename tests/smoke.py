@@ -51,7 +51,7 @@ def _prod(shape):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--weights", default="/export/home/models/Qwen2.5-0.5B")
-    p.add_argument("--device", type=int, default=0)
+    p.add_argument("--device", type=int, required=True)
     p.add_argument("--config", default=CONFIG)
     p.add_argument("--skip", default="compile,run,compare",
                    help="逗号分隔: export,passes,compile,run,compare")
@@ -66,7 +66,7 @@ def main():
         import yaml
         cfg = yaml.safe_load(open(args.config))
         cfg["source"]["ref"] = args.weights
-        cfg["runtime"]["device"] = args.device
+        cfg.pop("runtime", None)              # device 不进配置, 由 --device 传
         cfg["inputs"]["batch_size"] = 2
         cfg["inputs"]["seq_len"] = 16
         # config 须放在 <model_dir>/config/ 下 (load_config 据此推 model_dir)

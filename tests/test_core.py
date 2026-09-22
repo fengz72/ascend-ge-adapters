@@ -147,7 +147,6 @@ inputs: {batch_size: 4, seq_len: 32, prefix_len: 0, seed: 7}
 graph: {format: air, dynamic: {max_seq_len: 1024}}
 passes: [WeightNzAndMatMulV3Pass]
 backend: {type: ge_session, aicore_num: 12}
-runtime: {device: 6}
 verify: {enabled: false}
 """
 
@@ -177,7 +176,8 @@ def test_load_config_full(tmp_path):
     assert cfg.graph.format == "air" and cfg.graph.dynamic.max_seq_len == 1024
     assert cfg.passes == ["WeightNzAndMatMulV3Pass"]
     assert cfg.backend.type == "ge_session" and cfg.backend.aicore_num == 12
-    assert cfg.runtime.device == 6 and cfg.verify.enabled is False
+    assert cfg.verify.enabled is False
+    assert not hasattr(cfg, "runtime")               # device 不进模型配置
 
 
 def test_load_config_defaults_and_unknown_keys(tmp_path):
@@ -187,7 +187,7 @@ def test_load_config_defaults_and_unknown_keys(tmp_path):
     assert (cfg.inputs.batch_size, cfg.inputs.seq_len) == (10, 208)
     assert cfg.graph.dynamic.max_seq_len == 2048
     assert cfg.backend.type == "om_acl" and cfg.backend.aicore_num is None
-    assert cfg.runtime.device == 0 and cfg.verify.enabled is True
+    assert cfg.verify.enabled is True
     assert cfg.passes == []
 
 
@@ -269,7 +269,7 @@ def test_write_manifest_null_om(tmp_path):
     base = tmp_path / "work"
     cfg = ModelConfig(model=ModelMeta(name="m1"), source=SourceCfg(type="torch"))
     path = write_manifest(cfg, str(base / "air" / "m1.air"), None,
-                          str(base / "air" / "s.json"), None, base_dir=str(base))
+                          str(base / "air" / "s.json"), None, base_dir=str(base), device=6)
     m = json.load(open(path))
     assert m["om_path"] is None and m["bundle"] is None
 
@@ -362,6 +362,20 @@ def test_pass_manager_skips_missing(tmp_path, capsys):
     tp.mkdir()
     PassManager("m", ["Nope"], str(tp)).prepare()
     assert "找不到 pass 源码" in capsys.readouterr().out
+
+
+def test_write_manifest_requires_device(tmp_path):
+    """device 是运行期事实, 必须由 --device 传进来 — 不设默认值 (默认 0 通常正是忙卡)。"""
+    cfg = ModelConfig(model=ModelMeta(name="m1"), source=SourceCfg(type="torch"))
+    with pytest.raises(ValueError, match="device"):
+        write_manifest(cfg, "air/m1.air", None, "air/s.json", base_dir=str(tmp_path))
+
+
+def test_load_config_ignores_runtime_section(tmp_path):
+    """老 yaml 里残留的 runtime.device 应被忽略 (不报错、不生效)。"""
+    path, _ = _cfg_dir(tmp_path, MINIMAL_YAML + "\nruntime: {device: 7}\n")
+    cfg = load_config(path)
+    assert not hasattr(cfg, "runtime")
 
 
 # ---------------------------------------------------------------- backend 组合校验 (B1)

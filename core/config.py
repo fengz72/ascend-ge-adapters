@@ -1,7 +1,7 @@
 """模型配置 (YAML 人工声明) 解析 + 运行时 manifest (JSON) 生成。
 
 契约见 docs/architecture.md §5:
-    model.yaml   人工声明 (source/adapt/inputs/graph/passes/backend/runtime/verify)
+    model.yaml   人工声明 (source/adapt/inputs/graph/passes/backend/verify; 不含 device)
     manifest.json 生成的 C++ 运行时契约 (deploy/manifest.json)
 """
 
@@ -61,11 +61,6 @@ class BackendCfg:
 
 
 @dataclass
-class RuntimeCfg:
-    device: int = 0
-
-
-@dataclass
 class VerifyCfg:
     enabled: bool = True
 
@@ -79,7 +74,6 @@ class ModelConfig:
     graph: GraphCfg = field(default_factory=GraphCfg)
     passes: list = field(default_factory=list)
     backend: BackendCfg = field(default_factory=BackendCfg)
-    runtime: RuntimeCfg = field(default_factory=RuntimeCfg)
     verify: VerifyCfg = field(default_factory=VerifyCfg)
     model_dir: str = ""             # 配置文件所在模型目录 (load 时填入)
 
@@ -95,7 +89,12 @@ def _sub(cls, d: dict, **renames):
 
 
 def load_config(path) -> ModelConfig:
-    """解析 model.yaml → ModelConfig。model_dir = config/ 的父目录。"""
+    """解析 model.yaml → ModelConfig。model_dir = config/ 的父目录。
+
+    **不含 device**: 用哪张卡是运行期事实 (每次运行/每台机器都可能不同), 由 CLI `--device`
+    必填传入 (pipeline → load_source/write_manifest → manifest.device → C++ 运行时)。
+    yaml 里多余的 `runtime:` 段会被忽略。
+    """
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
 
@@ -111,7 +110,6 @@ def load_config(path) -> ModelConfig:
         graph=GraphCfg(format=graph_d.get("format", "air"), dynamic=dynamic),
         passes=list(raw.get("passes") or []),
         backend=_sub(BackendCfg, raw.get("backend")),
-        runtime=_sub(RuntimeCfg, raw.get("runtime")),
         verify=_sub(VerifyCfg, raw.get("verify")),
         model_dir=model_dir,
     )
@@ -154,7 +152,12 @@ def write_manifest(cfg: ModelConfig, graph_path, om_path, io_spec_path,
     路径相对 base_dir (默认 model_dir), 保证可移植; --work-dir 调试时 base_dir
     传 work_dir, 产物与 manifest 同根。passes_vendor 存逻辑名 (model.name),
     运行时展开为 $ASCEND_HOME_PATH/opp/vendors/<name> — 不内联绝对路径。
+
+    device **必填** (来自 CLI --device): manifest 是 C++ 运行时的唯一入口, 缺 device
+    它无从知道跑哪张卡; 不设默认值是因为"默认 0 号卡"通常正是被占满的那张。
     """
+    if device is None:
+        raise ValueError("write_manifest 需要 device (由 pipeline 的 --device 传入)")
     base = base_dir or cfg.model_dir
 
     def rel(p):
@@ -165,7 +168,7 @@ def write_manifest(cfg: ModelConfig, graph_path, om_path, io_spec_path,
         "graph_path": rel(graph_path),
         "om_path": rel(om_path),
         "io_spec": rel(io_spec_path),
-        "device": cfg.runtime.device if device is None else device,
+        "device": device,
         "passes_vendor": cfg.model.name,
         "bundle": rel(bundle_path),
     }

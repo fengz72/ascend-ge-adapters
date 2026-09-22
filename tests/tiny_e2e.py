@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core import _torchair_source_name                  # noqa: E402
 from core.backend import RUNTIME_BIN, default_output_dir       # noqa: E402
 from core.config import (BackendCfg, ModelConfig, ModelMeta,   # noqa: E402
-                         RuntimeCfg, SourceCfg, write_manifest)
+                         SourceCfg, write_manifest)
 from core.graph import Graph, IoNode                           # noqa: E402
 from core.verify import Verifier, collect_provenance           # noqa: E402
 from tools.atc_utils import run_atc                            # noqa: E402
@@ -114,8 +114,7 @@ def _run_backend(backend, args, work, graph, io_spec_path, bundle_path, om, veri
     """写 manifest (backend 二选一) → 跑 ge_runtime → compare, 返回指标 dict。"""
     cfg = ModelConfig(model=ModelMeta(name="tiny", soc=args.soc),
                       source=SourceCfg(type="torch"),
-                      backend=BackendCfg(type=backend),
-                      runtime=RuntimeCfg(device=args.device))
+                      backend=BackendCfg(type=backend))
     manifest = write_manifest(cfg, graph.path, om if backend == "om_acl" else None,
                               io_spec_path, bundle_path, base_dir=work, device=args.device)
     out_dir = default_output_dir(manifest)

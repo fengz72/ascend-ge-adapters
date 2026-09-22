@@ -33,8 +33,7 @@ backend:
   type: om_acl                     # om_acl | ge_session
   aicore_num: null
 
-runtime:
-  device: 0
+# 注: 不含 device — 用哪张卡是运行期事实, 由 CLI 必填传入: ./run.sh --device 6
 
 verify:
   enabled: true

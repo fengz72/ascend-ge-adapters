@@ -130,8 +130,8 @@ backend:
   type: om_acl                   # om_acl | ge_session
   aicore_num: null
 
-runtime:
-  device: 0                      # NPU 设备号 (配置化, 不再只靠 CLI --device)
+# 注: 不含 device — 用哪张卡是**运行期事实** (每次运行/每台机器都可能不同),
+#     由 CLI `--device` **必填**传入; 不设默认值 (默认 0 号卡通常正是被占满的那张)
 
 verify:
   enabled: true
@@ -198,6 +198,7 @@ C++ 用 bundle 的**具体 shape** 分配内存、按 `file` 读 .bin；按 **lo
 ```
 
 - `passes_vendor` 存**逻辑名**，运行时展开为 `$ASCEND_HOME_PATH/opp/vendors/<name>`——不内联绝对路径（pass 本就需逐机器构建安装，不承诺 pass 层可移植；但 manifest 自身可移植）。
+- `device` 来自**运行期的 `--device`**（必填），不来自 model.yaml——manifest 是每次生成的产物，把当次用哪张卡记进去正合适；C++ 侧 `--device` 仍可覆盖（换卡重跑不必重新生成 manifest）。
 - `bundle` 仅验证态用；**部署态**（`bundle: null`）跑真实输入时由 CLI `--input logical:d0,d1,...:file.bin` 给具体 shape + .bin，dtype/format/node 仍取自 io_spec（不重复声明）。形态③ ONNX 无 adapter/build_inputs → 天然只有部署态。
 - C++ 读取链：`manifest.json` → backend/路径/io_spec/device → 输入来自 `bundle.json`（验证态）或 `--input`（部署态）→ 喂入、执行、取输出。
 
@@ -359,13 +360,14 @@ Python: compare(outputs, golden) → report   (verify.compare_bundle → tools/c
 
 ```python
 # config.py
-@dataclass ModelConfig: model; source; adapt; inputs; graph; passes; backend; runtime; verify
+@dataclass ModelConfig: model; source; adapt; inputs; graph; passes; backend; verify   # 无 device
 def load_config(path) -> ModelConfig
 def load_adapter(cfg) -> GeModelAdapter        # importlib 从 <model_dir>/model.py 取 adapter_class
-def write_manifest(cfg, graph, om, bundle) -> path   # 写 deploy/manifest.json
+def write_manifest(cfg, graph, om, io_spec, bundle, base_dir, device) -> path
+                                                 # 写 deploy/manifest.json; device 必填
 
 # source.py  (YAGNI: 先 torch 分支, onnx 留桩; 第二形态落地再抽 ABC)
-def load_source(cfg, model_dir) -> torch.nn.Module | Graph
+def load_source(cfg, model_dir, dtype, device) -> torch.nn.Module | Graph   # device 必填(torch 形态)
     # type=name/torch: from_pretrained / importlib 加载 nn.Module
     # type=onnx:       返回 OnnxGraph (桩, 待实例细化)
 
@@ -420,7 +422,7 @@ def bundle_has_golden(bundle_path) -> bool               # pipeline 据此决定
 
 # pipeline.py  (YAGNI: 全量 + --skip, 不做 6 阶段枚举)
 def run(config_path, skip=(), dtype, device, batch_size, seq_len, work_dir,
-        warmup, bench, runtime_extra, runtime_inputs)     # skip ⊂ {export,passes,compile,run,compare}
+        warmup, bench, runtime_extra, runtime_inputs)     # device 必填; skip ⊂ {export,passes,compile,run,compare}
                                                           # runtime_inputs: 部署态 --input 规格 (形态③ 用)
 ```
 

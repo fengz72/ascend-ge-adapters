@@ -17,11 +17,12 @@ from transformers import AutoModelForCausalLM
 from .graph import Graph
 
 
-def load_source(cfg, model_dir, dtype=torch.float16):
+def load_source(cfg, model_dir, dtype=torch.float16, device=None):
     """按 cfg.source.type 加载源模型。
 
     返回: name/torch → torch.nn.Module (已在 NPU、eval); onnx → Graph。
-    设备由本函数设置 (torch_npu.npu.set_device(cfg.runtime.device)), onnx 形态不碰设备。
+    device **必填** (torch 形态): 由调用方从 CLI --device 传下来, 本函数负责
+    torch_npu.npu.set_device(device); onnx 形态不碰设备 (可为 None)。
     dtype 仅 torch 形态生效。
     """
     src = cfg.source
@@ -30,8 +31,10 @@ def load_source(cfg, model_dir, dtype=torch.float16):
 
     if src.type not in ("name", "torch"):
         raise ValueError(f"未知 source.type: {src.type} (期望 name | torch | onnx)")
+    if device is None:
+        raise ValueError("load_source 需要 device (torch 形态; 由 pipeline 的 --device 传入)")
 
-    torch_npu.npu.set_device(cfg.runtime.device)
+    torch_npu.npu.set_device(device)
     if src.type == "torch" and src.module and src.class_name:
         return _from_source_code(src, model_dir)
     return _from_pretrained(src.ref, dtype)

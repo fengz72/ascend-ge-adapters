@@ -78,7 +78,6 @@ def main():
             "graph": {"format": "onnx"},
             "passes": [],
             "backend": {"type": "om_acl"},
-            "runtime": {"device": args.device},
             "verify": {"enabled": False},
         }, open(os.path.join(model_dir, "config", "model.yaml"), "w"), allow_unicode=True)
 

@@ -6,10 +6,11 @@
 用法:
     python -m core.pipeline --config models/qwen2.5-0.5b/config/model.yaml
     python -m core.pipeline --config <yaml> --skip compile,run,compare
-    # 冒烟/调试可覆盖: --device 6 --batch-size 2 --seq-len 16 --work-dir /tmp/x
+    # 冒烟/调试可覆盖: --device 6 (必填) --batch-size 2 --seq-len 16 --work-dir /tmp/x
 """
 
 import argparse
+import glob
 import os
 
 import torch
@@ -45,9 +46,10 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     cfg = load_config(config_path)
     skip = set(skip)
     md = cfg.model_dir
-    eff_device = cfg.runtime.device if device is None else device
-    cfg.runtime.device = eff_device      # CLI --device 须对 source 加载/manifest 一致生效
-    torch_npu.npu.set_device(eff_device)
+    if device is None:
+        raise ValueError("必须指定 device (CLI --device): 用哪张卡是运行期事实, 不进 model.yaml")
+    torch_npu.npu.set_device(device)
+    print(f"[pipeline] device={device}")
 
     name = _export_name(cfg)
     base = work_dir or md
@@ -72,12 +74,12 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
                 f"source.type=onnx 只支持 backend.type=om_acl (当前 {cfg.backend.type!r}): "
                 "GeSession 在线后端只加载 GE 图 (.air/.pbtxt)。ONNX 请经 ATC "
                 "(--framework=5) 编译为 OM 后执行 — docs §1/§9")
-        graph = load_source(cfg, md)
+        graph = load_source(cfg, md, device=device)
         graph.io_spec.to_json(io_spec_path)
         if "passes" not in skip:
             PassManager(cfg.model.name, cfg.passes, _THIRD_PARTY).prepare()
         om = _compile(cfg, graph, base, skip)
-        mp = write_manifest(cfg, graph.path, om, io_spec_path, None, base_dir=base, device=eff_device)
+        mp = write_manifest(cfg, graph.path, om, io_spec_path, None, base_dir=base, device=device)
 
         # 形态③ 无 adapter/build_inputs → 没有 bundle (无 golden, 也无 .bin)。
         # run 走**部署态**: 由调用方用 --input logical:shape:file 给具体输入 (docs §5.5)。
@@ -88,7 +90,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
                     "ONNX 形态无 bundle, run 阶段需要具体输入: "
                     "--input logical:d0,d1,...:file.bin (逐输入, 可重复; "
                     f"io_spec 需要 {[n.logical for n in graph.io_spec.inputs]})")
-            run_runtime(mp, output_dir=outputs_dir, device=eff_device, warmup=warmup,
+            run_runtime(mp, output_dir=outputs_dir, device=device, warmup=warmup,
                         bench=bench, extra=runtime_extra, inputs=runtime_inputs)
             print("[pipeline] ONNX 形态无 golden → 不做 compare (需自行比对, 如 onnxruntime 参考输出)")
         return {"graph": graph.path, "io_spec": io_spec_path, "om": om, "manifest": mp,
@@ -96,7 +98,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
 
     # ---- torch 源 (name / 源码): source 加载 + adapter 适配 ----
     adapter = load_adapter(cfg)
-    raw = load_source(cfg, md, dtype=dtype)
+    raw = load_source(cfg, md, dtype=dtype, device=device)
     # graph.dynamic.max_seq_len 是人工声明的唯一事实源 → 透传给 setup (RoPE 表/因果 mask
     # 等图常量据此定长; 不传则 adapter 用默认值, 与 yaml 声明脱节 → 长序列 Gather 越界)
     model = adapter.adapt(raw, max_seq_len=cfg.graph.dynamic.max_seq_len)
@@ -128,11 +130,11 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     if "passes" not in skip:
         PassManager(cfg.model.name, cfg.passes, _THIRD_PARTY).prepare()
     om = _compile(cfg, graph, base, skip)
-    mp = write_manifest(cfg, graph.path, om, io_spec_path, bundle_path, base_dir=base, device=eff_device)
+    mp = write_manifest(cfg, graph.path, om, io_spec_path, bundle_path, base_dir=base, device=device)
 
     outputs_dir = default_output_dir(mp)
     if "run" not in skip:
-        run_runtime(mp, output_dir=outputs_dir, device=eff_device,
+        run_runtime(mp, output_dir=outputs_dir, device=device,
                     warmup=warmup, bench=bench, extra=runtime_extra)
 
     report = None
@@ -159,17 +161,41 @@ def _output_node(golden):
 
 
 def _compile(cfg, graph, base_dir, skip):
-    """om_acl → ATC 编译出 om_path; ge_session → None (但仍校验 图形态×后端 组合)。"""
+    """om_acl → ATC 编译出 om_path; ge_session → None (但仍校验 图形态×后端 组合)。
+
+    --skip compile 时**复用磁盘上已有的 OM** (否则 manifest.om_path 会是 null, run 阶段
+    直接失败 — 而"复用 AIR/OM 只跑 runtime"正是 --skip compile 的用途)。
+    """
     if "compile" in skip:
-        return None
+        if cfg.backend.type != "om_acl":
+            return None
+        om = _existing_om(base_dir, graph, cfg.backend.aicore_num)
+        if om is None:
+            print(f"[pipeline][WARN] --skip compile 但 {os.path.join(base_dir, 'om')} 下没有匹配的 OM "
+                  f"→ manifest.om_path 为空, run 阶段会失败 (去掉 --skip compile 先编译)")
+        else:
+            print(f"[pipeline] --skip compile: 复用已有 OM {om}")
+        return om
     return compile_graph(cfg, graph, base_dir=base_dir)
+
+
+def _existing_om(base_dir, graph, aicore_num):
+    """找 <base_dir>/om/<图名>[限核后缀]*.om (ATC 会追加 _linux_aarch64 之类后缀)。"""
+    from tools.atc_utils import normalize_aicore
+
+    stem = os.path.splitext(os.path.basename(graph.path))[0]
+    _, suffix = normalize_aicore(aicore_num)
+    pattern = os.path.join(base_dir, "om", stem + suffix + "*.om")
+    matches = sorted(glob.glob(pattern))
+    return matches[0] if matches else None
 
 
 def main():
     p = argparse.ArgumentParser(description="GE 适配管线 (配置驱动)")
     p.add_argument("--config", required=True, help="model.yaml 路径")
     p.add_argument("--skip", default="", help="逗号分隔: export,passes,compile,run,compare")
-    p.add_argument("--device", type=int, default=None, help="覆盖 cfg.runtime.device")
+    p.add_argument("--device", type=int, required=True,
+                   help="NPU 设备号 (必填; 运行期事实, 不进 model.yaml)")
     p.add_argument("--batch-size", type=int, default=None)
     p.add_argument("--seq-len", type=int, default=None)
     p.add_argument("--work-dir", default=None, help="覆盖产物根目录 (默认 model_dir)")
