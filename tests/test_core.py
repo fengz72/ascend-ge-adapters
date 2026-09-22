@@ -16,7 +16,8 @@ import numpy as np
 import pytest
 
 from core.adapter import GeModelAdapter
-from core.config import load_adapter, load_config, write_manifest, AdaptCfg, ModelConfig, ModelMeta, SourceCfg
+from core.config import (load_adapter, load_config, write_manifest, AdaptCfg, ModelConfig,
+                         ModelMeta, SetupEntry, SourceCfg)
 from core.graph import Graph, IoNode, IoSpec, _logical_of, _pair_by_source, _parse_air_data_nodes
 from core.verify import Verifier, bundle_has_golden
 
@@ -145,7 +146,9 @@ source: {type: torch, ref: /w, class: MyModel, module: my.py}
 adapt: {adapter_class: Minimal, params: {prefix: false}}
 inputs: {batch_size: 4, seq_len: 32, prefix_len: 0, seed: 7}
 graph: {format: air, dynamic: {max_seq_len: 1024}}
-passes: [scripts/install_nz_pass.sh]
+passes:
+  - path: third_party/custom_development_code/fusion_pass/FooPass
+    script: scripts/install_nz_pass.sh
 custom_ops: [scripts/install_prefix_attn.sh]
 backend: {type: ge_session, aicore_num: 12}
 verify: {enabled: false}
@@ -175,8 +178,10 @@ def test_load_config_full(tmp_path):
     assert cfg.adapt.params == {"prefix": False}
     assert (cfg.inputs.batch_size, cfg.inputs.seq_len, cfg.inputs.seed) == (4, 32, 7)
     assert cfg.graph.format == "air" and cfg.graph.dynamic.max_seq_len == 1024
-    assert cfg.passes == ["scripts/install_nz_pass.sh"]
-    assert cfg.custom_ops == ["scripts/install_prefix_attn.sh"]
+    # 两种写法: {path, script} 映射 与 纯字符串 (只有脚本)
+    assert cfg.passes == [SetupEntry(script="scripts/install_nz_pass.sh",
+                                     path="third_party/custom_development_code/fusion_pass/FooPass")]
+    assert cfg.custom_ops == [SetupEntry(script="scripts/install_prefix_attn.sh", path="")]
     assert cfg.backend.type == "ge_session" and cfg.backend.aicore_num == 12
     assert cfg.verify.enabled is False
     assert not hasattr(cfg, "runtime")               # device 不进模型配置
@@ -392,6 +397,42 @@ def test_run_scripts_collects_env_file(script_tree, monkeypatch):
     ss.run_scripts(["models/m/scripts/env.sh"], "custom_ops")
     assert os.environ["MY_OP_PATH"].startswith("/opt/opp/vendors/x:")
     monkeypatch.delenv("MY_OP_PATH", raising=False)
+
+
+def test_run_scripts_exports_src_dir(script_tree, monkeypatch):
+    """yaml 的 path → 解析成绝对路径经 $GE_SRC_DIR 传给脚本 (脚本不必硬编码源码位置);
+    未声明 path 时不设该变量。脚本用 $GE_ENV_FILE 把看到的值回传以便断言。"""
+    from core import setup_scripts as ss
+    from core.config import SetupEntry
+
+    root, _ = script_tree
+    monkeypatch.setattr(ss, "_REPO_ROOT", str(root))
+    src = root / "third_party" / "somepass"
+    src.mkdir(parents=True)
+    probe = root / "models" / "m" / "scripts" / "probe.sh"
+    probe.write_text('#!/bin/bash\necho "SEEN_SRC=${GE_SRC_DIR-<unset>}" >> "$GE_ENV_FILE"\n')
+
+    monkeypatch.delenv("SEEN_SRC", raising=False)
+    ss.run_scripts(["models/m/scripts/probe.sh"], "passes")            # 无 path
+    assert os.environ["SEEN_SRC"] == "<unset>"
+
+    ss.run_scripts([SetupEntry(script="models/m/scripts/probe.sh",
+                               path="third_party/somepass")], "passes")  # 有 path
+    assert os.environ["SEEN_SRC"] == str(src)
+    monkeypatch.delenv("SEEN_SRC", raising=False)
+
+
+def test_run_scripts_warns_missing_src(script_tree, monkeypatch, capfd):
+    """声明的源目录不存在 (submodule 未克隆) → WARN 但仍执行脚本, 由脚本决定跳过或失败。"""
+    from core import setup_scripts as ss
+    from core.config import SetupEntry
+
+    root, _ = script_tree
+    monkeypatch.setattr(ss, "_REPO_ROOT", str(root))
+    ss.run_scripts([SetupEntry(script="models/m/scripts/ok.sh", path="third_party/nope")], "passes")
+    out = capfd.readouterr().out
+    assert "声明的源目录不存在" in out and "submodule" in out
+    assert "hello-from-script" in out
 
 
 def test_run_scripts_fails_fast(script_tree, monkeypatch):

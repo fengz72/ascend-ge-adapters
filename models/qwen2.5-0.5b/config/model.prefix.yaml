@@ -30,11 +30,13 @@ graph:
   dynamic:
     max_seq_len: 2048
 
-custom_ops:
-  - models/qwen2.5-0.5b/scripts/install_prefix_attn.sh
+custom_ops:                        # path=三方源(溯源, 传给脚本 $GE_SRC_DIR), script=安装脚本
+  - path: third_party/ascend-ops/prefix-attention
+    script: models/qwen2.5-0.5b/scripts/install_prefix_attn.sh
 
 passes:
-  - models/qwen2.5-0.5b/scripts/install_nz_pass.sh
+  - path: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
+    script: models/qwen2.5-0.5b/scripts/install_nz_pass.sh
 
 backend:
   type: om_acl

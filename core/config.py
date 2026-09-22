@@ -61,6 +61,19 @@ class BackendCfg:
 
 
 @dataclass
+class SetupEntry:
+    """一条环境准备声明 (fusion pass / 自定义算子): 源在哪 + 用哪个脚本装。
+
+    script  安装脚本路径 (框架只负责执行, 不假设构建方式 — 见 core/setup_scripts.py)
+    path    三方源目录 (如 third_party/custom_development_code/fusion_pass/XxxPass)。
+            作用是**溯源**(配置里一眼看出 pass/算子从哪来) + 传给脚本 ($GE_SRC_DIR),
+            框架自己不拿它构建。
+    """
+    script: str
+    path: str = ""
+
+
+@dataclass
 class VerifyCfg:
     enabled: bool = True
 
@@ -72,8 +85,8 @@ class ModelConfig:
     adapt: AdaptCfg = field(default_factory=AdaptCfg)
     inputs: InputsCfg = field(default_factory=InputsCfg)
     graph: GraphCfg = field(default_factory=GraphCfg)
-    passes: list = field(default_factory=list)        # fusion pass 安装脚本路径 (ATC 前执行)
-    custom_ops: list = field(default_factory=list)    # 自定义算子安装脚本路径 (加载 adapter 前执行)
+    passes: list = field(default_factory=list)        # list[SetupEntry] fusion pass (ATC 前执行)
+    custom_ops: list = field(default_factory=list)    # list[SetupEntry] 自定义算子 (加载 adapter 前)
     backend: BackendCfg = field(default_factory=BackendCfg)
     verify: VerifyCfg = field(default_factory=VerifyCfg)
     model_dir: str = ""             # 配置文件所在模型目录 (load 时填入)
@@ -87,6 +100,28 @@ def _sub(cls, d: dict, **renames):
             d[field_name] = d.pop(yaml_key)
     valid = {f for f in cls.__dataclass_fields__}
     return cls(**{k: v for k, v in d.items() if k in valid})
+
+
+def _setup_entries(raw) -> list:
+    """yaml 的 passes/custom_ops → list[SetupEntry]。
+
+    两种写法:
+        - path: third_party/.../XxxPass        # 源 (溯源 + $GE_SRC_DIR)
+          script: models/m/scripts/install.sh  # 安装脚本
+        - models/m/scripts/install.sh          # 只给脚本 (无源路径)
+    """
+    entries = []
+    for item in raw or []:
+        if isinstance(item, str):
+            entries.append(SetupEntry(script=item))
+        elif isinstance(item, dict):
+            script = item.get("script") or item.get("install") or ""
+            if not script:
+                raise ValueError(f"passes/custom_ops 条目缺 script 字段: {item}")
+            entries.append(SetupEntry(script=str(script), path=str(item.get("path") or "")))
+        else:
+            raise ValueError(f"passes/custom_ops 条目须是字符串或 {{path, script}} 映射: {item!r}")
+    return entries
 
 
 def load_config(path) -> ModelConfig:
@@ -109,8 +144,8 @@ def load_config(path) -> ModelConfig:
         adapt=_sub(AdaptCfg, raw.get("adapt")),
         inputs=_sub(InputsCfg, raw.get("inputs")),
         graph=GraphCfg(format=graph_d.get("format", "air"), dynamic=dynamic),
-        passes=list(raw.get("passes") or []),
-        custom_ops=list(raw.get("custom_ops") or []),
+        passes=_setup_entries(raw.get("passes")),
+        custom_ops=_setup_entries(raw.get("custom_ops")),
         backend=_sub(BackendCfg, raw.get("backend")),
         verify=_sub(VerifyCfg, raw.get("verify")),
         model_dir=model_dir,

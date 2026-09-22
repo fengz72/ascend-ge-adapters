@@ -123,11 +123,13 @@ graph:
     max_seq_len: 2048            # 图常量长度 (RoPE 表 / 因果 mask), 经 adapt(setup_kwargs) 透传
     # 注: 不参与 ATC 分档 — 动态图不传 --input_shape, 见 §6②
 
-custom_ops:                      # 自定义算子安装**脚本** (加载 adapter 前执行), 见 §7
-  - models/qwen2.5-0.5b/scripts/install_prefix_attn.sh
+custom_ops:                      # 自定义算子 (加载 adapter 前执行), 见 §7
+  - path: third_party/ascend-ops/prefix-attention              # 三方源: 溯源 + $GE_SRC_DIR
+    script: models/qwen2.5-0.5b/scripts/install_prefix_attn.sh # 安装脚本
 
-passes:                          # fusion pass 安装**脚本** (ATC 编译前执行), 见 §7
-  - models/qwen2.5-0.5b/scripts/install_nz_pass.sh
+passes:                          # fusion pass (ATC 编译前执行), 见 §7
+  - path: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
+    script: models/qwen2.5-0.5b/scripts/install_nz_pass.sh
 
 backend:
   type: om_acl                   # om_acl | ge_session
@@ -237,12 +239,21 @@ pipeline 编排完        → 汇总 backend/路径/io_spec 引用/device/vendor
 
 ```yaml
 custom_ops:                        # 在**加载 adapter 之前**执行 (model.py 可能 import 算子绑定)
-  - models/qwen2.5-0.5b/scripts/install_prefix_attn.sh
+  - path: third_party/ascend-ops/prefix-attention              # 三方源在哪 (溯源)
+    script: models/qwen2.5-0.5b/scripts/install_prefix_attn.sh # 怎么装 (用户脚本)
 passes:                            # 在 **ATC 编译之前**执行
-  - models/qwen2.5-0.5b/scripts/install_nz_pass.sh
+  - path: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
+    script: models/qwen2.5-0.5b/scripts/install_nz_pass.sh
 ```
 
-脚本约定（`core/setup_scripts.py`）：路径按 绝对 / 相对仓库根 / 相对 model_dir / 相对 CWD 依次解析；`.py` 用当前解释器、其余用 `bash`（不要求 +x 与 shebang）；继承当前 env；输出直接透传（构建动辄几分钟，要能看进度）；**非 0 退出即抛**（静默继续 = 算子没装上，下游报一堆看不懂的错）；幂等由脚本自己负责（"已装则 exit 0"）。脚本若要回传环境变量，把 `KEY=VALUE` 行写进 `$GE_ENV_FILE`——框架读进 `os.environ`（从而传给后续 ATC / `ge_runtime` 子进程），`PYTHONPATH` 还会同步进本进程 `sys.path`，并 `importlib.invalidate_caches()`（脚本刚 pip 装的绑定包当前进程才 import 得到）。
+**条目 = `path` + `script`**（`core.config.SetupEntry`；也允许只写脚本路径的纯字符串条目）：
+- `path` 是**三方源目录**，作用是①配置里一眼看出这个 pass/算子从哪来（溯源）②解析成绝对路径后经
+  **`$GE_SRC_DIR`** 传给脚本，脚本不必硬编码源码位置（示例脚本写成 `${GE_SRC_DIR:-<回退路径>}`，
+  单独手跑也能用）。框架**不拿 path 构建**——构建方式归脚本。源目录不存在（submodule 未克隆）
+  只 WARN 并照常执行脚本，由脚本决定跳过还是失败。
+- `script` 是安装脚本，路径解析规则见下。
+
+脚本约定（`core/setup_scripts.py`）：`script` 与 `path` 都按 绝对 / 相对仓库根 / 相对 model_dir / 相对 CWD 依次解析；`.py` 用当前解释器、其余用 `bash`（不要求 +x 与 shebang）；继承当前 env；输出直接透传（构建动辄几分钟，要能看进度）；**非 0 退出即抛**（静默继续 = 算子没装上，下游报一堆看不懂的错）；幂等由脚本自己负责（"已装则 exit 0"）。脚本拿到的输入是 `$GE_SRC_DIR`（源目录）与 `$GE_ENV_FILE`；若要回传环境变量，把 `KEY=VALUE` 行写进 `$GE_ENV_FILE`——框架读进 `os.environ`（从而传给后续 ATC / `ge_runtime` 子进程），`PYTHONPATH` 还会同步进本进程 `sys.path`，并 `importlib.invalidate_caches()`（脚本刚 pip 装的绑定包当前进程才 import 得到）。
 
 ### 7.1 安装位置：都装到 `opp/vendors/<各自的 vendor 名>/`
 
@@ -378,6 +389,7 @@ Python: compare(outputs, golden) → report   (verify.compare_bundle → tools/c
 ```python
 # config.py
 @dataclass ModelConfig: model; source; adapt; inputs; graph; passes; backend; verify   # 无 device
+@dataclass SetupEntry: script; path       # passes/custom_ops 的条目 (脚本 + 三方源)
 def load_config(path) -> ModelConfig
 def load_adapter(cfg) -> GeModelAdapter        # importlib 从 <model_dir>/model.py 取 adapter_class
 def write_manifest(cfg, graph, om, io_spec, bundle, base_dir, device) -> path
@@ -417,7 +429,8 @@ class GeExporter:
 
 # setup_scripts.py  (pass / 自定义算子的构建安装 = 用户脚本, 框架只按序执行)
 def resolve_script(entry, model_dir=None) -> path | None   # 绝对/仓库根/model_dir/CWD
-def run_scripts(entries, stage, model_dir=None) -> list    # 按序执行; 非 0 退出即抛;
+def run_scripts(entries, stage, model_dir=None) -> list    # entries: SetupEntry|dict|str;
+                                                           # 按序执行, 传 $GE_SRC_DIR, 非 0 即抛,
                                                            # 回收脚本写进 $GE_ENV_FILE 的 env
 
 # backend.py  (时序: compile_graph → write_manifest → run_runtime; 无 Backend 基类, 与 C++ 侧同标准)

@@ -10,8 +10,15 @@
     custom_ops:  在**加载 adapter 之前**执行 — model.py 可能 import 算子的 torch 绑定
     passes:      在 **ATC 编译之前**执行 — fusion pass 装进 opp/vendors 后由 CANN 自动扫描
 
+条目形状 (core.config.SetupEntry):
+    - path: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
+      script: models/qwen2.5-0.5b/scripts/install_nz_pass.sh
+  `path` 是**三方源目录**, 只用于 ① 配置里一眼看出 pass/算子从哪来 (溯源) ② 以
+  `$GE_SRC_DIR` 传给脚本 (脚本不必硬编码源码位置); 框架**不拿它构建** — 构建方式
+  归脚本。也允许只写脚本路径 (纯字符串条目)。
+
 约定:
-  - 路径解析: 绝对路径 / 相对仓库根 / 相对 model_dir / 相对 CWD, 依次尝试
+  - 路径解析 (script 与 path 同规则): 绝对路径 / 相对仓库根 / 相对 model_dir / 相对 CWD
   - 执行方式: `.py` → 当前解释器; 其余 → `bash <script>` (不要求 +x 与 shebang)
   - 环境: 继承当前进程 env (先 source CANN 的 set_env.sh 与 models/<model>/env.sh);
     脚本若要回传环境变量, 把 `KEY=VALUE` 行写进 `$GE_ENV_FILE` — 框架读进 os.environ,
@@ -55,15 +62,17 @@ def resolve_script(entry, model_dir=None):
 def run_scripts(entries, stage, model_dir=None):
     """按序执行脚本, 返回实际执行过的脚本路径列表。
 
+    entries: SetupEntry / dict{path,script} / str(脚本路径) 皆可。
     stage 只用于日志/报错前缀 (如 "custom_ops" / "passes")。
     任一脚本非 0 退出 → RuntimeError (带脚本路径与退出码)。
     """
     ran = []
     for entry in entries or []:
-        script = resolve_script(entry, model_dir)
+        script_spec, src_spec = _entry_fields(entry)
+        script = resolve_script(script_spec, model_dir)
         if script is None:
             raise FileNotFoundError(
-                f"[{stage}] 找不到脚本: {entry!r} (试过: 绝对路径 / 仓库根 {_REPO_ROOT} / "
+                f"[{stage}] 找不到脚本: {script_spec!r} (试过: 绝对路径 / 仓库根 {_REPO_ROOT} / "
                 f"model_dir {model_dir} / CWD)")
 
         env = os.environ.copy()
@@ -71,8 +80,20 @@ def run_scripts(entries, stage, model_dir=None):
         os.close(fd)
         env["GE_ENV_FILE"] = env_file
 
+        # 三方源目录: 只溯源 + 传给脚本 ($GE_SRC_DIR), 框架不拿它构建
+        src_dir = None
+        if src_spec:
+            src_dir = _resolve_dir(src_spec, model_dir)
+            if src_dir is None:
+                print(f"[{stage}][WARN] 声明的源目录不存在: {src_spec!r} "
+                      f"(submodule 未克隆? git submodule update --init --recursive) — "
+                      f"仍执行脚本, 由脚本决定跳过还是失败")
+            else:
+                env["GE_SRC_DIR"] = src_dir
+
         cmd = [sys.executable, script] if script.endswith(".py") else ["bash", script]
-        print(f"[{stage}] 执行 {' '.join(cmd)}")
+        label = os.path.basename(src_dir) if src_dir else os.path.basename(script)
+        print(f"[{stage}] {label}" + (f" ← {src_dir}" if src_dir else "") + f" | {' '.join(cmd)}")
         try:
             proc = subprocess.run(cmd, env=env)
         finally:
@@ -89,6 +110,31 @@ def run_scripts(entries, stage, model_dir=None):
                 f"        框架不猜安装方式, 请检查脚本本身 (构建日志见上方输出)")
         ran.append(script)
     return ran
+
+
+def _entry_fields(entry):
+    """SetupEntry / dict / str → (script, path)。"""
+    if isinstance(entry, str):
+        return entry, ""
+    if isinstance(entry, dict):
+        return str(entry.get("script") or ""), str(entry.get("path") or "")
+    return str(getattr(entry, "script", "") or ""), str(getattr(entry, "path", "") or "")
+
+
+def _resolve_dir(entry, model_dir=None):
+    """目录版的路径解析 (规则同 resolve_script); 找不到返回 None。"""
+    if not entry:
+        return None
+    entry = str(entry).strip()
+    candidates = [entry] if os.path.isabs(entry) else [
+        os.path.join(_REPO_ROOT, entry),
+        os.path.join(model_dir, entry) if model_dir else None,
+        os.path.abspath(entry),
+    ]
+    for path in candidates:
+        if path and os.path.isdir(path):
+            return os.path.normpath(path)
+    return None
 
 
 def _apply_env_file(path):

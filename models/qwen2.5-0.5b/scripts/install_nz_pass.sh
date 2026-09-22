@@ -23,7 +23,8 @@ VENDOR="custom_nz_pass"                  # 安装目标 vendor (pass 自己的�
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-SRC_DIR="${REPO_ROOT}/third_party/custom_development_code/fusion_pass/${PASS_DIR}"
+# 源目录优先用 yaml 声明的 path (框架经 $GE_SRC_DIR 传入), 单独手跑时回退到仓库内约定位置
+SRC_DIR="${GE_SRC_DIR:-${REPO_ROOT}/third_party/custom_development_code/fusion_pass/${PASS_DIR}}"
 BUILD_DIR="${REPO_ROOT}/.pass_build/${PASS_DIR}"
 VENDORS_DIR="${ASCEND_HOME_PATH:?请先 source CANN 的 set_env.sh (需要 ASCEND_HOME_PATH)}/opp/vendors"
 DST_DIR="${VENDORS_DIR}/${VENDOR}/custom_fusion_passes"

@@ -24,7 +24,8 @@ BINDING="npu_prefix_infer_attention_score"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-OP_DIR="${REPO_ROOT}/third_party/ascend-ops/prefix-attention"
+# 源目录优先用 yaml 声明的 path (框架经 $GE_SRC_DIR 传入), 单独手跑时回退到仓库内约定位置
+OP_DIR="${GE_SRC_DIR:-${REPO_ROOT}/third_party/ascend-ops/prefix-attention}"
 VENDOR_DIR="${ASCEND_HOME_PATH:?请先 source CANN 的 set_env.sh (需要 ASCEND_HOME_PATH)}/opp/vendors/${VENDOR}"
 
 log()  { echo "[prefix_attn] $*"; }
