@@ -6,8 +6,8 @@
 
 全链路 (含 C++ runtime 闭环, 需先 bash runtime/build.sh):
     PYTHONPATH=.:$PYTHONPATH python3 tests/smoke.py \
-        --weights /export/home/models/Qwen2.5-0.5B --device 6 --skip passes
-    # --skip passes: 脏环境 (opp/vendors 已装同名 pass) 下避免重复注册冲突, 见 docs §7
+        --weights /export/home/models/Qwen2.5-0.5B --device 6 --skip compile,run,compare
+    # 默认只到 bundle; 加 --full 跑全链路 (pass/算子安装脚本幂等, 无需 --skip passes)
 
 需要: 真实权重 + 空闲 NPU。耗时数分钟 (含 dynamo_export, AIR ~1GB)。
 
@@ -54,10 +54,12 @@ def main():
     p.add_argument("--device", type=int, required=True)
     p.add_argument("--config", default=CONFIG)
     p.add_argument("--skip", default="compile,run,compare",
-                   help="逗号分隔: export,passes,compile,run,compare")
+                   help="逗号分隔: ops,export,passes,compile,run,compare")
+    p.add_argument("--full", action="store_true",
+                   help="跑全链路 (等价 --skip ''; 含 ATC 编译与 C++ runtime, 约 15min)")
     args = p.parse_args()
 
-    skip = tuple(s for s in args.skip.split(",") if s)
+    skip = () if args.full else tuple(s for s in args.skip.split(",") if s)
 
     # 用真实权重路径临时改写 config (不改仓库内的 model.yaml)
     tmp_cfg_dir = tempfile.mkdtemp()
@@ -118,7 +120,7 @@ def main():
         assert gsize == n_seq * vocab * 2, f"golden .bin 字节数异常: {gsize}"
 
         mf = json.load(open(out["manifest"]))
-        assert mf["device"] == args.device and mf["passes_vendor"] == "qwen2.5-0.5b"
+        assert mf["device"] == args.device, mf
         assert not mf["graph_path"].startswith(".."), f"manifest 路径错位: {mf['graph_path']}"
 
         if "run" not in skip:

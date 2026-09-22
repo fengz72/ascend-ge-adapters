@@ -1,0 +1,121 @@
+"""环境准备脚本接口 — fusion pass / 自定义算子的构建安装由**用户脚本**负责, 框架只按序执行。
+
+为什么不做自动化: 每个 pass / 算子源的安装方式都不一样 (fusion pass 是 cmake 出 .so 再拷到
+`opp/vendors/<v>/custom_fusion_passes/`; AscendC 自定义算子是 `build.sh` 产 `.run` 再
+`--install-path=$ASCEND_HOME_PATH/opp`, 还要 pip 装 torch 绑定 wheel; 有的需要 source
+`set_env.bash`)。框架内置任何一种都会对不上号, 还得跟着三方源改版。所以只提供一个稳定
+接口: **yaml 里填脚本路径**, 框架负责解析路径 → 按序执行 → 失败即停 → 回收脚本导出的环境变量。
+
+两类脚本 (model.yaml, 见 docs §7):
+    custom_ops:  在**加载 adapter 之前**执行 — model.py 可能 import 算子的 torch 绑定
+    passes:      在 **ATC 编译之前**执行 — fusion pass 装进 opp/vendors 后由 CANN 自动扫描
+
+约定:
+  - 路径解析: 绝对路径 / 相对仓库根 / 相对 model_dir / 相对 CWD, 依次尝试
+  - 执行方式: `.py` → 当前解释器; 其余 → `bash <script>` (不要求 +x 与 shebang)
+  - 环境: 继承当前进程 env (先 source CANN 的 set_env.sh 与 models/<model>/env.sh);
+    脚本若要回传环境变量, 把 `KEY=VALUE` 行写进 `$GE_ENV_FILE` — 框架读进 os.environ,
+    从而传给后续 ATC / ge_runtime 子进程 (进程内 export 是拿不到的)
+  - 输出: 直接继承 stdout/stderr (构建动辄几分钟, 要能看到进度)
+  - 幂等: 由脚本自己判断 (如"已安装则 exit 0"), 框架不缓存
+  - 失败: 非 0 退出即抛 RuntimeError — 静默继续只会把问题推到更难查的下游
+    (算子没装上 → 导出/ATC 报一堆看不懂的错)
+"""
+
+import importlib
+import os
+import subprocess
+import sys
+import tempfile
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def resolve_script(entry, model_dir=None):
+    """把 yaml 里的脚本条目解析成绝对路径; 找不到返回 None。
+
+    依次尝试: 绝对路径 → 相对仓库根 → 相对 model_dir → 相对 CWD。
+    """
+    if not entry:
+        return None
+    entry = str(entry).strip()
+    if not entry:
+        return None
+    candidates = [entry] if os.path.isabs(entry) else [
+        os.path.join(_REPO_ROOT, entry),
+        os.path.join(model_dir, entry) if model_dir else None,
+        os.path.abspath(entry),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return os.path.normpath(path)
+    return None
+
+
+def run_scripts(entries, stage, model_dir=None):
+    """按序执行脚本, 返回实际执行过的脚本路径列表。
+
+    stage 只用于日志/报错前缀 (如 "custom_ops" / "passes")。
+    任一脚本非 0 退出 → RuntimeError (带脚本路径与退出码)。
+    """
+    ran = []
+    for entry in entries or []:
+        script = resolve_script(entry, model_dir)
+        if script is None:
+            raise FileNotFoundError(
+                f"[{stage}] 找不到脚本: {entry!r} (试过: 绝对路径 / 仓库根 {_REPO_ROOT} / "
+                f"model_dir {model_dir} / CWD)")
+
+        env = os.environ.copy()
+        fd, env_file = tempfile.mkstemp(prefix="ge_env_")
+        os.close(fd)
+        env["GE_ENV_FILE"] = env_file
+
+        cmd = [sys.executable, script] if script.endswith(".py") else ["bash", script]
+        print(f"[{stage}] 执行 {' '.join(cmd)}")
+        try:
+            proc = subprocess.run(cmd, env=env)
+        finally:
+            applied = _apply_env_file(env_file)
+            os.unlink(env_file)
+        if applied:
+            print(f"[{stage}] 脚本回传环境变量: {', '.join(applied)}")
+        # 脚本可能刚装了 Python 包 (如算子的 torch 绑定) → 清导入缓存, 否则本进程 import 不到
+        importlib.invalidate_caches()
+
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"[{stage}] 脚本失败 (exit={proc.returncode}): {script}\n"
+                f"        框架不猜安装方式, 请检查脚本本身 (构建日志见上方输出)")
+        ran.append(script)
+    return ran
+
+
+def _apply_env_file(path):
+    """读脚本写下的 KEY=VALUE 行 → os.environ, 返回被设置的键名列表。
+
+    PYTHONPATH 特殊处理: 除写 os.environ (给后续子进程) 外, 同时把新增路径插进本进程的
+    sys.path —— 否则脚本刚装的绑定包在当前进程里 import 不到 (model.py 随后就要 import)。
+    """
+    applied = []
+    try:
+        with open(path) as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return applied
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        if not key:
+            continue
+        os.environ[key] = value
+        applied.append(key)
+        if key == "PYTHONPATH":
+            for entry in value.split(os.pathsep):
+                entry = entry.strip()
+                if entry and entry not in sys.path:
+                    sys.path.insert(0, entry)
+    return applied

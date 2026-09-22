@@ -207,9 +207,7 @@ int main(int argc, char *argv[]) {
         Manifest manifest = Manifest::Load(opt.manifest);
         int device = opt.device >= 0 ? opt.device : manifest.device;
         std::cout << "[INFO] manifest: " << opt.manifest << " (backend=" << manifest.backend
-                  << ", device=" << device << ", base=" << manifest.base_dir
-                  << ", passes_vendor=" << (manifest.passes_vendor.empty() ? "-" : manifest.passes_vendor)
-                  << ")" << std::endl;
+                  << ", device=" << device << ", base=" << manifest.base_dir << ")" << std::endl;
 
         IoSpec spec = IoSpec::Load(manifest.Resolve(manifest.io_spec));
 

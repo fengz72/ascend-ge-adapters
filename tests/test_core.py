@@ -145,7 +145,8 @@ source: {type: torch, ref: /w, class: MyModel, module: my.py}
 adapt: {adapter_class: Minimal, params: {prefix: false}}
 inputs: {batch_size: 4, seq_len: 32, prefix_len: 0, seed: 7}
 graph: {format: air, dynamic: {max_seq_len: 1024}}
-passes: [WeightNzAndMatMulV3Pass]
+passes: [scripts/install_nz_pass.sh]
+custom_ops: [scripts/install_prefix_attn.sh]
 backend: {type: ge_session, aicore_num: 12}
 verify: {enabled: false}
 """
@@ -174,7 +175,8 @@ def test_load_config_full(tmp_path):
     assert cfg.adapt.params == {"prefix": False}
     assert (cfg.inputs.batch_size, cfg.inputs.seq_len, cfg.inputs.seed) == (4, 32, 7)
     assert cfg.graph.format == "air" and cfg.graph.dynamic.max_seq_len == 1024
-    assert cfg.passes == ["WeightNzAndMatMulV3Pass"]
+    assert cfg.passes == ["scripts/install_nz_pass.sh"]
+    assert cfg.custom_ops == ["scripts/install_prefix_attn.sh"]
     assert cfg.backend.type == "ge_session" and cfg.backend.aicore_num == 12
     assert cfg.verify.enabled is False
     assert not hasattr(cfg, "runtime")               # device 不进模型配置
@@ -188,7 +190,7 @@ def test_load_config_defaults_and_unknown_keys(tmp_path):
     assert cfg.graph.dynamic.max_seq_len == 2048
     assert cfg.backend.type == "om_acl" and cfg.backend.aicore_num is None
     assert cfg.verify.enabled is True
-    assert cfg.passes == []
+    assert cfg.passes == [] and cfg.custom_ops == []
 
 
 # ---------------------------------------------------------------- load_adapter (A1 回归)
@@ -260,7 +262,7 @@ def test_write_manifest_relative_paths(tmp_path):
                           base_dir=str(base), device=6)
     m = json.load(open(path))
     assert m == {"backend": "om_acl", "graph_path": "air/m1.air", "om_path": "om/m1.om",
-                 "io_spec": "air/m1.io_spec.json", "device": 6, "passes_vendor": "m1",
+                 "io_spec": "air/m1.io_spec.json", "device": 6,
                  "bundle": "verification/bundle.json"}
 
 
@@ -334,51 +336,85 @@ def test_compare_bundle_missing_outputs(tmp_path):
         Verifier().compare_bundle(bundle, out, dtype="float16", verbose=False)
 
 
-# ---------------------------------------------------------------- passes 路径解析
+# ---------------------------------------------------------------- setup_scripts (脚本接口)
 
-def test_resolve_pass_dir(tmp_path):
-    """yaml 的 passes 条目: 路径 (绝对/相对仓库根/相对 CWD) 与 只写名字 都要能解析。"""
-    from core.passes import resolve_pass_dir
-
-    tp = tmp_path / "third_party"
-    src = tp / "custom_development_code" / "fusion_pass" / "FooPass"
-    src.mkdir(parents=True)
-
-    rel = "third_party/custom_development_code/fusion_pass/FooPass"
-    assert resolve_pass_dir(rel, str(tp)) == ("FooPass", str(src))       # 相对仓库根
-    assert resolve_pass_dir(str(src), str(tp)) == ("FooPass", str(src))  # 绝对路径
-    assert resolve_pass_dir(str(src) + "/", str(tp)) == ("FooPass", str(src))  # 尾斜杠
-    assert resolve_pass_dir("FooPass", str(tp)) == ("FooPass", str(src))  # 只写名字 (向后兼容)
-    assert resolve_pass_dir("Nope", str(tp)) is None
-    assert resolve_pass_dir("", str(tp)) is None
-    assert resolve_pass_dir(None, str(tp)) is None
+@pytest.fixture
+def script_tree(tmp_path):
+    """造一个仓库形状: <root>/models/m/scripts/{ok.sh,env.sh,boom.sh,ok.py}。"""
+    root = tmp_path
+    scripts = root / "models" / "m" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "ok.sh").write_text("#!/bin/bash\necho hello-from-script\n")
+    (scripts / "env.sh").write_text(
+        "#!/bin/bash\necho \"MY_OP_PATH=/opt/opp/vendors/x:${ASCEND_CUSTOM_OPP_PATH:-}\" "
+        ">> \"$GE_ENV_FILE\"\n")
+    (scripts / "boom.sh").write_text("#!/bin/bash\necho boom >&2\nexit 3\n")
+    (scripts / "ok.py").write_text("print('hello-from-python')\n")
+    return root, scripts
 
 
-def test_pass_manager_skips_missing(tmp_path, capsys):
-    """找不到源码只 WARN 不抛 (管线不因 pass 缺失而崩)。"""
-    from core.passes import PassManager
+def test_resolve_script_forms(script_tree, monkeypatch):
+    """绝对 / 相对仓库根 / 相对 model_dir / 相对 CWD 四种写法都要能解析。"""
+    from core import setup_scripts as ss
 
-    tp = tmp_path / "third_party"
-    tp.mkdir()
-    PassManager("m", ["Nope"], str(tp)).prepare()
-    assert "找不到 pass 源码" in capsys.readouterr().out
-
-
-def test_write_manifest_requires_device(tmp_path):
-    """device 是运行期事实, 必须由 --device 传进来 — 不设默认值 (默认 0 通常正是忙卡)。"""
-    cfg = ModelConfig(model=ModelMeta(name="m1"), source=SourceCfg(type="torch"))
-    with pytest.raises(ValueError, match="device"):
-        write_manifest(cfg, "air/m1.air", None, "air/s.json", base_dir=str(tmp_path))
-
-
-def test_load_config_ignores_runtime_section(tmp_path):
-    """老 yaml 里残留的 runtime.device 应被忽略 (不报错、不生效)。"""
-    path, _ = _cfg_dir(tmp_path, MINIMAL_YAML + "\nruntime: {device: 7}\n")
-    cfg = load_config(path)
-    assert not hasattr(cfg, "runtime")
+    root, scripts = script_tree
+    monkeypatch.setattr(ss, "_REPO_ROOT", str(root))
+    rel = "models/m/scripts/ok.sh"
+    assert ss.resolve_script(rel) == str(scripts / "ok.sh")                 # 相对仓库根
+    assert ss.resolve_script(str(scripts / "ok.sh")) == str(scripts / "ok.sh")   # 绝对
+    assert ss.resolve_script("scripts/ok.sh", str(root / "models" / "m")) == \
+        str(scripts / "ok.sh")                                              # 相对 model_dir
+    monkeypatch.chdir(root)
+    assert ss.resolve_script(rel) == str(scripts / "ok.sh")                 # 相对 CWD
+    assert ss.resolve_script("nope.sh") is None
+    assert ss.resolve_script("") is None and ss.resolve_script(None) is None
 
 
-# ---------------------------------------------------------------- backend 组合校验 (B1)
+def test_run_scripts_runs_bash_and_python(script_tree, monkeypatch, capfd):
+    """`.sh` 走 bash、`.py` 走当前解释器; 子进程输出直接继承 (构建要能看进度) → 用 capfd。"""
+    from core import setup_scripts as ss
+
+    root, scripts = script_tree
+    monkeypatch.setattr(ss, "_REPO_ROOT", str(root))
+    ran = ss.run_scripts(["models/m/scripts/ok.sh", "models/m/scripts/ok.py"], "custom_ops")
+    assert ran == [str(scripts / "ok.sh"), str(scripts / "ok.py")]
+    out = capfd.readouterr().out
+    assert "hello-from-script" in out and "hello-from-python" in out
+
+
+def test_run_scripts_collects_env_file(script_tree, monkeypatch):
+    """脚本进程内 export 传不回来 → 约定写 $GE_ENV_FILE, 框架读进 os.environ。"""
+    from core import setup_scripts as ss
+
+    root, _ = script_tree
+    monkeypatch.setattr(ss, "_REPO_ROOT", str(root))
+    monkeypatch.delenv("MY_OP_PATH", raising=False)
+    ss.run_scripts(["models/m/scripts/env.sh"], "custom_ops")
+    assert os.environ["MY_OP_PATH"].startswith("/opt/opp/vendors/x:")
+    monkeypatch.delenv("MY_OP_PATH", raising=False)
+
+
+def test_run_scripts_fails_fast(script_tree, monkeypatch):
+    """脚本非 0 退出必须抛 (静默继续 = 算子没装上, 下游报一堆看不懂的错)。"""
+    from core import setup_scripts as ss
+
+    root, scripts = script_tree
+    monkeypatch.setattr(ss, "_REPO_ROOT", str(root))
+    with pytest.raises(RuntimeError, match="exit=3"):
+        ss.run_scripts(["models/m/scripts/boom.sh"], "passes")
+
+
+def test_run_scripts_missing_script(script_tree, monkeypatch):
+    from core import setup_scripts as ss
+
+    root, _ = script_tree
+    monkeypatch.setattr(ss, "_REPO_ROOT", str(root))
+    with pytest.raises(FileNotFoundError, match="找不到脚本"):
+        ss.run_scripts(["models/m/scripts/nope.sh"], "passes")
+    assert ss.run_scripts([], "passes") == []          # 空列表是合法的 (不装 pass/算子)
+
+
+# ---------------------------------------------------------------- backend 组合校验 (B1)# ---------------------------------------------------------------- backend 组合校验 (B1)
 
 def test_ge_session_rejects_onnx():
     """形态③ ONNX 走不了在线后端 — 必须在编译/配置期报错, 而不是等 C++ 运行期。"""

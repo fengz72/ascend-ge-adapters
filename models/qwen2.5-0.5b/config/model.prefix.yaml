@@ -1,0 +1,44 @@
+# qwen2.5-0.5b — prefix-attention 变体 (PIA 算子, KV 内嵌版)
+#
+# 与 model.yaml 的唯一区别: adapt.params.prefix=true + inputs.prefix_len>0
+# (导出名自动变成 qwen2.5-0.5b-prefix, 产物与基线互不覆盖)。
+# 依赖: custom_ops 里的 install_prefix_attn.sh 装好 PIA 算子 (见 third_party/ascend-ops)。
+# 语义/约束与实测数据: models/qwen2.5-0.5b/docs/prefix-attention/
+
+model:
+  name: qwen2.5-0.5b
+  soc: Ascend910_9382
+
+source:
+  type: torch
+  ref: /export/home/models/Qwen2.5-0.5B
+
+adapt:
+  adapter_class: Qwen25Adapter
+  params:
+    prefix: true                   # ← 变体开关: 用 npu_prefix_infer_attention_score
+    prune_token_file: null
+
+inputs:
+  batch_size: 10
+  seq_len: 208
+  prefix_len: 20                   # ← 共享 prefix 长度 P (act = cumsum([P, L0, L1, ...]))
+  seed: 0
+
+graph:
+  format: air
+  dynamic:
+    max_seq_len: 2048
+
+custom_ops:
+  - models/qwen2.5-0.5b/scripts/install_prefix_attn.sh
+
+passes:
+  - models/qwen2.5-0.5b/scripts/install_nz_pass.sh
+
+backend:
+  type: om_acl
+  aicore_num: null
+
+verify:
+  enabled: true

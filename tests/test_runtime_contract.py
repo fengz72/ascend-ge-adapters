@@ -43,7 +43,7 @@ def build_tree(root, backend="om_acl", elems=(4, 4), bundle=True, golden_shape=(
 
     json.dump({"backend": backend, "graph_path": "air/x.air",
                "om_path": "om/x.om" if backend == "om_acl" else None,
-               "io_spec": "air/x.io_spec.json", "device": 0, "passes_vendor": "t",
+               "io_spec": "air/x.io_spec.json", "device": 0,
                "bundle": "verification/bundle.json" if bundle else None},
               open(f"{root}/deploy/manifest.json", "w"), indent=2)
     json.dump({"inputs": spec_inputs,

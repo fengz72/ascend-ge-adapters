@@ -26,8 +26,12 @@ graph:
   dynamic:
     max_seq_len: 2048
 
-passes:                            # 写路径 (相对仓库根) 或只写目录名, 见 core/passes.resolve_pass_dir
-  - third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
+# 环境准备脚本 (框架不假设构建方式, 只按序执行; 脚本自己保证幂等 — 见 core/setup_scripts.py)
+custom_ops:                        # 自定义算子: 在**加载 adapter 之前**执行 (model.py 会 import 绑定)
+  - models/qwen2.5-0.5b/scripts/install_prefix_attn.sh
+
+passes:                            # fusion pass: 在 **ATC 编译之前**执行
+  - models/qwen2.5-0.5b/scripts/install_nz_pass.sh
 
 backend:
   type: om_acl                     # om_acl | ge_session

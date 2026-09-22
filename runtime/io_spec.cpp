@@ -190,7 +190,6 @@ Manifest Manifest::Load(const std::string &path) {
     m.om_path = Str(j, "om_path");
     m.io_spec = Str(j, "io_spec");
     m.bundle = Str(j, "bundle");
-    m.passes_vendor = Str(j, "passes_vendor");
     if (j.contains("device") && j["device"].is_number_integer()) {
         m.device = j["device"].get<int>();
     }

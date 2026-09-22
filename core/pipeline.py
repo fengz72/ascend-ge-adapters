@@ -7,6 +7,7 @@
     python -m core.pipeline --config models/qwen2.5-0.5b/config/model.yaml
     python -m core.pipeline --config <yaml> --skip compile,run,compare
     # 冒烟/调试可覆盖: --device 6 (必填) --batch-size 2 --seq-len 16 --work-dir /tmp/x
+    # ops/passes 是**用户脚本**接口 (model.yaml 的 custom_ops/passes 填脚本路径, 见 core/setup_scripts.py)
 """
 
 import argparse
@@ -20,12 +21,9 @@ from core.config import load_config, load_adapter, write_manifest
 from core.source import load_source
 from core.graph import Graph, IoNode, IoSpec
 from core.exporter import GeExporter
-from core.passes import PassManager
+from core.setup_scripts import run_scripts
 from core.backend import compile_graph, default_output_dir, run_runtime
 from core.verify import Verifier, bundle_has_golden, collect_provenance
-
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_THIRD_PARTY = os.path.join(_REPO_ROOT, "third_party")
 
 
 def _export_name(cfg):
@@ -35,7 +33,7 @@ def _export_name(cfg):
 def run(config_path, skip=(), dtype=torch.float16, device=None,
         batch_size=None, seq_len=None, work_dir=None,
         warmup=0, bench=1, runtime_extra=(), runtime_inputs=()):
-    """跑管线, 返回产物路径 dict。skip ⊂ {export,passes,compile,run,compare}。
+    """跑管线, 返回产物路径 dict。skip ⊂ {ops,export,passes,compile,run,compare}。
 
     run/compare 为阶段二闭环: run 调 C++ runtime (manifest 驱动, OM/ACL 或 GeSession),
     compare 用 bundle golden 比对运行时输出 (docs §10)。
@@ -65,6 +63,10 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
         prefix_len=cfg.inputs.prefix_len,
     )
 
+    # ---- 自定义算子安装脚本: 必须在 load_adapter 之前 (model.py 可能 import 算子绑定) ----
+    if "ops" not in skip:
+        run_scripts(cfg.custom_ops, "custom_ops", model_dir=md)
+
     # ---- ONNX 源: 原样, 无适配/golden ----
     if cfg.source.type == "onnx":
         # 形态③ 只能走离线后端: GeSession 的 Graph::LoadFromFile 不解析 ONNX。
@@ -77,7 +79,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
         graph = load_source(cfg, md, device=device)
         graph.io_spec.to_json(io_spec_path)
         if "passes" not in skip:
-            PassManager(cfg.model.name, cfg.passes, _THIRD_PARTY).prepare()
+            run_scripts(cfg.passes, "passes", model_dir=md)
         om = _compile(cfg, graph, base, skip)
         mp = write_manifest(cfg, graph.path, om, io_spec_path, None, base_dir=base, device=device)
 
@@ -128,7 +130,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
                                          logical_order=[n.logical for n in in_nodes])
 
     if "passes" not in skip:
-        PassManager(cfg.model.name, cfg.passes, _THIRD_PARTY).prepare()
+        run_scripts(cfg.passes, "passes", model_dir=md)
     om = _compile(cfg, graph, base, skip)
     mp = write_manifest(cfg, graph.path, om, io_spec_path, bundle_path, base_dir=base, device=device)
 
@@ -193,7 +195,8 @@ def _existing_om(base_dir, graph, aicore_num):
 def main():
     p = argparse.ArgumentParser(description="GE 适配管线 (配置驱动)")
     p.add_argument("--config", required=True, help="model.yaml 路径")
-    p.add_argument("--skip", default="", help="逗号分隔: export,passes,compile,run,compare")
+    p.add_argument("--skip", default="",
+                   help="逗号分隔: ops,export,passes,compile,run,compare")
     p.add_argument("--device", type=int, required=True,
                    help="NPU 设备号 (必填; 运行期事实, 不进 model.yaml)")
     p.add_argument("--batch-size", type=int, default=None)

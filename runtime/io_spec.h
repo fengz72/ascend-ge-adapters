@@ -42,7 +42,6 @@ struct Manifest {
     std::string om_path;
     std::string io_spec;
     std::string bundle;
-    std::string passes_vendor;
     std::string base_dir;
     int device = 0;
 

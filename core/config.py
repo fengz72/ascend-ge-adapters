@@ -1,7 +1,7 @@
 """模型配置 (YAML 人工声明) 解析 + 运行时 manifest (JSON) 生成。
 
 契约见 docs/architecture.md §5:
-    model.yaml   人工声明 (source/adapt/inputs/graph/passes/backend/verify; 不含 device)
+    model.yaml   人工声明 (source/adapt/inputs/graph/passes/custom_ops/backend/verify; 不含 device)
     manifest.json 生成的 C++ 运行时契约 (deploy/manifest.json)
 """
 
@@ -72,7 +72,8 @@ class ModelConfig:
     adapt: AdaptCfg = field(default_factory=AdaptCfg)
     inputs: InputsCfg = field(default_factory=InputsCfg)
     graph: GraphCfg = field(default_factory=GraphCfg)
-    passes: list = field(default_factory=list)
+    passes: list = field(default_factory=list)        # fusion pass 安装脚本路径 (ATC 前执行)
+    custom_ops: list = field(default_factory=list)    # 自定义算子安装脚本路径 (加载 adapter 前执行)
     backend: BackendCfg = field(default_factory=BackendCfg)
     verify: VerifyCfg = field(default_factory=VerifyCfg)
     model_dir: str = ""             # 配置文件所在模型目录 (load 时填入)
@@ -109,6 +110,7 @@ def load_config(path) -> ModelConfig:
         inputs=_sub(InputsCfg, raw.get("inputs")),
         graph=GraphCfg(format=graph_d.get("format", "air"), dynamic=dynamic),
         passes=list(raw.get("passes") or []),
+        custom_ops=list(raw.get("custom_ops") or []),
         backend=_sub(BackendCfg, raw.get("backend")),
         verify=_sub(VerifyCfg, raw.get("verify")),
         model_dir=model_dir,
@@ -150,8 +152,7 @@ def write_manifest(cfg: ModelConfig, graph_path, om_path, io_spec_path,
     """生成 <base_dir>/deploy/manifest.json (C++ 运行时契约)。
 
     路径相对 base_dir (默认 model_dir), 保证可移植; --work-dir 调试时 base_dir
-    传 work_dir, 产物与 manifest 同根。passes_vendor 存逻辑名 (model.name),
-    运行时展开为 $ASCEND_HOME_PATH/opp/vendors/<name> — 不内联绝对路径。
+    传 work_dir, 产物与 manifest 同根。
 
     device **必填** (来自 CLI --device): manifest 是 C++ 运行时的唯一入口, 缺 device
     它无从知道跑哪张卡; 不设默认值是因为"默认 0 号卡"通常正是被占满的那张。
@@ -169,7 +170,6 @@ def write_manifest(cfg: ModelConfig, graph_path, om_path, io_spec_path,
         "om_path": rel(om_path),
         "io_spec": rel(io_spec_path),
         "device": device,
-        "passes_vendor": cfg.model.name,
         "bundle": rel(bundle_path),
     }
     deploy_dir = os.path.join(base, "deploy")

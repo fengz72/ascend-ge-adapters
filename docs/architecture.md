@@ -123,8 +123,11 @@ graph:
     max_seq_len: 2048            # 图常量长度 (RoPE 表 / 因果 mask), 经 adapt(setup_kwargs) 透传
     # 注: 不参与 ATC 分档 — 动态图不传 --input_shape, 见 §6②
 
-passes:                          # 启用集; 写路径 (相对仓库根) 或只写目录名, 见 §7
-  - third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
+custom_ops:                      # 自定义算子安装**脚本** (加载 adapter 前执行), 见 §7
+  - models/qwen2.5-0.5b/scripts/install_prefix_attn.sh
+
+passes:                          # fusion pass 安装**脚本** (ATC 编译前执行), 见 §7
+  - models/qwen2.5-0.5b/scripts/install_nz_pass.sh
 
 backend:
   type: om_acl                   # om_acl | ge_session
@@ -192,12 +195,10 @@ C++ 用 bundle 的**具体 shape** 分配内存、按 `file` 读 .bin；按 **lo
   "om_path": "om/qwen2.5-0.5b.om",
   "io_spec": "air/qwen2.5-0.5b.io_spec.json",
   "device": 0,
-  "passes_vendor": "qwen2.5-0.5b",
   "bundle": "verification/bundle.json"
 }
 ```
 
-- `passes_vendor` 存**逻辑名**，运行时展开为 `$ASCEND_HOME_PATH/opp/vendors/<name>`——不内联绝对路径（pass 本就需逐机器构建安装，不承诺 pass 层可移植；但 manifest 自身可移植）。
 - `device` 来自**运行期的 `--device`**（必填），不来自 model.yaml——manifest 是每次生成的产物，把当次用哪张卡记进去正合适；C++ 侧 `--device` 仍可覆盖（换卡重跑不必重新生成 manifest）。
 - `bundle` 仅验证态用；**部署态**（`bundle: null`）跑真实输入时由 CLI `--input logical:d0,d1,...:file.bin` 给具体 shape + .bin，dtype/format/node 仍取自 io_spec（不重复声明）。形态③ ONNX 无 adapter/build_inputs → 天然只有部署态。
 - C++ 读取链：`manifest.json` → backend/路径/io_spec/device → 输入来自 `bundle.json`（验证态）或 `--input`（部署态）→ 喂入、执行、取输出。
@@ -230,27 +231,43 @@ pipeline 编排完        → 汇总 backend/路径/io_spec 引用/device/vendor
 - 旧 `model.conf` 本就有 `INPUT_N_SHAPE`（具体）+ `INPUT_N_SHAPE_ATC`（-1）的区分，本设计把它拆成 io_spec（动态声明）+ bundle（具体实例）两层，语义更清晰。
 - GeSession 在线后端的动态维由首次执行的 shape 特化处理，无需 ATC 参与——这是它相对 OM 路径的灵活性优势（省掉 ~8min 编译）。
 
-## 7. Pass 子系统（图级优化）
+## 7. 环境准备：fusion pass 与自定义算子（用户脚本接口）
 
-pass 源码来自 gitcode submodule `third_party/custom_development_code`，库内 `fusion_pass/` 有 19 个 pass（`WeightNzAndMatMulV3Pass`、`rmsnorm_pass`、`AttentionFusionPass`、`FaPass` 等），另有 `monkey_patch/`（pytorch→air 优化）、`model_opti_list/`（逐模型优化清单）可参考。
+框架**不内置**任何 pass / 算子的构建安装逻辑——每个三方源的方式都不一样（fusion pass 是 cmake 出 `.so` 拷进 vendor；AscendC 自定义算子是 `build.sh` 产 `.run` 再 `--install-path`，还要 pip 装 torch 绑定 wheel）。内置一种就会对不上号，还得跟着上游改版。所以只提供一个稳定接口：**yaml 填脚本路径，框架按序执行**（`core/setup_scripts.py`）。
 
-```
-third_party/custom_development_code/fusion_pass/<PassName>/   # CMakeLists.txt + src/*.cpp
-
-每模型 (PassManager.prepare):
-  读 yaml.passes → 逐条解析源码目录 (resolve_pass_dir) → cmake out-of-source 构建
-  (缓存在 <repo>/.pass_build/<PassName>/, 不污染 submodule)
-  → lib*.so 拷到 $ASCEND_HOME_PATH/opp/vendors/<model_name>/custom_fusion_passes/
-  → CANN 自动扫描 opp/vendors/* 加载 (无需 env)
+```yaml
+custom_ops:                        # 在**加载 adapter 之前**执行 (model.py 可能 import 算子绑定)
+  - models/qwen2.5-0.5b/scripts/install_prefix_attn.sh
+passes:                            # 在 **ATC 编译之前**执行
+  - models/qwen2.5-0.5b/scripts/install_nz_pass.sh
 ```
 
-- **`passes:` 条目两种写法**（`core/passes.resolve_pass_dir`）：**路径**（绝对 / 相对仓库根 / 相对 CWD，如 `third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass`）或**只写目录名**（`WeightNzAndMatMulV3Pass` → 到 `<third_party>/custom_development_code/fusion_pass/` 下找）。pass 名取目录 basename（用作构建缓存名与日志标识）；解析不到只 WARN 跳过，不崩管线。
+脚本约定（`core/setup_scripts.py`）：路径按 绝对 / 相对仓库根 / 相对 model_dir / 相对 CWD 依次解析；`.py` 用当前解释器、其余用 `bash`（不要求 +x 与 shebang）；继承当前 env；输出直接透传（构建动辄几分钟，要能看进度）；**非 0 退出即抛**（静默继续 = 算子没装上，下游报一堆看不懂的错）；幂等由脚本自己负责（"已装则 exit 0"）。脚本若要回传环境变量，把 `KEY=VALUE` 行写进 `$GE_ENV_FILE`——框架读进 `os.environ`（从而传给后续 ATC / `ge_runtime` 子进程），`PYTHONPATH` 还会同步进本进程 `sys.path`，并 `importlib.invalidate_caches()`（脚本刚 pip 装的绑定包当前进程才 import 得到）。
 
-- **构建/部署机制（已实测确认）**：cmake `mkdir build && cmake <src> && make` → `lib*.so`；拷到 vendor 的 `custom_fusion_passes/`；`opp/vendors/*` 被 CANN **自动扫描加载**（全局 `custom_nz_pass` 即如此，无需 env）。
-- **fusion pass 是全局的、CANN 层无 per-model 隔离（实测）**：`opp/vendors/*` 下所有 `custom_fusion_passes` 全部自动加载，per-model vendor 目录只是组织归类。**同名 pass 跨 vendor 会重复注册 → ATC/TBE 崩**（实测：全局 `custom_nz_pass` 与 per-model `WeightNzAndMatMulV3Pass` 都注册 `MatMulWeightNZPass`）。本项目**靠"每项目全新 CANN 环境"保证不冲突**（clean env 下只有本模型装的 pass），不做去重；脏环境（残留旧 pass）才会撞，属环境问题。
-- **`ASCEND_CUSTOM_OPP_PATH` 是给"自定义算子"（`custom_op/`）的**，不是 fusion pass 的隔离手段（官方文档：算子二进制搜索路径，`<path>/vendors/<name>` 或 `<path>/op_api/lib/`，冒号分隔，优先级 2>4>1>3）。fusion pass 不走这个 env。
-- **互补**：pass 是**图级**优化（NZ 权重转换、融合等），与 Python 侧**模型级**适配（patch）互补——一个改图、一个改算子选择。
-- qwen2.5-0.5b 启用 `WeightNzAndMatMulV3Pass`（常量权重 MatMul ND→FRACTAL_NZ + MatMulV3），实测 ATC 编译时 `matmul_match num=169` 生效。
+### 7.1 安装位置：都装到 `opp/vendors/<各自的 vendor 名>/`
+
+**不用 per-model vendor 目录**（`opp/vendors/<model>/`）——因为两类东西的发现机制根本不同：
+
+| | 发现机制 | 能否 per-model 隔离 |
+|---|---|---|
+| **fusion pass** | CANN **自动扫描** `opp/vendors/*/custom_fusion_passes/` 全部加载，不看 env、无优先级 | ❌ **不能**。per-model 目录只是组织归类，同名 pass 出现在两个 vendor 就是重复注册 → **ATC/TBE 崩**（实测：全局 `custom_nz_pass` 与 per-model 那份都注册 `MatMulWeightNZPass`） |
+| **自定义算子** | `ASCEND_CUSTOM_OPP_PATH`（冒号分隔，优先级 2>4>1>3） | ✅ 能，但靠 **env 指向**，与目录名无关；且 vendor 名由三方工程写死（PIA 的 `CMakePresets.json: vendor_name=custom_prefix_attn`，其 `build.sh` 不转发 `-D`，改名要么抄它的两阶段构建、要么装完 `mv` 目录破坏它的 `upgrade.sh`） |
+
+所以约定：**每个 pass / 算子装进它自己的 vendor 目录，全局一份**（`custom_nz_pass`、`custom_prefix_attn`），安装脚本负责"已装即跳过"与"别处已有同名 pass 就复用那份"。
+
+### 7.2 三方源
+
+| 源 | 内容 | 引入方式 |
+|---|---|---|
+| `third_party/custom_development_code/` | fusion pass 库（19 个：`WeightNzAndMatMulV3Pass`、`rmsnorm_pass`、`AttentionFusionPass`、`fa_pass` …）+ `monkey_patch/`、`model_opti_list/` | git submodule（gitcode） |
+| `third_party/ascend-ops/` | AscendC 自定义算子库；当前含 `prefix-attention/`（PIA） | vendored 源码（github git 协议在本环境不可达，见 `third_party/README.md`） |
+
+两者都**只读**：本仓库不改其中任何文件，构建产物落在 `.pass_build/`（仓库内、gitignored）或各源自己的 `build_out/`（被其自带 .gitignore 忽略）。
+
+- **互补**：pass 是**图级**优化（NZ 权重转换、融合等），自定义算子是**算子级**能力（PIA 的 prefix-in-Q 语义），与 Python 侧**模型级**适配（patch）三者互补。
+- qwen2.5-0.5b 用 `WeightNzAndMatMulV3Pass`（常量权重 MatMul ND→FRACTAL_NZ + MatMulV3，实测 ATC 日志 `matmul_match num=169`）+ PIA（`adapt.params.prefix: true` 时）。
+- 脚本示例：`models/qwen2.5-0.5b/scripts/install_{nz_pass,prefix_attn}.sh`（含幂等、同名冲突检测、`$GE_ENV_FILE` 回传 env 的写法）。
+- **踩过的坑**：`set -o pipefail` 下 `strings x.so | grep -q NAME` 会因 grep 提前退出触发 SIGPIPE，管道返回 141 → 冲突检测恒为假（真的把重复 pass 装进去了）。用 `grep -c` + `|| true` 替代。
 
 ## 8. 模型适配层（Adapter）
 
@@ -398,11 +415,10 @@ class GeExporter:
     def build_inputs(self, model, **kw); def mark_dynamic(self, inputs, **kw)
     def logical_inputs(self) -> list[str]          # forward 签名的逻辑输入序, 供 graph.from_air
 
-# passes.py
-def resolve_pass_dir(entry, third_party_dir) -> (name, src_dir) | None   # 路径或名字两种写法
-class PassManager:
-    def __init__(self, model_name, pass_names, third_party_dir)
-    def prepare(self) -> None                    # 构建+装 per-model vendor (CANN 自动扫描, 无需 env)
+# setup_scripts.py  (pass / 自定义算子的构建安装 = 用户脚本, 框架只按序执行)
+def resolve_script(entry, model_dir=None) -> path | None   # 绝对/仓库根/model_dir/CWD
+def run_scripts(entries, stage, model_dir=None) -> list    # 按序执行; 非 0 退出即抛;
+                                                           # 回收脚本写进 $GE_ENV_FILE 的 env
 
 # backend.py  (时序: compile_graph → write_manifest → run_runtime; 无 Backend 基类, 与 C++ 侧同标准)
 def compile_graph(cfg, graph, base_dir=None) -> om_path | None   # om_acl: run_atc; ge_session: None
@@ -434,20 +450,21 @@ ascend-ge-adapters/
 ├── requirements.txt pytest.ini    # Python 依赖 (实测版本) / pytest 配置 (含 npu marker)
 ├── core/                          # 通用框架 (Python)
 │   ├── source.py adapter.py exporter.py graph.py
-│   ├── passes.py backend.py verify.py config.py pipeline.py
+│   ├── setup_scripts.py backend.py verify.py config.py pipeline.py
 │   └── _torchair_source_name.py   # 回移 torchair PR#3675: Data 节点带 forward 入参名
 ├── runtime/                       # 通用执行运行时 (C++)
 │   ├── main.cpp CMakeLists.txt build.sh
 │   ├── backends/{acl_backend, gesession_backend}.{h,cpp}   # 无 Backend 基类, main 按 manifest 分发
 │   ├── io_spec.{h,cpp} bench.{h,cpp} acl_json.{h,cpp}
-├── third_party/
+├── third_party/                   # 三方源一律**只读** (见 third_party/README.md)
 │   ├── nlohmann/json.hpp          # vendored header-only JSON (C++ 读三份契约)
-│   └── custom_development_code/   # gitcode submodule
-│       └── fusion_pass/           # pass 源码库
+│   ├── custom_development_code/   # gitcode submodule: fusion_pass/ (19 个 pass)
+│   └── ascend-ops/                # vendored: prefix-attention/ (PIA 自定义算子工程)
 ├── models/
 │   └── qwen2.5-0.5b/
 │       ├── model.py               # Adapter (模型专属, 唯一手写代码之一)
-│       ├── config/model.yaml      # 声明 (唯一手写配置)
+│       ├── config/model.yaml      # 声明 (基线) + model.prefix.yaml (PIA 变体)
+│       ├── scripts/               # 用户脚本: install_nz_pass.sh / install_prefix_attn.sh
 │       ├── run.sh env.sh          # 薄封装 core/pipeline + 运行环境
 │       └── docs/                  # DEPLOYMENT_GUIDE.md + reports/ aicore/ prefix-attention/
 ├── tools/                         # varlen / atc_utils / compare / parse_dump / parse_profiling
@@ -474,7 +491,7 @@ ascend-ge-adapters/
 1. **配置层**：`core/config.py`（YAML 解析 + manifest 生成）；qwen2.5 散参数收敛进 `config/model.yaml`
 2. **冒烟测试骨架**：小模型 e2e（export→compile→run→compare）脚本，作为后续每步的回归门（先于功能扩张建立）
 3. **Graph 抽象 + 两层 shape**：`core/graph.py`——从 AIR pbtxt / ONNX 派生 io_spec（动态维），bundle 记具体 shape；落地 §6 端到端
-4. **Pass 子系统**：`third_party/custom_development_code` 加 submodule；`core/passes.py`；`models/qwen2.5-0.5b/pass/nz_weight` 迁进 third_party，改 per-model vendor + env
+4. **环境准备（pass / 自定义算子）**：`third_party/custom_development_code` 加 submodule、`third_party/ascend-ops` vendored；`core/setup_scripts.py` 提供"yaml 填脚本路径"的接口（框架不假设构建方式）；`models/qwen2.5-0.5b/scripts/install_{nz_pass,prefix_attn}.sh` 为示例脚本，装到 `opp/vendors/<各自 vendor 名>/`（§7.1：pass 无 per-model 隔离，算子靠 env 指向）
 5. **Source（torch 分支 + onnx 桩）**：`core/source.py`——name/torch 加载，onnx 留桩
 6. **Backend**：`core/backend.py`——`OmAclBackend`（包 atc_utils）；`GeSessionBackend` 留待阶段二
 7. **Verify 成体系**：`core/verify.py`——golden + bundle（含 seed/provenance）+ compare + bench 阶段
@@ -496,7 +513,7 @@ ascend-ge-adapters/
 | `pytest`（`tests/test_core.py` + `tests/test_atc_utils.py` + `tests/test_runtime_contract.py`） | 纯 CPU；contract 那组另需已构建的 `ge_runtime`（缺失则 skip） | 静默失败点：图序配对/硬失败、yaml→dataclass、adapter 构造约定、compare 门禁、manifest 相对路径、ATC argv 构造、C++ 契约解析与部署态 `--input` |
 | `tests/tiny_e2e.py` | NPU（~几百 MB 显存）+ ATC | 极小模型全链路：export（含 `_source_name` 断言）→io_spec/bundle/manifest→ATC→**om_acl** run+compare→**ge_session** run+compare |
 | `tests/tiny_onnx_e2e.py` | NPU + ATC + onnxruntime | 形态③：onnx→`from_onnx`(io_spec)→ATC(`--framework=5`)→OM→**部署态** run（无 bundle，`--input`）→ 对比 onnxruntime CPU 参考 |
-| `tests/smoke.py` | NPU + 真实权重 | qwen2.5-0.5b 真实模型；默认只到 bundle，`--skip passes` 可跑全链路（含 runtime）。断言分**结构不变量**与**模型事实**（后者从 batch/seq 与权重 `config.json` 推导，不写字面量） |
+| `tests/smoke.py` | NPU + 真实权重 | qwen2.5-0.5b 真实模型；默认只到 bundle，`--full` 跑全链路（含 ATC 与 runtime）。断言分**结构不变量**与**模型事实**（后者从 batch/seq 与权重 `config.json` 推导，不写字面量） |
 
 约定：`tests/test_*.py` = 纯 CPU 单测（pytest 收集，CI 可跑，不 import torch/torch_npu）；`tests/{tiny_e2e,tiny_onnx_e2e,smoke}.py` = 需 NPU 的脚本（pytest 不收集，手动跑）。
 
@@ -510,6 +527,6 @@ ascend-ge-adapters/
 - ~~**动态 shape 的 ATC 机制**~~ **已定论（阶段二实测）**：动态图**不需要** `--dynamic_batch_size`/`--dynamic_dims` 分档——`OmAclBackend.compile` 检测到 io_spec 有动态维就不传 `--input_shape`，GE 运行期自行特化，同一 OM 可跨 shape 复用（T=32 导出的 OM 跑 T=2080 成功，见 §6）。分档只作为**可选优化**（减少运行期特化开销），当前未实现。`graph.dynamic.max_seq_len` 与 ATC 无关，是图常量长度（§6）。
   - ~~仍待办：`run_atc` 硬编码 `--framework=1`、`shell=True`~~ **已落地（P1/A5）**：`tools/atc_utils.py` 拆出纯函数 `build_atc_argv`/`normalize_aicore`/`framework_of`（单测见 `tests/test_atc_utils.py`），`subprocess.run(argv)` **不走 shell**（路径含空格安全、无注入面），`--framework` 由 `graph.kind` 决定（air=1 / onnx=5）。ONNX 形态已实测打通（`tests/tiny_onnx_e2e.py`：onnx → io_spec → ATC(fw=5) → OM → 部署态 run，与 onnxruntime CPU 参考 cosine=0.99999991）。
 - ~~GeSession 具体 C++ API~~ **已实测确认**（CANN 9.0.0，`runtime/backends/gesession_backend.cpp`）：`ge::GEInitialize({ge.graphRunMode, ge.exec.deviceId[, aicore_num]})` → `aclInit` → `ge::Session({ge.session_device_id, ge.exec.precision_mode})` → `ge::Graph::LoadFromFile(<name>.air)` → `AddGraph(id, graph)` → `CompileGraph(id)` → `aclrtSetDevice` + `aclrtCreateStream` → `LoadGraph(id, {}, stream)` → 输入构造为 `gert::Tensor`（`StorageShape` origin+storage 同填、`StorageFormat(FORMAT_ND, FORMAT_ND, {})`、`SetDataType`、`SetData(TensorData(devPtr, nullptr, bytes, kOnDeviceHbm))`）→ `ExecuteGraphWithStreamAsync(id, stream, inputs, outputs)` + `aclrtSynchronizeStream`。**动态维无需 ATC 分档**：首次执行做 shape 特化，输出 device 缓冲由 GE 自动分配（`outputs[i].GetSize()/GetAddr()/GetShape()` 取实际值，用完 `aclrtFree`，多次执行需按地址去重释放）。清理序：free 输入/输出 → `aclrtDestroyStream` → `session.reset()` → `aclrtResetDevice` → `GEFinalize` → `aclFinalize`。链接 `ge_compiler ge_runner ge_common ge_common_base graph graph_base ascendcl`，须 `-D_GLIBCXX_USE_CXX11_ABI=0` + C++17。
-- ~~pass 构建/隔离~~ **已实测确认**：submodule `custom_development_code/fusion_pass/<PassName>/`（CMakeLists + src）；cmake out-of-source 构建 → `lib*.so` 拷到 `opp/vendors/<model>/custom_fusion_passes/`；CANN **自动扫描 `opp/vendors/*` 全部加载，无需 env**。fusion pass 在 CANN 层无 per-model 隔离，同名 pass 跨 vendor 会重复注册冲突（实测 `MatMulWeightNZPass`）——本项目**靠"每项目全新 CANN 环境"规避**（clean env 下只有本模型的 pass），不做去重。`ASCEND_CUSTOM_OPP_PATH` 是给**自定义算子**（`custom_op/`）的，与 fusion pass 无关。
+- ~~pass 构建/隔离~~ **已定论（见 §7.1）**：fusion pass 由 CANN **自动扫描 `opp/vendors/*/custom_fusion_passes/` 全部加载**（无 env、无优先级）→ **没有 per-model 隔离**，同名 pass 跨 vendor 会重复注册 → ATC/TBE 崩（实测 `MatMulWeightNZPass`）。故约定"每个 pass 装进它自己的 vendor 目录、全局一份"，由安装脚本负责幂等与同名检测。`ASCEND_CUSTOM_OPP_PATH` 只服务**自定义算子**（优先级 2>4>1>3），与 fusion pass 无关；算子的 vendor 名由三方工程写死（PIA = `custom_prefix_attn`），隔离靠 env 指向而非目录名。
 - ~~C++ 读 manifest/io_spec/bundle 用 nlohmann/json（header-only）~~ **已落地**：vendored `third_party/nlohmann/json.hpp`（v3.12.0 单头文件，git 跟踪，离线可构建）。
 - form ② PyTorch 源码的加载约定（module 路径 + class 名 + 权重；构造参数来源、分片/safetensors、dtype 转换）——遇到实例再细化。

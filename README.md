@@ -20,7 +20,7 @@ Source ──[Adapt]──> Graph(AIR|ONNX) ──[Passes]──> Backend ──
 | `models/<name>/` | 逐模型：`model.py`(Adapter) + `config/model.yaml`(声明) + 产物 + docs |
 | `tools/` | varlen 输入生成 / ATC 封装 / 精度比对 / dump·profiling 解析（见 `tools/README.md`） |
 | `tests/` | 回归门：`test_*.py`(纯 CPU, pytest) + `tiny_e2e`/`tiny_onnx_e2e`/`smoke`(需 NPU, 脚本) |
-| `third_party/` | `custom_development_code`(submodule, fusion pass 源) + `nlohmann/json.hpp`(vendored) |
+| `third_party/` | 三方源，一律**只读**：`custom_development_code`(submodule, fusion pass) + `ascend-ops`(vendored, PIA 自定义算子) + `nlohmann/json.hpp` |
 | `docs/` | 架构设计 |
 
 ## 三份契约
@@ -43,7 +43,7 @@ source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
 bash runtime/build.sh                       # → runtime/build/ge_runtime
 
 # 2) 跑一个模型的全链路 (导出→ATC→执行→比对)
-./models/qwen2.5-0.5b/run.sh --device 6 --batch-size 2 --seq-len 16 --skip passes
+./models/qwen2.5-0.5b/run.sh --device 6 --batch-size 2 --seq-len 16
 
 # 3) 只跑执行 + 比对 (复用已有 AIR/OM/bundle)
 ./models/qwen2.5-0.5b/run.sh --device 6 --skip export,passes,compile --warmup 10 --bench 100
@@ -69,7 +69,7 @@ python3 tools/parse_profiling.py parse-and-export --profiling_dir ./prof
 pytest                                      # 纯 CPU 单测 (秒级, 不需 NPU/torch_npu)
 python3 tests/tiny_e2e.py --device 6        # 极小模型全链路, 两后端 (几百 MB 显存)
 python3 tests/tiny_onnx_e2e.py --device 6   # 形态③ ONNX → ATC(fw=5) → OM → 部署态执行
-python3 tests/smoke.py --device 6 --skip passes   # qwen2.5-0.5b 真实权重全链路
+python3 tests/smoke.py --device 6               # qwen2.5-0.5b 真实权重全链路
 ```
 
 约定：`tests/test_*.py` = pytest 收集（CI 可跑）；其余 `tests/*.py` = 需 NPU 的脚本，手动跑。

@@ -42,16 +42,17 @@ cd <repo>
 bash runtime/build.sh                       # 一次性: 构建 C++ 运行时 → runtime/build/ge_runtime
 
 # 全链路 (source→adapt→golden→AIR→io_spec→bundle→ATC→OM→manifest→run→compare)
-./models/qwen2.5-0.5b/run.sh --device 6 --batch-size 2 --seq-len 16 --skip passes
+./models/qwen2.5-0.5b/run.sh --device 6 --batch-size 2 --seq-len 16
 
 # 默认配置 (batch=10, seq=208)
-./models/qwen2.5-0.5b/run.sh --device 6 --skip passes
+./models/qwen2.5-0.5b/run.sh --device 6
 ```
 
-> **为什么 `--skip passes`**：本机 `$ASCEND_HOME_PATH/opp/vendors/custom_nz_pass` 已全局注册
-> `MatMulWeightNZPass`，与 submodule 的 `WeightNzAndMatMulV3Pass` **同名**；CANN 会自动加载
-> `opp/vendors/*` 下全部 pass，同名重复注册会崩（docs §7）。跳过后 ATC 仍走全局那个 pass
-> （实测 `matmul_match/effect = 169`），无损。干净环境（每项目独立 CANN）可去掉 `--skip passes`。
+> **pass / 自定义算子怎么装的**：`model.yaml` 的 `passes:` 与 `custom_ops:` 填的是**用户脚本路径**
+> （`scripts/install_nz_pass.sh`、`scripts/install_prefix_attn.sh`），管线分别在 ATC 编译前、
+> 加载 adapter 前执行（`core/setup_scripts.py`）。脚本幂等：已装即跳过；检测到别的 vendor 已注册
+> 同名 pass 也跳过并复用那份（同名重复注册会让 ATC/TBE 崩，docs §7.1）。所以**不需要** `--skip passes`；
+> 确实想跳过时用 `--skip ops,passes`。
 
 产物（默认落在 `models/qwen2.5-0.5b/`，`--work-dir` 可改；后续 `--skip export` 必须带同一 `--work-dir`）：
 
@@ -110,7 +111,7 @@ deploy/manifest.json
 ./models/qwen2.5-0.5b/run.sh --device 6 --skip export,passes,compile --runtime-opt --aicore_num=12
 ```
 
-实测（batch=2 / seq=16 → T=32, N=2，device 6，`--skip passes`）：
+实测（batch=2 / seq=16 → T=32, N=2，device 6）：
 
 | 指标 | OM/ACL | GeSession |
 |---|---|---|
@@ -143,7 +144,7 @@ python3 tools/parse_dump.py ...   # 见 tools/README.md
 | 变体 | 配置 | 说明 |
 |---|---|---|
 | 词表剪裁 | `adapt.params.prune_token_file: config/target_tokens.json` | lm_head 输出维 151936 → N，减少 D2H |
-| prefix-attention | `adapt.params.prefix: true` + `inputs.prefix_len: 20` | 用 PIA 算子（`npu_prefix_infer_attention_score`），KV 内嵌；需 `env.sh` 里的 vendor |
+| prefix-attention | 用 `config/model.prefix.yaml`（`adapt.params.prefix: true` + `inputs.prefix_len: 20`） | PIA 算子（`npu_prefix_infer_attention_score`，KV 内嵌），由 `custom_ops` 脚本装到 `opp/vendors/custom_prefix_attn/`；导出名自动变 `qwen2.5-0.5b-prefix`，产物与基线互不覆盖 |
 | 限核（离线） | `backend.aicore_num: 12`（整数按 1:2 拆成 `12|24`） | OM 文件名带 `_c12_24` 后缀 |
 | 限核（在线） | `--runtime-opt --aicore_num=12` | 经 `GEInitialize` 注入 |
 | 图常量长度 | `graph.dynamic.max_seq_len: 2048` | RoPE 表与因果 mask 长度同源；决定 position_ids 上限 |
@@ -155,5 +156,5 @@ python3 tools/parse_dump.py ...   # 见 tools/README.md
 - **随机 varlen 负载生成未移植**：旧 `atb/bench_latency.cpp` 的 RequestGenerator（对数正态序列
   长度分布 + 闭环随机请求）随 `atb/` 退役，需要时从 git 历史取；通用替代是用 `tools/varlen.py`
   生成多组 bundle，逐组跑 `ge_runtime`。
-- **pass 与脏环境冲突**：见 §3 的 `--skip passes` 说明。
+- **pass 全局唯一**：fusion pass 无 per-model 隔离，同名 pass 只能有一份；安装脚本已做检测（§3）。
 - **NPU 显存**：export 阶段约需 1.2GB（0.5B fp16 + 上下文）；卡被占满时进程会被 SIGKILL（exit 137）。
