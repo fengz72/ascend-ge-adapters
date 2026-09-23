@@ -17,7 +17,7 @@ import os
 import torch
 import torch_npu
 
-from core.config import apply_variant, load_config, load_adapter, write_manifest
+from core.config import export_name, load_config, load_adapter, write_manifest
 from core.source import load_source
 from core.graph import Graph, IoNode, IoSpec
 from core.exporter import GeExporter
@@ -26,13 +26,9 @@ from core.backend import compile_graph, default_output_dir, run_runtime
 from core.verify import Verifier, bundle_has_golden, collect_provenance
 
 
-def _export_name(cfg):
-    return f"{cfg.model.name}-prefix" if cfg.adapt.params.get("prefix") else cfg.model.name
-
-
 def run(config_path, skip=(), dtype=torch.float16, device=None,
         batch_size=None, seq_len=None, work_dir=None,
-        warmup=0, bench=1, runtime_extra=(), runtime_inputs=(), variant=None):
+        warmup=0, bench=1, runtime_extra=(), runtime_inputs=()):
     """跑管线, 返回产物路径 dict。skip ⊂ {ops,export,passes,compile,run,compare}。
 
     run/compare 为阶段二闭环: run 调 C++ runtime (manifest 驱动, OM/ACL 或 GeSession),
@@ -41,10 +37,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     runtime_inputs: 部署态输入规格 ("logical:d0,d1,...:file.bin", 可多条) — 仅 ONNX 形态需要
             (它没有 adapter/build_inputs, 因而没有 bundle), torch 形态由 bundle 提供输入。
     """
-    cfg = apply_variant(load_config(config_path), variant)
-    if cfg.variant:
-        print(f"[pipeline] variant={cfg.variant} (覆盖项已生效: "
-              f"{cfg.variants.get(cfg.variant) or {}})")
+    cfg = load_config(config_path)
     skip = set(skip)
     md = cfg.model_dir
     if device is None:
@@ -52,7 +45,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     torch_npu.npu.set_device(device)
     print(f"[pipeline] device={device}")
 
-    name = _export_name(cfg)
+    name = export_name(cfg)
     base = work_dir or md
     air_dir = os.path.join(base, "air")
     om_dir = os.path.join(base, "om")
@@ -127,8 +120,10 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
 
         # bundle 总要落 (run 阶段需要具体 shape + .bin); golden 为 None (verify.enabled=false)
         # 时只写 inputs, bundle.golden=null → compare 阶段自动跳过
+        # adapt.params = 形态事实源 (prefix/prune…): 记进 provenance, 报告才能自证形态
         prov = collect_provenance(seed=cfg.inputs.seed, model=cfg.model.name,
-                                  soc=cfg.model.soc, dtype=str(dtype), **input_kwargs)
+                                  soc=cfg.model.soc, dtype=str(dtype),
+                                  adapt_params=dict(cfg.adapt.params), **input_kwargs)
         bundle_path = verify.save_bundle(bundle_dir, inputs, golden, graph.io_spec, prov,
                                          logical_order=[n.logical for n in in_nodes])
 
@@ -206,8 +201,6 @@ def main():
     p.add_argument("--seq-len", type=int, default=None)
     p.add_argument("--work-dir", default=None, help="覆盖产物根目录 (默认 model_dir)")
     p.add_argument("--dtype", default="float16", help="float16|float32|bfloat16")
-    p.add_argument("--variant", default=None,
-                   help="model.yaml 的 variants: 里声明的变体名 (如 prefix); 不传=基线")
     p.add_argument("--warmup", type=int, default=0, help="C++ runtime 预热次数")
     p.add_argument("--bench", type=int, default=1, help="C++ runtime 计时执行次数")
     p.add_argument("--runtime-opt", action="append", default=[],
@@ -221,7 +214,7 @@ def main():
     out = run(args.config, skip=skip, dtype=dtype, device=args.device,
               batch_size=args.batch_size, seq_len=args.seq_len, work_dir=args.work_dir,
               warmup=args.warmup, bench=args.bench, runtime_extra=tuple(args.runtime_opt),
-              runtime_inputs=tuple(args.inputs), variant=args.variant)
+              runtime_inputs=tuple(args.inputs))
     print("=== 管线产物 ===")
     for k, v in out.items():
         if k != "report":

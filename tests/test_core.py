@@ -341,78 +341,79 @@ def test_compare_bundle_missing_outputs(tmp_path):
         Verifier().compare_bundle(bundle, out, dtype="float16", verbose=False)
 
 
-# ---------------------------------------------------------------- config 变体覆盖
-
-VARIANT_YAML = """
-model: {name: m1, soc: Ascend910_9382}
-source: {type: torch, ref: /w}
-adapt: {adapter_class: A, params: {prefix: false, prune_token_file: null}}
-inputs: {batch_size: 10, seq_len: 208, prefix_len: 0}
-graph: {dynamic: {max_seq_len: 2048}}
-backend: {type: om_acl}
-variants:
-  prefix:
-    adapt.params.prefix: true
-    inputs.prefix_len: 20
-  ge:
-    backend.type: ge_session
-"""
+PERF = {"schema": "ge-bench/1", "backend": "om_acl", "device": 8, "requests": 90, "errors": 0,
+        "wall_ms": 900.0, "qps": 100.0,
+        "e2e_ms": {"avg": 18.5, "min": 17.0, "p50": 18.5, "p99": 20.1, "max": 20.2},
+        "warmup": {"runs": 276, "ms": 3415.0}, "distinct_shapes": 138,
+        "hbm_mb": {"base": 50749.0, "peak": 53173.0},
+        "load": {"instances": 2, "requests": 90, "warmup": 50, "seed": 0},
+        "pool": {"dir": "/p", "size": 200, "distinct_shapes": 138, "max_output_bytes": 3038720},
+        "instances": [{"name": "instance_0", "requests": 45, "errors": 0, "qps": 50.0,
+                       "e2e_ms": {"avg": 18.5, "min": 17.0, "p50": 18.5, "p99": 20.0, "max": 20.1},
+                       "exec_ms": {"avg": 18.4, "p99": 19.9}, "h2d_ms": {"avg": 0.065},
+                       "desc_ms": {"avg": 0.003}, "load_ms": 2897.0, "distinct_shapes": 138,
+                       "specialize_ms": 1832.0}]}
 
 
-def test_apply_variant(tmp_path):
-    from core.config import apply_variant
+# ---------------------------------------------------------------- 形态: 产物命名 + provenance
 
-    path, _ = _cfg_dir(tmp_path, VARIANT_YAML)
-    cfg = apply_variant(load_config(path), "prefix")
-    assert cfg.variant == "prefix"
-    assert cfg.adapt.params == {"prefix": True, "prune_token_file": None}   # 只改指定键
-    assert cfg.inputs.prefix_len == 20 and cfg.inputs.batch_size == 10      # 其余不动
-    assert cfg.backend.type == "om_acl"
+def test_export_name_encodes_form():
+    """影响图结构的开关都要进产物名 — 否则切形态会静默覆盖上一种形态的 AIR/OM/bundle。"""
+    from core.config import export_name
 
+    def cfg(**params):
+        return ModelConfig(model=ModelMeta(name="m1"), source=SourceCfg(type="torch"),
+                           adapt=AdaptCfg(params=params))
 
-def test_apply_variant_none_is_baseline(tmp_path):
-    from core.config import apply_variant
-
-    path, _ = _cfg_dir(tmp_path, VARIANT_YAML)
-    cfg = apply_variant(load_config(path), None)
-    assert cfg.variant == "" and cfg.adapt.params["prefix"] is False
-    assert cfg.inputs.prefix_len == 0
+    assert export_name(cfg()) == "m1"
+    assert export_name(cfg(prefix=True)) == "m1-prefix"
+    assert export_name(cfg(prune_token_file="config/target_tokens.json")) == "m1-prune"
+    assert export_name(cfg(prefix=True, prune_token_file="t.json")) == "m1-prefix-prune"
+    assert export_name(cfg(prefix=False, prune_token_file=None)) == "m1"
 
 
-def test_apply_variant_unknown_name(tmp_path):
-    from core.config import apply_variant
+def test_form_from_manifest(tmp_path):
+    """性能报告要能自证形态: 顺着 manifest → bundle.provenance 把 adapt_params 取回来。"""
+    from core.bench import form_from_manifest
 
-    path, _ = _cfg_dir(tmp_path, VARIANT_YAML)
-    with pytest.raises(ValueError, match="未知 variant"):
-        apply_variant(load_config(path), "nope")
+    base = tmp_path
+    (base / "deploy").mkdir(parents=True)
+    (base / "verification").mkdir(parents=True)
+    json.dump({"backend": "om_acl", "om_path": "om/m.om", "io_spec": "air/s.json",
+               "device": 8, "bundle": "verification/bundle.json"},
+              open(base / "deploy" / "manifest.json", "w"))
+    json.dump({"inputs": [], "golden": None,
+               "provenance": {"seed": 0, "batch_size": 10, "seq_len": 208, "prefix_len": 20,
+                              "dtype": "torch.float16",
+                              "adapt_params": {"prefix": True, "prune_token_file": None},
+                              "git_commit": "abc"}},
+              open(base / "verification" / "bundle.json", "w"))
+
+    form = form_from_manifest(str(base / "deploy" / "manifest.json"))
+    assert form["adapt_params"] == {"prefix": True, "prune_token_file": None}
+    assert form["prefix_len"] == 20 and form["seed"] == 0
+    assert "git_commit" not in form                     # 只取形态相关键
 
 
-def test_apply_variant_bad_path_fails_loud(tmp_path):
-    """覆盖路径写错必须报错 — 静默忽略 = "以为开了 prefix 其实没开"。"""
-    from core.config import apply_variant
+def test_form_from_manifest_without_bundle(tmp_path):
+    from core.bench import form_from_manifest
 
-    root = tmp_path / "m2"
-    (root / "config").mkdir(parents=True)
-    bad = root / "config" / "model.yaml"
-    bad.write_text(VARIANT_YAML + "\n  typo:\n    adapt.params.prefex: true\n"
-                   + "\n  badtop:\n    nosuch.field: 1\n")
-    cfg = load_config(str(bad))
-    # dataclass 字段不存在 → 硬报错
-    with pytest.raises(ValueError, match="nosuch"):
-        apply_variant(cfg, "badtop")
+    (tmp_path / "deploy").mkdir(parents=True)
+    json.dump({"backend": "ge_session", "bundle": None},
+              open(tmp_path / "deploy" / "manifest.json", "w"))
+    assert form_from_manifest(str(tmp_path / "deploy" / "manifest.json")) == {}
 
 
-def test_apply_variant_new_dict_key_warns(tmp_path, capsys):
-    """adapt.params 是自由 dict: 变体可新增键, 但要 WARN (拼错 prefex 不能静默无效)。"""
-    from core.config import apply_variant
+def test_render_perf_md_shows_form(scenario_file):
+    from core.bench import load_scenario, render_perf_md
 
-    root = tmp_path / "m3"
-    (root / "config").mkdir(parents=True)
-    path = root / "config" / "model.yaml"
-    path.write_text(VARIANT_YAML + "\n  typo:\n    adapt.params.prefex: true\n")
-    cfg = apply_variant(load_config(str(path)), "typo")
-    assert cfg.adapt.params["prefex"] is True
-    assert "新增键" in capsys.readouterr().out and "prefex" in cfg.adapt.params
+    path, _, _, _ = scenario_file
+    sc = load_scenario(str(path), device=8)
+    md = render_perf_md(PERF, sc, "run1", {
+        "git_commit": "abc1234", "cann": "cann-9.0.0", "torch_npu": "2.9.0.post2",
+        "model_form": {"adapt_params": {"prefix": True, "prune_token_file": None},
+                       "prefix_len": 20}})
+    assert "模型形态: prefix=True · prune_token_file=None · prefix_len=20" in md
 
 
 # ---------------------------------------------------------------- setup_scripts (脚本接口)
@@ -721,20 +722,6 @@ def test_build_plan(scenario_file):
     assert plan["inputs"] == {"mode": "pool", "dir": str(pool)}
     assert plan["report"]["perf_json"].endswith("run1/perf.json")
     assert plan["report"]["run_id"] == "run1"
-
-
-PERF = {"schema": "ge-bench/1", "backend": "om_acl", "device": 8, "requests": 90, "errors": 0,
-        "wall_ms": 900.0, "qps": 100.0,
-        "e2e_ms": {"avg": 18.5, "min": 17.0, "p50": 18.5, "p99": 20.1, "max": 20.2},
-        "warmup": {"runs": 276, "ms": 3415.0}, "distinct_shapes": 138,
-        "hbm_mb": {"base": 50749.0, "peak": 53173.0},
-        "load": {"instances": 2, "requests": 90, "warmup": 50, "seed": 0},
-        "pool": {"dir": "/p", "size": 200, "distinct_shapes": 138, "max_output_bytes": 3038720},
-        "instances": [{"name": "instance_0", "requests": 45, "errors": 0, "qps": 50.0,
-                       "e2e_ms": {"avg": 18.5, "min": 17.0, "p50": 18.5, "p99": 20.0, "max": 20.1},
-                       "exec_ms": {"avg": 18.4, "p99": 19.9}, "h2d_ms": {"avg": 0.065},
-                       "desc_ms": {"avg": 0.003}, "load_ms": 2897.0, "distinct_shapes": 138,
-                       "specialize_ms": 1832.0}]}
 
 
 def test_render_perf_md(scenario_file):

@@ -153,24 +153,20 @@ python3 tools/parse_profiling.py summary --profiling_dir ./prof_om
 python3 tools/parse_dump.py ...   # 见 tools/README.md
 ```
 
-## 8. 变体与可选项
+## 8. 形态开关与可选项
 
-变体写在 `config/model.yaml` 的 `variants:` 段（**只写与基线的差异**，不复制整份 yaml——复制会随基线漂移），用 `--variant <名>` 选：
+**一份 yaml 只描述当前形态**（模型一路向下演进；历史形态靠 git，见 `docs/architecture.md` §5.2）。切形态就是改 `config/model.yaml` 里那几行，产物名由 `core.config.export_name` 自动带后缀，**不会静默覆盖**另一种形态的 AIR/OM/bundle：
 
-```bash
-./models/qwen2.5-0.5b/run.sh --device 8 --variant prefix    # 导出名自动变 qwen2.5-0.5b-prefix
-./models/qwen2.5-0.5b/run.sh --device 8 --variant prune
-```
+| 形态 / 选项 | 改哪里 | 产物名 | 说明 |
+|---|---|---|---|
+| FIA 基线 | `adapt.params.prefix: false` + `inputs.prefix_len: 0` | `qwen2.5-0.5b` | `npu_fused_infer_attention_score` |
+| prefix-attention | `adapt.params.prefix: true` + `inputs.prefix_len: 20`（>0） | `qwen2.5-0.5b-prefix` | 在 FIA 基线上演化：PIA 算子（`npu_prefix_infer_attention_score`，KV 内嵌），由 `custom_ops` 脚本装到 `opp/vendors/custom_prefix_attn/`；约束 `P>0`，故**不能取代**基线 |
+| 词表剪裁 | `adapt.params.prune_token_file: config/target_tokens.json` | `…-prune` | lm_head 输出维 151936 → N，减少 D2H |
+| 限核（离线） | `backend.aicore_num: 12`（整数按 1:2 拆成 `12|24`） | OM 名带 `_c12_24` | ATC 编译期限核 |
+| 限核（在线） | `--runtime-opt --aicore_num=12` | — | 经 `GEInitialize` 注入 |
+| 图常量长度 | `graph.dynamic.max_seq_len: 2048` | — | RoPE 表与因果 mask 长度同源；决定 position_ids 上限 |
 
-| 变体 / 选项 | 怎么开 | 说明 |
-|---|---|---|
-| prefix-attention | `--variant prefix`（= `adapt.params.prefix: true` + `inputs.prefix_len: 20`） | 在 FIA 基线上演化：PIA 算子（`npu_prefix_infer_attention_score`，KV 内嵌），由 `custom_ops` 脚本装到 `opp/vendors/custom_prefix_attn/`；产物名带 `-prefix`，与基线互不覆盖 |
-| 词表剪裁 | `--variant prune`（= `adapt.params.prune_token_file: config/target_tokens.json`） | lm_head 输出维 151936 → N，减少 D2H |
-| 限核（离线） | `backend.aicore_num: 12`（整数按 1:2 拆成 `12|24`） | OM 文件名带 `_c12_24` 后缀 |
-| 限核（在线） | `--runtime-opt --aicore_num=12` | 经 `GEInitialize` 注入 |
-| 图常量长度 | `graph.dynamic.max_seq_len: 2048` | RoPE 表与因果 mask 长度同源；决定 position_ids 上限 |
-
-> 覆盖路径写错会**报错**（dataclass 字段）或 **WARN**（`adapt.params` 这类自由 dict 允许新增键）——不会静默无效。
+改完形态**要么改回、要么提交**：每次 run 的 `bundle.provenance.adapt_params` 会记下当时的开关值，性能报告（`perf.md` 的"模型形态"行、`results/index.json` 的 `model_form`）顺着 manifest→bundle 取回来，所以 A/B 两份报告不会混。
 
 ## 9. 已知限制
 

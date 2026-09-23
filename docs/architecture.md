@@ -140,18 +140,15 @@ backend:
 
 verify:
   enabled: true
-
-variants:                          # 变体 = 同一模型的演化形态, 只写**与基线的差异**
-  prefix:                          #   跑法: run.sh --device 8 --variant prefix
-    adapt.params.prefix: true
-    inputs.prefix_len: 20
-  prune:
-    adapt.params.prune_token_file: config/target_tokens.json
 ```
 
 > `adapt.params` 只放**适配行为**（prefix/prune）；`inputs` 放**输入形状/分布**（batch/seq/seed）——换输入分布不动 adapt。
 
-> **变体不复制 yaml**：模型是不断演进的（qwen2.5-0.5b 的 prefix 就是在 FIA 基线上演化的），差异往往只有两三个开关。复制一整份 yaml 会随基线**漂移**（改了 `soc`/权重路径/`max_seq_len`，副本不会跟，跑变体时静默用旧值）。所以用 `variants:` 覆盖表 + `--variant <名>`：`apply_variant` 按点路径把覆盖项打到已加载的配置上（dataclass 字段不存在 → 报错；`adapt.params` 这类自由 dict 允许新增键但 WARN，防拼错静默无效），生效后的 `prefix_len` 等进 `bundle.provenance`，导出名自动带 `-prefix` 后缀，产物不与基线冲突。
+> **一份 yaml 只描述"当前形态"，形态演进靠 git**：模型是不断向下演进的（qwen2.5-0.5b 的 prefix/PIA 就是在 FIA 基线上演化的），任一时刻只有一个当前形态值得被配置描述。切形态 = 改 `adapt.params` 那几行（`prefix` / `prune_token_file` + `inputs.prefix_len`），产物名由 `config.export_name` 自动带后缀（`-prefix` / `-prune`），**不会静默覆盖**另一种形态的 AIR/OM/bundle。历史形态要复现就 `git checkout <commit> -- models/<m>/config/model.yaml`。
+>
+> 刻意**不做**"变体覆盖表 / 多份 yaml 并存"：那是为"多形态长期并存的矩阵"设计的机制，用在串行演进上只是多一层要理解的抽象（读者得先问"这次生效的是哪份配置"）。**重新引入的触发条件**：同一模型有 ≥2 种形态需要长期并存且都进回归（例如客户同时部署共享 prefix 与普通 varlen 两套）——届时覆盖表的实现可从 commit `3db0189` 取回（约 20 分钟）。
+>
+> 形态必须**可归因**：`adapt.params` 全量写进 `bundle.provenance`，性能报告顺着 manifest→bundle 取回来（`bench.form_from_manifest`）并印在 `perf.md` / `index.json` 上——否则 A/B 两份报告分不清哪份是哪种形态。
 
 ### 5.3 io_spec.json（生成，图接口，独立文件）
 
@@ -320,6 +317,18 @@ load()/adapt():  apply_patches()   ← patch_specs:  类级行为替换 (怎么�
 
 `models/qwen2.5-0.5b/model.py` 是完整样例：5 处 patch（CausalLM.forward / RMSNorm / apply_rotary_pos_emb / RotaryEmbedding.forward / Attention.forward）+ prefix 变体 + lm_head 剪裁 + setup 注入 + `Qwen25Adapter`。新模型照此复制修改。
 
+### 8.4 新模型 onboarding 顺序（涉及自定义算子时）
+
+原则：**先基线、后新算子**——把"适配是否正确"与"新算子是否正确"两个变量分开（A5 适配按此走）。
+
+1. **基线先跑通**：只用框架/torch_npu 已有能力（如 FIA `npu_fused_infer_attention_score`）适配 → 导出 → OM → run → compare PASS，报告归档 `models/<m>/results/`。
+2. **再接自定义算子**：`custom_ops:` 挂安装脚本（§7）→ adapter 加形态开关（如 `prefix`）走新算子路径 → 用**同一套 golden 口径**比对 → 两份报告靠 `bundle.provenance.adapt_params` 区分（§5.2）。
+3. **形态开关写进 yaml 注释**，产物名由 `config.export_name` 带后缀（`-prefix`/`-prune`），A/B 互不覆盖。
+
+配套的两个 YAGNI 触发点（等第二个实例出现再做，别提前抽象）：
+- `models/qwen2.5-0.5b/scripts/install_prefix_attn.sh` 目前归 qwen 私有；**A5 是第二个消费者** → 那时上提到仓库级 `scripts/`，两个模型的 yaml 都指过去（同 `models/common → core/` 的套路）。
+- 若 A5 与 qwen 的 adapter 出现重复结构（相同的 lm_head 剪裁、相同的 varlen forward 骨架）→ 上提到 `core/`（§8.2 第 5 条）。
+
 ## 9. C++ 运行时（重建，通用）
 
 旧 `atb/` 定制 C++ 已**退役删除**（能力全部移植进来；未移植项见 §10 已知限制），重建为配置驱动的通用运行时（`bash runtime/build.sh` → `runtime/build/ge_runtime`）：
@@ -425,11 +434,11 @@ json + md **入库**（小、可 diff、可归档），csv/raw/plan 忽略。基
 ```python
 # config.py
 @dataclass ModelConfig: model; source; adapt; inputs; graph; passes; custom_ops;
-                        backend; verify; variants; variant      # 无 device (运行期 --device)
+                        backend; verify                         # 无 device (运行期 --device)
 @dataclass SetupEntry: script; path       # passes/custom_ops 的条目 (脚本 + 三方源)
 def load_config(path) -> ModelConfig
 def load_adapter(cfg) -> GeModelAdapter        # importlib 从 <model_dir>/model.py 取 adapter_class
-def apply_variant(cfg, name) -> ModelConfig    # 按 variants[name] 的点路径覆盖 (原地改)
+def export_name(cfg) -> str                    # 产物名 = 模型名 + 形态后缀 (-prefix/-prune)
 def write_manifest(cfg, graph, om, io_spec, bundle, base_dir, device) -> path
                                                  # 写 deploy/manifest.json; device 必填
 
@@ -485,6 +494,7 @@ def load_scenario(path, device, instances, requests, warmup, manifest) -> Scenar
 def build_plan(scenario, run_dir, run_id) -> plan_path      # C++ 只吃 json, 不读 yaml
 def run(scenario_path, ...) -> run_dir                      # 生成池 → 跑 → 写报告 → 更新 index
 def render_perf_md(perf, scenario, run_id, provenance); def render_accuracy_md(report, case)
+def form_from_manifest(manifest_path) -> dict            # 顺着 manifest→bundle 取形态, 报告自证
 def update_index(report_dir, entry) -> index_path
 
 # verify.py
@@ -495,11 +505,12 @@ class Verifier:
                                                          # golden=None → 只落 inputs (部署/无验证态)
     def compare_bundle(self, bundle_path, outputs_dir, dtype) -> report   # 闭环第三段 (shape 不符即抛)
 def bundle_has_golden(bundle_path) -> bool               # pipeline 据此决定是否 compare
+def collect_provenance(..., adapt_params, **extra)       # 形态 (prefix/prune) 进 provenance
 
 # pipeline.py  (YAGNI: 全量 + --skip, 不做 6 阶段枚举)
 def run(config_path, skip=(), dtype, device, batch_size, seq_len, work_dir,
-        warmup, bench, runtime_extra, runtime_inputs, variant)
-                                                 # device 必填; variant=变体名 (None=基线)
+        warmup, bench, runtime_extra, runtime_inputs)
+                                                 # device 必填
                                                  # skip ⊂ {ops,export,passes,compile,run,compare}
                                                           # runtime_inputs: 部署态 --input 规格 (形态③ 用)
 ```

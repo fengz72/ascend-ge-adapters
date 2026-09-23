@@ -45,8 +45,8 @@ bash runtime/build.sh                       # → runtime/build/ge_runtime
 # 2) 跑一个模型的全链路 (导出→ATC→执行→比对)
 ./models/qwen2.5-0.5b/run.sh --device 6 --batch-size 2 --seq-len 16
 
-# 3) 跑变体 (model.yaml 的 variants: 段, 只写与基线的差异)
-./models/qwen2.5-0.5b/run.sh --device 6 --variant prefix
+# 3) 切形态 (改 model.yaml 的 adapt.params: prefix/prune; 产物名自动带后缀, 不互相覆盖)
+#    配置只描述"当前形态", 历史形态靠 git — 见 docs/architecture.md §5.2
 
 # 4) 只跑执行 + 比对 (复用已有 AIR/OM/bundle)
 ./models/qwen2.5-0.5b/run.sh --device 6 --skip export,passes,compile --warmup 10 --bench 100

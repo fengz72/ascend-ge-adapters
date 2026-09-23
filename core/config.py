@@ -89,8 +89,6 @@ class ModelConfig:
     graph: GraphCfg = field(default_factory=GraphCfg)
     passes: list = field(default_factory=list)        # list[SetupEntry] fusion pass (ATC 前执行)
     custom_ops: list = field(default_factory=list)    # list[SetupEntry] 自定义算子 (加载 adapter 前)
-    variants: dict = field(default_factory=dict)      # 变体覆盖表: {名字: {点路径: 值}}
-    variant: str = ""                                 # 本次生效的变体名 (apply_variant 写入)
     backend: BackendCfg = field(default_factory=BackendCfg)
     verify: VerifyCfg = field(default_factory=VerifyCfg)
     model_dir: str = ""             # 配置文件所在模型目录 (load 时填入)
@@ -151,7 +149,6 @@ def load_config(path) -> ModelConfig:
         graph=GraphCfg(format=graph_d.get("format", "air"), dynamic=dynamic),
         passes=_setup_entries(raw.get("passes")),
         custom_ops=_setup_entries(raw.get("custom_ops")),
-        variants=dict(raw.get("variants") or {}),
         backend=_sub(BackendCfg, raw.get("backend")),
         verify=_sub(VerifyCfg, raw.get("verify")),
         model_dir=model_dir,
@@ -167,53 +164,18 @@ def load_target_tokens(json_path):
     return token_ids
 
 
-def _set_dotted(obj, path, value):
-    """按点路径写字段 (dataclass 属性或 dict 键), 如 adapt.params.prefix / inputs.prefix_len。
+def export_name(cfg: ModelConfig) -> str:
+    """产物名 = 模型名 + **形态后缀** (AIR/OM/bundle/manifest 都以此命名)。
 
-    路径任一段不存在 → 报错: 静默忽略会让"以为开了 prefix 其实没开"这种事故无声发生。
+    凡是影响图结构的 adapt.params 开关都要编进名字, 否则切换形态时会**静默覆盖**上一种
+    形态的产物 (你以为在做 A/B, 其实基线已经被冲掉)。新增形态开关时记得在这里加后缀。
     """
-    parts = [p for p in str(path).split(".") if p]
-    if not parts:
-        raise ValueError(f"variant 覆盖项的路径为空: {path!r}")
-    cur = obj
-    for part in parts[:-1]:
-        if isinstance(cur, dict):
-            if part not in cur:
-                raise ValueError(f"variant 覆盖路径 '{path}' 无效: '{part}' 不在 {list(cur)} 里")
-            cur = cur[part]
-        else:
-            if not hasattr(cur, part):
-                raise ValueError(f"variant 覆盖路径 '{path}' 无效: 配置没有字段 '{part}'")
-            cur = getattr(cur, part)
-    last = parts[-1]
-    if isinstance(cur, dict):
-        # dict 段 (如 adapt.params) 允许**新增**键 — 变体可能要加基线没有的开关;
-        # 但新键要 WARN, 否则拼错 (prefex) 会静默无效
-        if last not in cur:
-            print(f"[config][WARN] variant 覆盖新增键 '{path}' (基线里没有) — 若属拼写错误请检查")
-        cur[last] = value
-    elif hasattr(cur, last):
-        setattr(cur, last, value)
-    else:
-        raise ValueError(f"variant 覆盖路径 '{path}' 无效: 配置没有字段 '{last}'")
-
-
-def apply_variant(cfg: ModelConfig, name) -> ModelConfig:
-    """把 cfg.variants[name] 的覆盖项打到 cfg 上 (原地改), 返回 cfg。
-
-    变体是**同一模型的演化形态** (如 qwen2.5-0.5b 的 prefix 是在 FIA 基线上演化的),
-    差异只有几个开关 — 用覆盖表表达, 而不是复制一整份 yaml (复制会随基线漂移)。
-    name 为空 → 原样返回 (基线)。
-    """
-    if not name:
-        return cfg
-    variants = cfg.variants or {}
-    if name not in variants:
-        raise ValueError(f"未知 variant: {name!r} (model.yaml 里声明的有: {sorted(variants)})")
-    for path, value in (variants[name] or {}).items():
-        _set_dotted(cfg, path, value)
-    cfg.variant = str(name)
-    return cfg
+    name = cfg.model.name
+    if cfg.adapt.params.get("prefix"):
+        name += "-prefix"
+    if cfg.adapt.params.get("prune_token_file"):
+        name += "-prune"
+    return name
 
 
 def load_adapter(cfg: ModelConfig):

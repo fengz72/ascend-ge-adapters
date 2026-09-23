@@ -170,6 +170,17 @@ def build_plan(scenario, run_dir, run_id) -> str:
     return plan_path
 
 
+def _form_str(form) -> str:
+    """形态 dict → 一行可读串 (adapt_params 展开, 其余 key=value)。"""
+    if not form:
+        return "未知 (bundle 无 provenance)"
+    parts = []
+    for key, value in (form.get("adapt_params") or {}).items():
+        parts.append(f"{key}={value}")
+    parts += [f"{k}={v}" for k, v in form.items() if k != "adapt_params"]
+    return " · ".join(parts)
+
+
 def render_perf_md(perf, scenario, run_id, provenance) -> str:
     """perf.json → 人读 markdown (聚合 + 每实例 + 口径说明)。"""
     e2e = perf.get("e2e_ms") or {}
@@ -188,6 +199,7 @@ def render_perf_md(perf, scenario, run_id, provenance) -> str:
         f"warmup={load.get('warmup')} · seed={load.get('seed')}",
         f"- 请求池: `{pool.get('dir')}` — {pool.get('size')} 套 / "
         f"{pool.get('distinct_shapes')} 种 shape",
+        f"- 模型形态: {_form_str(provenance.get('model_form'))}",
         f"- 环境: git `{provenance.get('git_commit', '-')}` · CANN `{provenance.get('cann', '-')}` · "
         f"torch_npu `{provenance.get('torch_npu', '-')}`",
         "",
@@ -264,6 +276,26 @@ def render_accuracy_md(report, case) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+FORM_KEYS = ("adapt_params", "seed", "batch_size", "seq_len", "prefix_len", "dtype")
+
+
+def form_from_manifest(manifest_path) -> dict:
+    """从 manifest 指向的 bundle.provenance 取**形态**信息, 让性能报告也能自证是哪种形态。
+
+    形态的事实源是 bundle 的 provenance (pipeline 写入, 含 adapt_params = prefix/prune 等开关);
+    bench 只有 manifest, 顺着它读回来即可, 不必再解析 model.yaml。取不到返回 {}。
+    """
+    try:
+        manifest = json.load(open(manifest_path))
+        if not manifest.get("bundle"):
+            return {}
+        base = os.path.dirname(os.path.dirname(os.path.abspath(manifest_path)))
+        prov = json.load(open(os.path.join(base, manifest["bundle"]))).get("provenance") or {}
+        return {k: prov[k] for k in FORM_KEYS if k in prov}
+    except (OSError, ValueError):
+        return {}
 
 
 def _io_spec_dtype(manifest_path, manifest):
@@ -354,6 +386,12 @@ def run(scenario_path, device=None, instances=None, requests=None, warmup=None, 
     # 3. provenance + 报告
     provenance = collect_provenance(model=sc.name, soc=sc.soc or None)
     provenance["cann"] = os.path.basename(os.environ.get("ASCEND_HOME_PATH", "")) or None
+    model_form = form_from_manifest(sc.manifest)
+    if model_form:
+        provenance["model_form"] = model_form      # 形态自证: prefix/prune/seed/shape 等
+    else:
+        print("[bench][WARN] 未能从 bundle.provenance 取到形态信息 (manifest 无 bundle?) — "
+              "本报告无法自证是哪种形态跑出来的")
     with open(os.path.join(run_dir, "run.json"), "w") as f:
         json.dump({"schema": "ge-bench-run/1", "run_id": run_id, "scenario": sc.raw,
                    "scenario_path": sc.path, "provenance": provenance,
@@ -381,6 +419,7 @@ def run(scenario_path, device=None, instances=None, requests=None, warmup=None, 
         "instances": sc.instances, "requests": perf.get("requests"),
         "qps": perf.get("qps"), "e2e_avg_ms": e2e.get("avg"), "e2e_p99_ms": e2e.get("p99"),
         "errors": perf.get("errors"), "distinct_shapes": perf.get("distinct_shapes"),
+        "model_form": model_form or None,
         "accuracy": (accuracy.get("report") or {}).get("pass_overall") if accuracy else None,
         "git_commit": provenance.get("git_commit"), "dir": run_dir,
     })

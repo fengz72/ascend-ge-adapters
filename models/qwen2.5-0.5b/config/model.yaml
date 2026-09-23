@@ -11,14 +11,14 @@ source:
 
 adapt:
   adapter_class: Qwen25Adapter     # 同目录 model.py 里的类
-  params:                          # 直接作为 adapter 构造 kwargs
-    prefix: false
-    prune_token_file: null         # 启用 lm_head 剪裁则填 config/target_tokens.json
+  params:                          # 直接作为 adapter 构造 kwargs (= 形态开关)
+    prefix: false                  # true → PIA (prefix-in-Q, npu_prefix_infer_attention_score)
+    prune_token_file: null         # 填 config/target_tokens.json → lm_head 词表剪裁         # 启用 lm_head 剪裁则填 config/target_tokens.json
 
 inputs:                            # 输入生成 (export trace 与 verify golden 共用)
   batch_size: 10
   seq_len: 208
-  prefix_len: 0
+  prefix_len: 0                    # prefix: true 时改为共享 prefix 长度 P (如 20)
   seed: 0
 
 graph:
@@ -46,12 +46,9 @@ backend:
 verify:
   enabled: true
 
-# 变体 = 同一模型的演化形态, 只写**与基线的差异** (覆盖项按点路径打到上面的配置上)。
-# 不再复制一整份 yaml — 复制会随基线漂移 (改了这里的 soc/权重路径/max_seq_len, 副本不会跟)。
-# 跑法: ./run.sh --device 8 --variant prefix   (导出名自动变 qwen2.5-0.5b-prefix, 产物不冲突)
-variants:
-  prefix:                          # 在 FIA 基线上演化: prefix-in-Q attention (PIA 算子, KV 内嵌)
-    adapt.params.prefix: true
-    inputs.prefix_len: 20          # 共享 prefix 长度 P; act = cumsum([P, L0, L1, ...])
-  prune:                           # lm_head 词表剪裁 (减少 D2H)
-    adapt.params.prune_token_file: config/target_tokens.json
+# ---- 形态开关 (配置只描述**当前形态**; 历史形态靠 git, 见 docs §5.2) ----
+# 切形态就是改下面这几行, 产物名会自动带后缀 (core.config.export_name), 不会互相覆盖:
+#   FIA 基线   prefix: false + prefix_len: 0            → qwen2.5-0.5b
+#   PIA prefix prefix: true  + prefix_len: 20 (>0)      → qwen2.5-0.5b-prefix
+#   词表剪裁   prune_token_file: config/target_tokens.json → …-prune
+# 改完记得: 要么改回, 要么提交 (报告靠 bundle.provenance 的 adapt_params 自证形态)
