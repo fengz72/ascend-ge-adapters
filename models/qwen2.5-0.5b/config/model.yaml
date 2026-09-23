@@ -45,3 +45,13 @@ backend:
 
 verify:
   enabled: true
+
+# 变体 = 同一模型的演化形态, 只写**与基线的差异** (覆盖项按点路径打到上面的配置上)。
+# 不再复制一整份 yaml — 复制会随基线漂移 (改了这里的 soc/权重路径/max_seq_len, 副本不会跟)。
+# 跑法: ./run.sh --device 8 --variant prefix   (导出名自动变 qwen2.5-0.5b-prefix, 产物不冲突)
+variants:
+  prefix:                          # 在 FIA 基线上演化: prefix-in-Q attention (PIA 算子, KV 内嵌)
+    adapt.params.prefix: true
+    inputs.prefix_len: 20          # 共享 prefix 长度 P; act = cumsum([P, L0, L1, ...])
+  prune:                           # lm_head 词表剪裁 (减少 D2H)
+    adapt.params.prune_token_file: config/target_tokens.json

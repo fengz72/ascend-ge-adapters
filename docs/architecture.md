@@ -140,9 +140,18 @@ backend:
 
 verify:
   enabled: true
+
+variants:                          # 变体 = 同一模型的演化形态, 只写**与基线的差异**
+  prefix:                          #   跑法: run.sh --device 8 --variant prefix
+    adapt.params.prefix: true
+    inputs.prefix_len: 20
+  prune:
+    adapt.params.prune_token_file: config/target_tokens.json
 ```
 
 > `adapt.params` 只放**适配行为**（prefix/prune）；`inputs` 放**输入形状/分布**（batch/seq/seed）——换输入分布不动 adapt。
+
+> **变体不复制 yaml**：模型是不断演进的（qwen2.5-0.5b 的 prefix 就是在 FIA 基线上演化的），差异往往只有两三个开关。复制一整份 yaml 会随基线**漂移**（改了 `soc`/权重路径/`max_seq_len`，副本不会跟，跑变体时静默用旧值）。所以用 `variants:` 覆盖表 + `--variant <名>`：`apply_variant` 按点路径把覆盖项打到已加载的配置上（dataclass 字段不存在 → 报错；`adapt.params` 这类自由 dict 允许新增键但 WARN，防拼错静默无效），生效后的 `prefix_len` 等进 `bundle.provenance`，导出名自动带 `-prefix` 后缀，产物不与基线冲突。
 
 ### 5.3 io_spec.json（生成，图接口，独立文件）
 
@@ -415,10 +424,12 @@ json + md **入库**（小、可 diff、可归档），csv/raw/plan 忽略。基
 
 ```python
 # config.py
-@dataclass ModelConfig: model; source; adapt; inputs; graph; passes; backend; verify   # 无 device
+@dataclass ModelConfig: model; source; adapt; inputs; graph; passes; custom_ops;
+                        backend; verify; variants; variant      # 无 device (运行期 --device)
 @dataclass SetupEntry: script; path       # passes/custom_ops 的条目 (脚本 + 三方源)
 def load_config(path) -> ModelConfig
 def load_adapter(cfg) -> GeModelAdapter        # importlib 从 <model_dir>/model.py 取 adapter_class
+def apply_variant(cfg, name) -> ModelConfig    # 按 variants[name] 的点路径覆盖 (原地改)
 def write_manifest(cfg, graph, om, io_spec, bundle, base_dir, device) -> path
                                                  # 写 deploy/manifest.json; device 必填
 
@@ -487,7 +498,9 @@ def bundle_has_golden(bundle_path) -> bool               # pipeline 据此决定
 
 # pipeline.py  (YAGNI: 全量 + --skip, 不做 6 阶段枚举)
 def run(config_path, skip=(), dtype, device, batch_size, seq_len, work_dir,
-        warmup, bench, runtime_extra, runtime_inputs)     # device 必填; skip ⊂ {export,passes,compile,run,compare}
+        warmup, bench, runtime_extra, runtime_inputs, variant)
+                                                 # device 必填; variant=变体名 (None=基线)
+                                                 # skip ⊂ {ops,export,passes,compile,run,compare}
                                                           # runtime_inputs: 部署态 --input 规格 (形态③ 用)
 ```
 

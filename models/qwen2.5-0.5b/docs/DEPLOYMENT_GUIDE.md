@@ -153,15 +153,24 @@ python3 tools/parse_profiling.py summary --profiling_dir ./prof_om
 python3 tools/parse_dump.py ...   # 见 tools/README.md
 ```
 
-## 8. 可选变体（都在 `config/model.yaml`）
+## 8. 变体与可选项
 
-| 变体 | 配置 | 说明 |
+变体写在 `config/model.yaml` 的 `variants:` 段（**只写与基线的差异**，不复制整份 yaml——复制会随基线漂移），用 `--variant <名>` 选：
+
+```bash
+./models/qwen2.5-0.5b/run.sh --device 8 --variant prefix    # 导出名自动变 qwen2.5-0.5b-prefix
+./models/qwen2.5-0.5b/run.sh --device 8 --variant prune
+```
+
+| 变体 / 选项 | 怎么开 | 说明 |
 |---|---|---|
-| 词表剪裁 | `adapt.params.prune_token_file: config/target_tokens.json` | lm_head 输出维 151936 → N，减少 D2H |
-| prefix-attention | 用 `config/model.prefix.yaml`（`adapt.params.prefix: true` + `inputs.prefix_len: 20`） | PIA 算子（`npu_prefix_infer_attention_score`，KV 内嵌），由 `custom_ops` 脚本装到 `opp/vendors/custom_prefix_attn/`；导出名自动变 `qwen2.5-0.5b-prefix`，产物与基线互不覆盖 |
+| prefix-attention | `--variant prefix`（= `adapt.params.prefix: true` + `inputs.prefix_len: 20`） | 在 FIA 基线上演化：PIA 算子（`npu_prefix_infer_attention_score`，KV 内嵌），由 `custom_ops` 脚本装到 `opp/vendors/custom_prefix_attn/`；产物名带 `-prefix`，与基线互不覆盖 |
+| 词表剪裁 | `--variant prune`（= `adapt.params.prune_token_file: config/target_tokens.json`） | lm_head 输出维 151936 → N，减少 D2H |
 | 限核（离线） | `backend.aicore_num: 12`（整数按 1:2 拆成 `12|24`） | OM 文件名带 `_c12_24` 后缀 |
 | 限核（在线） | `--runtime-opt --aicore_num=12` | 经 `GEInitialize` 注入 |
 | 图常量长度 | `graph.dynamic.max_seq_len: 2048` | RoPE 表与因果 mask 长度同源；决定 position_ids 上限 |
+
+> 覆盖路径写错会**报错**（dataclass 字段）或 **WARN**（`adapt.params` 这类自由 dict 允许新增键）——不会静默无效。
 
 ## 9. 已知限制
 

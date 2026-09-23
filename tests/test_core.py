@@ -341,6 +341,80 @@ def test_compare_bundle_missing_outputs(tmp_path):
         Verifier().compare_bundle(bundle, out, dtype="float16", verbose=False)
 
 
+# ---------------------------------------------------------------- config 变体覆盖
+
+VARIANT_YAML = """
+model: {name: m1, soc: Ascend910_9382}
+source: {type: torch, ref: /w}
+adapt: {adapter_class: A, params: {prefix: false, prune_token_file: null}}
+inputs: {batch_size: 10, seq_len: 208, prefix_len: 0}
+graph: {dynamic: {max_seq_len: 2048}}
+backend: {type: om_acl}
+variants:
+  prefix:
+    adapt.params.prefix: true
+    inputs.prefix_len: 20
+  ge:
+    backend.type: ge_session
+"""
+
+
+def test_apply_variant(tmp_path):
+    from core.config import apply_variant
+
+    path, _ = _cfg_dir(tmp_path, VARIANT_YAML)
+    cfg = apply_variant(load_config(path), "prefix")
+    assert cfg.variant == "prefix"
+    assert cfg.adapt.params == {"prefix": True, "prune_token_file": None}   # 只改指定键
+    assert cfg.inputs.prefix_len == 20 and cfg.inputs.batch_size == 10      # 其余不动
+    assert cfg.backend.type == "om_acl"
+
+
+def test_apply_variant_none_is_baseline(tmp_path):
+    from core.config import apply_variant
+
+    path, _ = _cfg_dir(tmp_path, VARIANT_YAML)
+    cfg = apply_variant(load_config(path), None)
+    assert cfg.variant == "" and cfg.adapt.params["prefix"] is False
+    assert cfg.inputs.prefix_len == 0
+
+
+def test_apply_variant_unknown_name(tmp_path):
+    from core.config import apply_variant
+
+    path, _ = _cfg_dir(tmp_path, VARIANT_YAML)
+    with pytest.raises(ValueError, match="未知 variant"):
+        apply_variant(load_config(path), "nope")
+
+
+def test_apply_variant_bad_path_fails_loud(tmp_path):
+    """覆盖路径写错必须报错 — 静默忽略 = "以为开了 prefix 其实没开"。"""
+    from core.config import apply_variant
+
+    root = tmp_path / "m2"
+    (root / "config").mkdir(parents=True)
+    bad = root / "config" / "model.yaml"
+    bad.write_text(VARIANT_YAML + "\n  typo:\n    adapt.params.prefex: true\n"
+                   + "\n  badtop:\n    nosuch.field: 1\n")
+    cfg = load_config(str(bad))
+    # dataclass 字段不存在 → 硬报错
+    with pytest.raises(ValueError, match="nosuch"):
+        apply_variant(cfg, "badtop")
+
+
+def test_apply_variant_new_dict_key_warns(tmp_path, capsys):
+    """adapt.params 是自由 dict: 变体可新增键, 但要 WARN (拼错 prefex 不能静默无效)。"""
+    from core.config import apply_variant
+
+    root = tmp_path / "m3"
+    (root / "config").mkdir(parents=True)
+    path = root / "config" / "model.yaml"
+    path.write_text(VARIANT_YAML + "\n  typo:\n    adapt.params.prefex: true\n")
+    cfg = apply_variant(load_config(str(path)), "typo")
+    assert cfg.adapt.params["prefex"] is True
+    assert "新增键" in capsys.readouterr().out and "prefex" in cfg.adapt.params
+
+
 # ---------------------------------------------------------------- setup_scripts (脚本接口)
 
 @pytest.fixture

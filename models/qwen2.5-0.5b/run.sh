@@ -6,6 +6,7 @@
 #   ./run.sh --device 6                         # 全流程: source→adapt→export→pass→compile→manifest→run→compare
 #   ./run.sh --device 6 --skip compile,run,compare   # 只到 golden + bundle (不编译 OM)
 #   ./run.sh --device 6 --batch-size 2 --seq-len 16  # 小输入冒烟
+#   ./run.sh --device 6 --variant prefix        # 变体 (model.yaml 的 variants: prefix/prune)
 #   ./run.sh --device 6 --skip export           # 复用已有 AIR
 #   ./run.sh --device 6 --skip export,passes,compile --bench 10   # 复用 AIR/OM, 只跑 runtime + compare
 #   ./run.sh --help                             # 完整选项
