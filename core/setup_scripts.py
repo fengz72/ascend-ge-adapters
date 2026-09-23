@@ -68,7 +68,7 @@ def run_scripts(entries, stage, model_dir=None):
     """
     ran = []
     for entry in entries or []:
-        script_spec, src_spec = _entry_fields(entry)
+        script_spec, src_spec, extra_args = _entry_fields(entry)
         script = resolve_script(script_spec, model_dir)
         if script is None:
             raise FileNotFoundError(
@@ -85,13 +85,14 @@ def run_scripts(entries, stage, model_dir=None):
         if src_spec:
             src_dir = _resolve_dir(src_spec, model_dir)
             if src_dir is None:
-                print(f"[{stage}][WARN] 声明的源目录不存在: {src_spec!r} "
+                print(f"[{stage}][WARN] 声明的源路径不存在: {src_spec!r} "
                       f"(submodule 未克隆? git submodule update --init --recursive) — "
                       f"仍执行脚本, 由脚本决定跳过还是失败")
             else:
                 env["GE_SRC_DIR"] = src_dir
 
         cmd = [sys.executable, script] if script.endswith(".py") else ["bash", script]
+        cmd += list(extra_args)
         label = os.path.basename(src_dir) if src_dir else os.path.basename(script)
         print(f"[{stage}] {label}" + (f" ← {src_dir}" if src_dir else "") + f" | {' '.join(cmd)}")
         try:
@@ -113,16 +114,18 @@ def run_scripts(entries, stage, model_dir=None):
 
 
 def _entry_fields(entry):
-    """SetupEntry / dict / str → (script, path)。"""
+    """SetupEntry / dict / str → (script, path, args)。"""
     if isinstance(entry, str):
-        return entry, ""
+        return entry, "", []
     if isinstance(entry, dict):
-        return str(entry.get("script") or ""), str(entry.get("path") or "")
-    return str(getattr(entry, "script", "") or ""), str(getattr(entry, "path", "") or "")
+        return (str(entry.get("script") or ""), str(entry.get("path") or ""),
+                [str(a) for a in (entry.get("args") or [])])
+    return (str(getattr(entry, "script", "") or ""), str(getattr(entry, "path", "") or ""),
+            [str(a) for a in (getattr(entry, "args", None) or [])])
 
 
 def _resolve_dir(entry, model_dir=None):
-    """目录版的路径解析 (规则同 resolve_script); 找不到返回 None。"""
+    """源路径解析 (规则同 resolve_script, 目录或文件皆可); 找不到返回 None。"""
     if not entry:
         return None
     entry = str(entry).strip()
@@ -132,7 +135,7 @@ def _resolve_dir(entry, model_dir=None):
         os.path.abspath(entry),
     ]
     for path in candidates:
-        if path and os.path.isdir(path):
+        if path and os.path.exists(path):
             return os.path.normpath(path)
     return None
 

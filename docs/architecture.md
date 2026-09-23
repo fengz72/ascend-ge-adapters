@@ -322,7 +322,9 @@ runtime/
     acl_backend.{h,cpp}        # OM → ACL 加载+执行 (动态维经 aclmdlSetDatasetTensorDesc)
     gesession_backend.{h,cpp}  # AIR → GeSession 在线执行 (ONNX 不支持)
   io_spec.{h,cpp}          # 三份契约解析 (manifest/io_spec/bundle) + TensorPlan + .bin IO + outputs.json
-  bench.{h,cpp}            # 延迟 (warmup+分位数) 与吞吐 (多线程闭环 sweep), 两后端共用
+  bench.{h,cpp}            # 延迟 (warmup+分位数) / 吞吐 (多线程闭环 sweep) / 变长负载 (BenchPool)
+  pool.{h,cpp}             # 请求池: 扫 req_*/bundle.json → 具体 shape + host 数据 + 每实例随机抽样
+  bench_plan.{h,cpp}       # --bench-plan: 读 plan.json → 多实例跑池 → 写 perf.json / perf_requests.csv
   acl_json.{h,cpp}         # dump/profiling 的 acl.json 生成 (OM/ACL 路径)
   CMakeLists.txt build.sh
 ```
@@ -332,6 +334,7 @@ ge_runtime <manifest.json> [--output_dir DIR] [--device N]
                            [--input logical:d0,d1,...:file.bin]   # 部署态(manifest 无 bundle)必填, 可重复
                            # 延迟: [--warmup N] [--bench N]
                            # 吞吐: [--threads N] [--requests M] [--sweep 1,2,4,8]
+                           # 变长负载: --bench-plan <plan.json>  (多实例 + 请求池回放, 见 §10)
                            # 在线后端: [--graph_run_mode M] [--precision_mode P] [--aicore_num SPEC]
                            # 输出缓冲: [--output_reserve MB]
                            # 观测: [--dump --dump_path/--dump_mode/--dump_level/--dump_data/--dump_layer]
@@ -371,12 +374,36 @@ Python: compare(outputs, golden) → report   (verify.compare_bundle → tools/c
 
 ### 性能验收
 
-- 管线含 **bench 阶段**（C++ `bench.{h,cpp}`），两种口径都已落地：
-  - **延迟**：`--warmup N --bench M`，单线程 execute+sync，报 avg/min/p50/p99/max。
-  - **吞吐**：`--threads N --requests M`（闭环并发，每线程独立资源）或 `--sweep 1,2,4,8`（串行扫档，每档一份报告），报 wall/QPS/e2e 分位数/errors。
-- 口径统一为 **execute + sync**（两后端可比）；首次执行含懒初始化/shape 特化（OM ~330ms、GE ~250ms），故延迟测量必须配 `--warmup`。
-- **基线数据归 `models/<model>/docs/`**（逐模型），架构层只规定"有 bench 阶段 + 基线归档位置 + 报告格式"，**不写死全局阈值**——具体验收线（如 OM 相对 eager 的加速比下限）逐模型定。
-- 观测：`--profiling`（两后端）/`--dump`（仅 OM/ACL）产出 `PROF_*` 与逐算子数据，交 `tools/parse_profiling.py`、`tools/parse_dump.py` 解析。
+三种口径，都在 C++ 侧测量、Python 侧编排与排版（`core/bench.py`）：
+
+| 口径 | 入口 | 说明 |
+|---|---|---|
+| **延迟** | `ge_runtime <manifest> --warmup N --bench M` | 单实例、固定输入（H2D 一次），纯 execute+sync 分位数 |
+| **吞吐** | `… --threads N --requests M` / `--sweep 1,2,4,8` | N 实例闭环并发（1 worker ↔ 1 实例，无锁），报 wall/QPS/e2e 分位数 |
+| **变长负载** | `python3 -m core.bench --scenario <yaml>` → `ge_runtime --bench-plan <json>` | 多实例 + **请求池回放**（每请求 shape/数据不同），分阶段计时 + 报告归档 |
+
+**多实例的资源模型**（实测约束，见 §9）：ACL 每实例独立 `aclmdlLoadFromFile`（共享 modelId 并发执行会 500002），qwen2.5-0.5b 实测 **~1.2GB HBM/实例**；GeSession 单 Session 多图，每实例一份 `AddGraph`+`CompileGraph`（**~10s/份，串行**）+ `LoadGraph(gid, stream)`，实测 **~0.6GB HBM/实例**（图实例间共享权重）。
+
+**请求池（变长负载）**：框架**不生成模型专属负载**——语义自洽（`asl` 必须 cumsum、`position_ids` 每段 0..L-1、`asl[-1]==T`）只有模型侧能保证，故由**用户脚本**按分布预生成 K 套输入落盘（`req_NNN/{bundle.json, inputs/*.bin}`），与 pass/算子同一套 `{path, script, args}` 接口（§7）。运行时：所有实例**共享一个池**，各自用 `seed + instance_id` 随机抽样（可复现）；device 缓冲按池内**最大 shape** 预分配，每请求 H2D 实际字节 + 重设 desc（ACL）/ 重建 `gert::Tensor`（GE）；输出缓冲取池内最大 golden。
+
+- **池的 distinct shape 数直接决定 warmup 成本**：warmup 必须覆盖 每实例 × 每 shape（否则测量段付特化代价，csv 里 `first_hit=1` 且 stderr WARN）。实测 qwen 138 种 shape × 2 实例 = 276 次 warmup ≈ 3.4s（ACL）；GE 的图特化更贵，**建议 GE 用分档池**（少量 shape）。
+- 每请求记 `h2d / desc / execute+sync / e2e` 四段（定位瓶颈：H2D 占比高说明该增大 batch 或用 pinned memory）。
+
+**报告与归档**（`<report.dir>/<run_id>/`，run_id = 时间戳-git短sha-scenario）：
+
+```
+run.json          # 快照: git/CANN/torch_npu 版本、device、soc、scenario 全文、性能摘要
+perf.json         # C++ 出的数据: 聚合 + 每实例 (qps/e2e 分位/exec/h2d/desc/load/特化/HBM)
+perf.md           # 人读表 + 口径说明
+accuracy.json/md  # 精度 (单请求 + compare_bundle; 与性能**分开跑**, 避免 D2H 污染延迟)
+perf_requests.csv # 逐请求明细 (gitignore)
+raw/ plan.json    # 精度输出 .bin / bench plan (gitignore)
+results/index.json# 历次 run 一行摘要 (趋势)
+```
+
+json + md **入库**（小、可 diff、可归档），csv/raw/plan 忽略。基线数据归 `models/<model>/results/`（逐模型），架构层只规定"有 bench 阶段 + 归档位置 + 报告格式"，**不写死全局阈值**——验收线逐模型定。
+
+- profiling/dump（`--profiling` / `--dump`）产出 `PROF_*` 与逐算子数据，交 `tools/parse_profiling.py`、`tools/parse_dump.py` 解析；算子级 top-N 进报告属 P2（未做）。
 
 ### 已知限制（当前契约的边界）
 
@@ -440,6 +467,15 @@ def default_output_dir(manifest_path) -> str             # <manifest 根>/verifi
 def runtime_argv(manifest, output_dir, device, warmup, bench, extra, inputs) -> list[str]
 def run_runtime(manifest, ...) -> output_dir             # 子进程跑 ge_runtime (继承 CANN env)
 
+# bench.py  (性能测试编排: scenario yaml → plan.json → ge_runtime → 报告归档)
+@dataclass Scenario: name; manifest; instances; requests; warmup; seed; inputs; generate;
+                     report_dir; accuracy; backend_options; device; soc
+def load_scenario(path, device, instances, requests, warmup, manifest) -> Scenario
+def build_plan(scenario, run_dir, run_id) -> plan_path      # C++ 只吃 json, 不读 yaml
+def run(scenario_path, ...) -> run_dir                      # 生成池 → 跑 → 写报告 → 更新 index
+def render_perf_md(perf, scenario, run_id, provenance); def render_accuracy_md(report, case)
+def update_index(report_dir, entry) -> index_path
+
 # verify.py
 class Verifier:
     def golden(self, model, inputs) -> Tensor            # eager forward (NPU)
@@ -463,12 +499,12 @@ ascend-ge-adapters/
 ├── requirements.txt pytest.ini    # Python 依赖 (实测版本) / pytest 配置 (含 npu marker)
 ├── core/                          # 通用框架 (Python)
 │   ├── source.py adapter.py exporter.py graph.py
-│   ├── setup_scripts.py backend.py verify.py config.py pipeline.py
+│   ├── setup_scripts.py backend.py verify.py config.py bench.py pipeline.py
 │   └── _torchair_source_name.py   # 回移 torchair PR#3675: Data 节点带 forward 入参名
 ├── runtime/                       # 通用执行运行时 (C++)
 │   ├── main.cpp CMakeLists.txt build.sh
 │   ├── backends/{acl_backend, gesession_backend}.{h,cpp}   # 无 Backend 基类, main 按 manifest 分发
-│   ├── io_spec.{h,cpp} bench.{h,cpp} acl_json.{h,cpp}
+│   ├── io_spec.{h,cpp} pool.{h,cpp} bench.{h,cpp} bench_plan.{h,cpp} acl_json.{h,cpp}
 ├── third_party/                   # 三方源一律**只读** (见 third_party/README.md)
 │   ├── nlohmann/json.hpp          # vendored header-only JSON (C++ 读三份契约)
 │   ├── custom_development_code/   # gitcode submodule: fusion_pass/ (19 个 pass)
@@ -477,7 +513,10 @@ ascend-ge-adapters/
 │   └── qwen2.5-0.5b/
 │       ├── model.py               # Adapter (模型专属, 唯一手写代码之一)
 │       ├── config/model.yaml      # 声明 (基线) + model.prefix.yaml (PIA 变体)
-│       ├── scripts/               # 用户脚本: install_nz_pass.sh / install_prefix_attn.sh
+│       ├── scripts/               # 用户脚本: install_{nz_pass,prefix_attn}.sh / gen_requests.py
+│       ├── bench/varlen.yaml      # 性能测试 scenario (多实例 + 请求池)
+│       ├── bench/requests/        # 请求池 (生成物, gitignored)
+│       ├── results/               # 报告归档 (json+md 入库; csv/raw gitignored)
 │       ├── run.sh env.sh          # 薄封装 core/pipeline + 运行环境
 │       └── docs/                  # DEPLOYMENT_GUIDE.md + reports/ aicore/ prefix-attention/
 ├── tools/                         # varlen / atc_utils / compare / parse_dump / parse_profiling

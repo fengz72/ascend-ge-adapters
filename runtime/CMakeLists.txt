@@ -21,7 +21,9 @@ set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
 add_executable(ge_runtime
     main.cpp
     io_spec.cpp
+    pool.cpp
     bench.cpp
+    bench_plan.cpp
     acl_json.cpp
     backends/acl_backend.cpp
     backends/gesession_backend.cpp

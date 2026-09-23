@@ -26,6 +26,11 @@ models/*/air/
 models/*/om/
 models/*/deploy/
 models/*/verification/
+# 性能测试: 请求池 (可重新生成) 与逐请求明细/原始产物 (体积大); json+md 报告入库
+models/*/bench/requests/
+models/*/results/*/raw/
+models/*/results/*/perf_requests.csv
+models/*/results/*/plan.json
 **/*.so
 
 # ===== 会话日志 =====

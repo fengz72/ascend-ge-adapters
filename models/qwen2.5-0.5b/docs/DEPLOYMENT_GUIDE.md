@@ -105,8 +105,12 @@ deploy/manifest.json
 ```bash
 # 延迟
 ./models/qwen2.5-0.5b/run.sh --device 6 --skip export,passes,compile --warmup 10 --bench 100
-# 吞吐 (线程档扫描)
+# 吞吐 (线程档扫描; 1 worker ↔ 1 实例)
 ./runtime/build/ge_runtime <manifest> --device 6 --sweep 1,2,4,8 --requests 800 --warmup 10
+# 变长负载 (多实例 + 请求池回放, 出归档报告)
+python3 -m core.bench --scenario models/qwen2.5-0.5b/bench/varlen.yaml --device 6
+#   → models/qwen2.5-0.5b/results/<run_id>/{run,perf,accuracy}.json + perf.md/accuracy.md
+#   请求池由 scenario 的 generate 脚本按 lognormal 分布生成 (幂等, 见 scripts/gen_requests.py)
 # 限核 (在线后端)
 ./models/qwen2.5-0.5b/run.sh --device 6 --skip export,passes,compile --runtime-opt --aicore_num=12
 ```
@@ -121,7 +125,17 @@ deploy/manifest.json
 
 判定门限：cosine > 0.9999 且 relative_l2 < 0.01（`tools/compare.py`）；shape 不一致直接判失败，
 不做 flatten/截断兜底。大 batch / prefix / 限核的历史数据见 `docs/reports/`、`docs/aicore/`、
-`docs/prefix-attention/`。
+`docs/prefix-attention/`；`core.bench` 的归档报告见 `results/`（含两后端同负载对比样例）。
+
+变长负载实测（2 实例、lognormal 池 200 套 / 138 种 shape、batch=10、T≈1273–1694，device 8）：
+
+| | om_acl | ge_session |
+|---|---|---|
+| QPS | 107.7 | 107.2 |
+| e2e avg / p99 | 18.54 / 20.20 ms | 18.59 / 20.41 ms |
+| HBM 每实例 | ~1212 MB | **~604 MB** |
+| 启动每实例 | 2.9 s | **22.2 s**（含每份图 ~10 s 的 CompileGraph） |
+| warmup 特化（138 shape） | 1.83 s | 1.73 s |
 
 ## 7. Profiling 与 dump
 

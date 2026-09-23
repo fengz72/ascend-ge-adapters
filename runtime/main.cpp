@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "acl_json.h"
+#include "bench_plan.h"
 #include "backends/acl_backend.h"
 #include "backends/gesession_backend.h"
 #include "bench.h"
@@ -16,6 +17,7 @@ namespace {
 
 struct Options {
     std::string manifest;
+    std::string benchPlan;              // 非空 → 多实例变长负载模式 (plan 里含 manifest 路径)
     std::string output_dir;
     std::vector<std::string> inputs;      // 部署态 (无 bundle): logical:d0,d1,...:file
     int device = -1;
@@ -35,6 +37,7 @@ struct Options {
 void PrintUsage(const char *prog) {
     std::cout
         << "Usage: " << prog << " <manifest.json> [options]\n"
+        << "       " << prog << " --bench-plan <plan.json>      # 多实例 + 请求池 (性能测试)\n"
         << "\n配置驱动的 GE 运行时: 读 manifest → io_spec/bundle → 按 backend 分发执行 → 落盘输出。\n"
         << "\nOptions:\n"
         << "  --output_dir <dir>      输出目录 (默认 <manifest 根>/verification/outputs)\n"
@@ -46,6 +49,8 @@ void PrintUsage(const char *prog) {
         << "  --threads <N>           并发线程数 (>1 → 吞吐模式, 每线程独立 stream/dataset)\n"
         << "  --requests <M>          吞吐模式总请求数 (闭环, 均分到各线程; 默认每线程 --bench 个)\n"
         << "  --sweep <1,2,4,8>       串行扫描线程档, 每档独立建/销资源并各出一份吞吐报告\n"
+        << "  --bench-plan <json>     多实例变长负载: 共享请求池随机抽样 + 分阶段计时,\n"
+        << "                          产出 perf.json / perf_requests.csv (由 core/bench.py 生成 plan)\n"
         << "  --graph_run_mode <m>    ge_session: 0=host 1=device (默认 1)\n"
         << "  --precision_mode <p>    ge_session: 默认 force_fp16\n"
         << "  --aicore_num <spec>     ge_session: 限核, N 或 'aic|aiv'\n"
@@ -107,6 +112,8 @@ bool ParseArgs(const std::vector<std::string> &args, const std::string &prog, Op
             opt.precision_mode = next("--precision_mode");
         } else if (arg == "--aicore_num") {
             opt.aicore_num = next("--aicore_num");
+        } else if (arg == "--bench-plan") {
+            opt.benchPlan = next("--bench-plan");
         } else if (arg == "--threads") {
             opt.threads = std::atoi(next("--threads").c_str());
         } else if (arg == "--requests") {
@@ -168,7 +175,7 @@ bool ParseArgs(const std::vector<std::string> &args, const std::string &prog, Op
             return false;
         }
     }
-    if (missingValue || opt.manifest.empty()) {
+    if (missingValue || (opt.manifest.empty() && opt.benchPlan.empty())) {
         if (!missingValue) {
             PrintUsage(prog.c_str());
         }
@@ -201,6 +208,9 @@ int main(int argc, char *argv[]) {
     Options opt;
     if (!ParseArgs(Tokenize(argc, argv), argv[0], opt)) {
         return 1;
+    }
+    if (!opt.benchPlan.empty()) {
+        return ge_runtime::RunBenchPlan(opt.benchPlan);
     }
 
     try {

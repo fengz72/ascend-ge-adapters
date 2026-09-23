@@ -61,6 +61,15 @@ std::string FromGeDtype(ge::DataType dt) {
     }
 }
 
+// 整机 HBM 占用 (MB); 取不到返回 -1
+double HbmUsedMb() {
+    size_t freeBytes = 0, totalBytes = 0;
+    if (aclrtGetMemInfo(ACL_HBM_MEM, &freeBytes, &totalBytes) != ACL_SUCCESS) {
+        return -1.0;
+    }
+    return static_cast<double>(totalBytes - freeBytes) / (1024.0 * 1024.0);
+}
+
 std::string AicoreSpec(const std::string &raw) {
     if (raw.empty()) {
         return raw;
@@ -80,9 +89,11 @@ struct GeContext {
     aclrtStream stream = nullptr;
     std::vector<gert::Tensor> devInputs;
     std::vector<void *> inPtrs;
+    std::vector<size_t> inSizes;      // 每输入分配字节 (池模式 = pool 内最大)
     std::vector<gert::Tensor> devOutputs;
     std::set<void *> outAddrs;
     bool warnedAddrGrowth = false;
+    double loadMs = 0.0;              // 本实例 LoadGraph 耗时 (CompileGraph 在 Init 里, 另报)
 };
 
 class GeRunner {
@@ -92,6 +103,8 @@ public:
     ~GeRunner() { Destroy(); }
 
     aclrtContext Context() const { return aclCtx_; }
+
+    double CompileMs() const { return compileMs_; }   // 全部图实例的 CompileGraph 总耗时
 
     bool Init(const std::string &graphPath, int numGraphs) {
         std::map<ge::AscendString, ge::AscendString> globalOptions = {
@@ -170,9 +183,10 @@ public:
             std::cout << "[INFO] CompileGraph ok (gid=" << gid << "/" << numGraphs_ << "), cost "
                       << ElapsedMs(t0, Clock::now()) << " ms" << std::endl;
         }
+        compileMs_ = ElapsedMs(tAll, Clock::now());
         if (numGraphs_ > 1) {
             std::cout << "[INFO] " << numGraphs_ << " 份图实例编译总耗时 "
-                      << ElapsedMs(tAll, Clock::now()) << " ms (" << graphPath << ")" << std::endl;
+                      << compileMs_ << " ms (" << graphPath << ")" << std::endl;
         }
 
         ret = aclrtSetDevice(opt_.device);
@@ -251,42 +265,94 @@ public:
         std::cout << "[INFO] LoadGraph ok (gid=" << ctx->graphId << ", tid=" << tid << "), cost "
                   << ElapsedMs(t0, Clock::now()) << " ms" << std::endl;
 
-        for (size_t i = 0; i < plans_.size(); i++) {
-            const TensorPlan &p = plans_[i];
-            size_t bytes = p.Bytes();
+        // 池模式: 缓冲按 pool 内最大 shape 预分配, 每请求再 H2D + 重建 gert::Tensor;
+        // fixed 模式: 精确分配 + 一次 H2D + 建好 tensor
+        size_t nInputs = pool_ != nullptr ? pool_->maxBytes.size() : plans_.size();
+        for (size_t i = 0; i < nInputs; i++) {
+            size_t bytes = pool_ != nullptr ? pool_->maxBytes[i] : plans_[i].Bytes();
             void *dev = nullptr;
             ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
             if (ret != ACL_SUCCESS || dev == nullptr) {
-                fprintf(stderr, "[ERROR] aclrtMalloc(%zu) failed (tid=%d, input '%s'), ret=%d\n",
-                        bytes, tid, p.logical.c_str(), ret);
-                ReleaseContext(*ctx);
-                return false;
-            }
-            ret = aclrtMemcpy(dev, bytes, hostInputs_[i].data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE);
-            if (ret != ACL_SUCCESS) {
-                fprintf(stderr, "[ERROR] H2D failed (tid=%d, input '%s'), ret=%d\n",
-                        tid, p.logical.c_str(), ret);
-                aclrtFree(dev);
+                fprintf(stderr, "[ERROR] aclrtMalloc(%zu) failed (tid=%d, input %zu), ret=%d\n",
+                        bytes, tid, i, ret);
                 ReleaseContext(*ctx);
                 return false;
             }
             ctx->inPtrs.push_back(dev);
+            ctx->inSizes.push_back(bytes);
 
-            gert::Tensor t;
-            gert::StorageShape ss;
-            for (int64_t d : p.shape) {
-                ss.MutableOriginShape().AppendDim(d);
-                ss.MutableStorageShape().AppendDim(d);
+            if (pool_ == nullptr) {
+                ret = aclrtMemcpy(dev, bytes, hostInputs_[i].data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE);
+                if (ret != ACL_SUCCESS) {
+                    fprintf(stderr, "[ERROR] H2D failed (tid=%d, input %zu), ret=%d\n", tid, i, ret);
+                    aclrtFree(dev);
+                    ReleaseContext(*ctx);
+                    return false;
+                }
+                MakeTensor(ctx->devInputs, dev, bytes, plans_[i].shape, dtypes_[i]);
             }
-            t.GetShape() = ss;
-            t.MutableFormat() = gert::StorageFormat(ge::FORMAT_ND, ge::FORMAT_ND, {});
-            t.SetDataType(dtypes_[i]);
-            t.SetData(gert::TensorData(dev, nullptr, bytes, gert::kOnDeviceHbm));
-            ctx->devInputs.emplace_back(std::move(t));
         }
 
+        ctx->loadMs = ElapsedMs(t0, Clock::now());
         ctxs_[tid] = std::move(ctx);
         return true;
+    }
+
+    // 池模式: 每请求 H2D 实际字节 + 按该请求 shape 重建 gert::Tensor (device 缓冲复用)
+    bool SetInputs(int tid, const Request &req, PhaseTime &phase) {
+        GeContext *ctx = FindContext(tid);
+        if (ctx == nullptr) {
+            fprintf(stderr, "[ERROR] tid=%d 无执行资源\n", tid);
+            return false;
+        }
+        if (req.plans.size() != ctx->inPtrs.size()) {
+            fprintf(stderr, "[ERROR] 请求 %s 有 %zu 个输入, 实例有 %zu 个缓冲\n",
+                    req.name.c_str(), req.plans.size(), ctx->inPtrs.size());
+            return false;
+        }
+        auto h2dBegin = Clock::now();
+        for (size_t i = 0; i < req.plans.size(); i++) {
+            size_t bytes = req.plans[i].Bytes();
+            if (bytes > ctx->inSizes[i]) {
+                fprintf(stderr, "[ERROR] 请求 %s 输入 %zu 需要 %zu 字节 > 缓冲 %zu\n",
+                        req.name.c_str(), i, bytes, ctx->inSizes[i]);
+                return false;
+            }
+            aclError ret = aclrtMemcpy(ctx->inPtrs[i], ctx->inSizes[i], req.data[i].data(), bytes,
+                                       ACL_MEMCPY_HOST_TO_DEVICE);
+            if (ret != ACL_SUCCESS) {
+                fprintf(stderr, "[ERROR] H2D failed (tid=%d, req=%s, input %zu), ret=%d\n",
+                        tid, req.name.c_str(), i, ret);
+                return false;
+            }
+        }
+        phase.h2dMs = ElapsedMs(h2dBegin, Clock::now());
+
+        auto descBegin = Clock::now();
+        ctx->devInputs.clear();
+        for (size_t i = 0; i < req.plans.size(); i++) {
+            // TensorData 的 size 给**分配大小**(与 atb/bench_ge_latency 一致), shape 给该请求的实际 shape
+            MakeTensor(ctx->devInputs, ctx->inPtrs[i], ctx->inSizes[i], req.plans[i].shape, dtypes_[i]);
+        }
+        phase.descMs = ElapsedMs(descBegin, Clock::now());
+        return true;
+    }
+
+    double LoadMs(int tid) const {
+        auto it = ctxs_.find(tid);
+        return it == ctxs_.end() ? 0.0 : it->second->loadMs;
+    }
+
+    void UsePool(const RequestPool *pool) {
+        pool_ = pool;
+        // 池模式不走 LoadInputs, dtype 从池里首个请求的 plan 取 (各请求 dtype 一致)
+        if (dtypes_.empty() && !pool->requests.empty()) {
+            for (const auto &plan : pool->requests[0].plans) {
+                ge::DataType dt = ge::DT_FLOAT;
+                ToGeDtype(plan.dtype, dt);
+                dtypes_.push_back(dt);
+            }
+        }
     }
 
     bool Execute(int tid) {
@@ -404,6 +470,21 @@ private:
         }
     }
 
+    static void MakeTensor(std::vector<gert::Tensor> &out, void *dev, size_t allocBytes,
+                           const std::vector<int64_t> &shape, ge::DataType dtype) {
+        gert::Tensor t;
+        gert::StorageShape ss;
+        for (int64_t d : shape) {
+            ss.MutableOriginShape().AppendDim(d);
+            ss.MutableStorageShape().AppendDim(d);
+        }
+        t.GetShape() = ss;
+        t.MutableFormat() = gert::StorageFormat(ge::FORMAT_ND, ge::FORMAT_ND, {});
+        t.SetDataType(dtype);
+        t.SetData(gert::TensorData(dev, nullptr, allocBytes, gert::kOnDeviceHbm));
+        out.emplace_back(std::move(t));
+    }
+
     GeContext *FindContext(int tid) {
         auto it = ctxs_.find(tid);
         return it == ctxs_.end() ? nullptr : it->second.get();
@@ -411,6 +492,7 @@ private:
 
     GeSessionOptions opt_;
     int numGraphs_ = 1;
+    double compileMs_ = 0.0;
     bool geInited_ = false;
     bool aclInited_ = false;
     bool deviceSet_ = false;
@@ -419,6 +501,7 @@ private:
     std::vector<TensorPlan> plans_;
     std::vector<std::vector<char>> hostInputs_;
     std::vector<ge::DataType> dtypes_;
+    const RequestPool *pool_ = nullptr;
     std::map<int, std::unique_ptr<GeContext>> ctxs_;
 };
 
@@ -426,7 +509,7 @@ private:
 
 bool RunGeSessionBackend(const Manifest &manifest, const IoSpec &spec,
                          const std::vector<TensorPlan> &inputs, const GeSessionOptions &opt,
-                         std::vector<HostTensor> &outputs) {
+                         std::vector<HostTensor> &outputs, PerfResult *perf) {
     if (manifest.graph_path.empty()) {
         fprintf(stderr, "[ERROR] manifest 无 graph_path (backend=ge_session 需要 AIR/ONNX)\n");
         return false;
@@ -447,6 +530,35 @@ bool RunGeSessionBackend(const Manifest &manifest, const IoSpec &spec,
     if (!runner.Init(graphPath, numGraphs)) {
         return false;
     }
+
+    if (opt.pool != nullptr) {
+        // ---- 变长负载: 请求池回放 (单 Session 多图, 每实例一份 graphId+stream) ----
+        runner.UsePool(opt.pool);
+        PoolResources pres;
+        pres.setup = [&runner](int tid) { return runner.CreateContext(tid); };
+        pres.setInputs = [&runner](int tid, const Request &req, PhaseTime &ph) {
+            return runner.SetInputs(tid, req, ph);
+        };
+        pres.execute = [&runner](int tid) { return runner.Execute(tid); };
+        pres.release = [&runner](int) {};      // 图绑定不可重复建立, 统一在 Destroy 释放
+        pres.threadEnter = [&runner](int) { aclrtSetCurrentContext(runner.Context()); };
+        pres.loadMs = [&runner](int tid) {
+            return runner.LoadMs(tid) + runner.CompileMs();   // 该实例的 LoadGraph + 全部图编译
+        };
+        pres.hbmUsedMb = []() { return HbmUsedMb(); };
+
+        PerfResult result;
+        bool ok = BenchPool(opt.bench.threads, opt.bench.requests, opt.bench.warmup, opt.seed,
+                            *opt.pool, pres, result);
+        if (ok) {
+            PrintPerfResult("GeSession 变长负载 (请求池回放)", result);
+        }
+        if (perf != nullptr) {
+            *perf = std::move(result);
+        }
+        return ok;
+    }
+
     if (!runner.LoadInputs(inputs)) {
         return false;
     }

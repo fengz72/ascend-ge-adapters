@@ -32,6 +32,42 @@ def generate_varlen_inputs(batch_size, seq_len):
     return concat_ids, concat_pos, seq_lens, cum_seq_lens
 
 
+def generate_varlen_from_lens(seq_lens, vocab_size=0, seed=None):
+    """按**给定的每请求长度**生成 varlen 输入 (性能测试的请求池用)。
+
+    与 generate_varlen_inputs 的区别: 每条请求长度可各不相同 (服从任意分布),
+    token ids 随机 (vocab_size>0 时) 或全 0。
+
+    Args:
+        seq_lens:   list[int] 每条请求的 token 数 (>=1)
+        vocab_size: >0 时生成 [0, vocab_size) 的随机 token; 0 则全 0
+        seed:       随机种子 (可复现)
+
+    Returns:
+        concat_ids:  [total] int64
+        concat_pos:  [total] int64 每段 0..L-1
+        cum_seq_lens: list[int] 累积长度 (actual_seq_lengths)
+    """
+    import numpy as np
+
+    rng = np.random.RandomState(seed)
+    ids, pos, cum, acc = [], [], [], 0
+    for length in seq_lens:
+        length = int(length)
+        if length < 1:
+            raise ValueError(f"seq_lens 每项须 >=1, got {length}")
+        if vocab_size > 0:
+            ids.append(rng.randint(0, vocab_size, size=length).astype(np.int64))
+        else:
+            ids.append(np.zeros(length, dtype=np.int64))
+        pos.append(np.arange(length, dtype=np.int64))
+        acc += length
+        cum.append(acc)
+    return (torch.from_numpy(np.concatenate(ids)),
+            torch.from_numpy(np.concatenate(pos)),
+            cum)
+
+
 def generate_prefix_varlen_inputs(batch_size, seq_len, prefix_len):
     """生成 packed prefix-in-Q varlen 输入 (全 0 token, 不需要 tokenizer)。
 

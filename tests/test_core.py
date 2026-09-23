@@ -422,6 +422,35 @@ def test_run_scripts_exports_src_dir(script_tree, monkeypatch):
     monkeypatch.delenv("SEEN_SRC", raising=False)
 
 
+def test_run_scripts_src_may_be_file(script_tree, monkeypatch):
+    """path 可以是文件 (如 tools/varlen.py 这种"生成器依赖的源"), 不只是目录。"""
+    from core import setup_scripts as ss
+    from core.config import SetupEntry
+
+    root, _ = script_tree
+    monkeypatch.setattr(ss, "_REPO_ROOT", str(root))
+    probe = root / "models" / "m" / "scripts" / "probe2.sh"
+    probe.write_text('#!/bin/bash\necho "SRC=$GE_SRC_DIR" >> "$GE_ENV_FILE"\n')
+    monkeypatch.delenv("SRC", raising=False)
+    ss.run_scripts([SetupEntry(script="models/m/scripts/probe2.sh",
+                               path="models/m/scripts/ok.sh")], "generate")
+    assert os.environ["SRC"] == str(root / "models" / "m" / "scripts" / "ok.sh")
+    monkeypatch.delenv("SRC", raising=False)
+
+
+def test_run_scripts_passes_args(script_tree, monkeypatch, capfd):
+    """SetupEntry.args 原样追加到命令 (请求池生成器要 --count/--dist 等)。"""
+    from core import setup_scripts as ss
+    from core.config import SetupEntry
+
+    root, scripts = script_tree
+    monkeypatch.setattr(ss, "_REPO_ROOT", str(root))
+    (scripts / "args.sh").write_text('#!/bin/bash\necho "args:$*"\n')
+    ss.run_scripts([SetupEntry(script="models/m/scripts/args.sh", args=["--count", "5"])],
+                   "generate")
+    assert "args:--count 5" in capfd.readouterr().out
+
+
 def test_run_scripts_warns_missing_src(script_tree, monkeypatch, capfd):
     """声明的源目录不存在 (submodule 未克隆) → WARN 但仍执行脚本, 由脚本决定跳过或失败。"""
     from core import setup_scripts as ss
@@ -431,7 +460,7 @@ def test_run_scripts_warns_missing_src(script_tree, monkeypatch, capfd):
     monkeypatch.setattr(ss, "_REPO_ROOT", str(root))
     ss.run_scripts([SetupEntry(script="models/m/scripts/ok.sh", path="third_party/nope")], "passes")
     out = capfd.readouterr().out
-    assert "声明的源目录不存在" in out and "submodule" in out
+    assert "声明的源路径不存在" in out and "submodule" in out
     assert "hello-from-script" in out
 
 
@@ -527,3 +556,149 @@ def test_save_bundle_without_golden(tmp_path):
     assert bundle_has_golden(path) is False
     with pytest.raises(ValueError, match="无 golden"):
         Verifier().compare_bundle(path, str(tmp_path), dtype="float16", verbose=False)
+
+
+# ---------------------------------------------------------------- core/bench (性能测试编排)
+
+SCENARIO_YAML = """
+scenario: demo
+soc: Ascend910_9382
+manifest: {manifest}
+instances: 3
+requests: 90
+warmup: 9
+seed: 7
+inputs:
+  mode: pool
+  dir: {pool}
+generate:
+  - path: tools/varlen.py
+    script: gen.py
+    args: [--count, "5"]
+accuracy:
+  enabled: false
+report:
+  dir: {results}
+"""
+
+
+@pytest.fixture
+def scenario_file(tmp_path):
+    from core.config import ModelConfig, ModelMeta, SourceCfg, write_manifest
+
+    manifest = write_manifest(ModelConfig(model=ModelMeta(name="m"), source=SourceCfg(type="torch")),
+                              str(tmp_path / "air" / "m.air"), str(tmp_path / "om" / "m.om"),
+                              str(tmp_path / "air" / "s.json"), None,
+                              base_dir=str(tmp_path), device=1)
+    pool = tmp_path / "pool"
+    pool.mkdir()
+    path = tmp_path / "bench.yaml"
+    path.write_text(SCENARIO_YAML.format(manifest=manifest, pool=pool,
+                                         results=tmp_path / "results"))
+    return path, manifest, pool, tmp_path
+
+
+def test_load_scenario(scenario_file):
+    from core.bench import load_scenario
+
+    path, manifest, pool, tmp_path = scenario_file
+    sc = load_scenario(str(path), device=8)
+    assert sc.name == "demo" and sc.device == 8 and sc.instances == 3 and sc.requests == 90
+    assert sc.manifest == manifest and sc.inputs["dir"] == str(pool)
+    assert sc.generate[0].path == "tools/varlen.py" and sc.generate[0].args == ["--count", "5"]
+    assert sc.report_dir == str(tmp_path / "results")
+    # CLI 覆盖
+    sc2 = load_scenario(str(path), device=8, instances=5, requests=11, warmup=2)
+    assert (sc2.instances, sc2.requests, sc2.warmup) == (5, 11, 2)
+
+
+def test_load_scenario_requires_device(scenario_file):
+    from core.bench import load_scenario
+
+    path, _, _, _ = scenario_file
+    with pytest.raises(ValueError, match="device"):
+        load_scenario(str(path))
+
+
+def test_load_scenario_rejects_bad_inputs(scenario_file, tmp_path):
+    from core.bench import load_scenario
+
+    path, manifest, _, _ = scenario_file
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(SCENARIO_YAML.format(manifest=manifest, pool=tmp_path / "pool",
+                                        results=tmp_path / "r").replace("mode: pool",
+                                                                        "mode: fixed"))
+    with pytest.raises(ValueError, match="inputs.mode=pool"):
+        load_scenario(str(bad), device=1)
+
+
+def test_build_plan(scenario_file):
+    from core.bench import build_plan, load_scenario
+
+    path, manifest, pool, tmp_path = scenario_file
+    sc = load_scenario(str(path), device=8)
+    run_dir = str(tmp_path / "results" / "run1")
+    plan_path = build_plan(sc, run_dir, "run1")
+    plan = json.load(open(plan_path))
+    assert plan["schema"] == "ge-bench-plan/1"
+    assert plan["manifest"] == manifest and plan["device"] == 8
+    assert plan["instances"] == 3 and plan["requests"] == 90 and plan["warmup"] == 9
+    assert plan["seed"] == 7
+    assert plan["inputs"] == {"mode": "pool", "dir": str(pool)}
+    assert plan["report"]["perf_json"].endswith("run1/perf.json")
+    assert plan["report"]["run_id"] == "run1"
+
+
+PERF = {"schema": "ge-bench/1", "backend": "om_acl", "device": 8, "requests": 90, "errors": 0,
+        "wall_ms": 900.0, "qps": 100.0,
+        "e2e_ms": {"avg": 18.5, "min": 17.0, "p50": 18.5, "p99": 20.1, "max": 20.2},
+        "warmup": {"runs": 276, "ms": 3415.0}, "distinct_shapes": 138,
+        "hbm_mb": {"base": 50749.0, "peak": 53173.0},
+        "load": {"instances": 2, "requests": 90, "warmup": 50, "seed": 0},
+        "pool": {"dir": "/p", "size": 200, "distinct_shapes": 138, "max_output_bytes": 3038720},
+        "instances": [{"name": "instance_0", "requests": 45, "errors": 0, "qps": 50.0,
+                       "e2e_ms": {"avg": 18.5, "min": 17.0, "p50": 18.5, "p99": 20.0, "max": 20.1},
+                       "exec_ms": {"avg": 18.4, "p99": 19.9}, "h2d_ms": {"avg": 0.065},
+                       "desc_ms": {"avg": 0.003}, "load_ms": 2897.0, "distinct_shapes": 138,
+                       "specialize_ms": 1832.0}]}
+
+
+def test_render_perf_md(scenario_file):
+    from core.bench import load_scenario, render_perf_md
+
+    path, _, _, _ = scenario_file
+    sc = load_scenario(str(path), device=8)
+    md = render_perf_md(PERF, sc, "run1", {"git_commit": "abc1234", "cann": "cann-9.0.0",
+                                            "torch_npu": "2.9.0.post2"})
+    assert "# 性能报告 — demo" in md and "run1" in md
+    assert "**100.00 req/s**" in md and "18.541" not in md and "18.500" in md
+    assert "instance_0" in md and "2897.0" in md and "1832.0" in md
+    assert "abc1234" in md and "cann-9.0.0" in md
+    assert "## 口径" in md and "特化" in md
+
+
+def test_render_accuracy_md_numpy_safe():
+    """compare 报告里有 numpy 标量 (max_diff_position) → 落盘要走 default=_jsonable。"""
+    import numpy as np
+
+    from core.bench import _jsonable, render_accuracy_md
+
+    report = {"cosine_similarity": np.float64(0.99995719), "relative_l2_error": np.float64(9.2e-3),
+              "max_abs_error": np.float64(0.1367), "pass_overall": True,
+              "max_diff_position": tuple(np.array([1, 5]))}
+    md = render_accuracy_md(report, {"logical": "logits", "shape": [2, 8], "dtype": "float16",
+                                     "golden": "/g/bundle.json",
+                                     "gate": {"cosine_min": 0.9999, "rel_l2_max": 0.01}})
+    assert "**PASS**" in md and "0.99995719" in md
+    assert json.loads(json.dumps(report, default=_jsonable))["max_diff_position"] == [1, 5]
+
+
+def test_update_index(tmp_path):
+    from core.bench import update_index
+
+    results = str(tmp_path / "results")
+    update_index(results, {"run_id": "r1", "qps": 100.0})
+    update_index(results, {"run_id": "r2", "qps": 120.0})
+    data = json.load(open(os.path.join(results, "index.json")))
+    assert data["schema"] == "ge-bench-index/1"
+    assert [r["run_id"] for r in data["runs"]] == ["r1", "r2"]

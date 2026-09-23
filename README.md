@@ -48,20 +48,25 @@ bash runtime/build.sh                       # → runtime/build/ge_runtime
 # 3) 只跑执行 + 比对 (复用已有 AIR/OM/bundle)
 ./models/qwen2.5-0.5b/run.sh --device 6 --skip export,passes,compile --warmup 10 --bench 100
 
-# 4) 吞吐 / 限核 / profiling
+# 4) 变长负载性能测试 (多实例 + 请求池回放 → 归档报告)
+python3 -m core.bench --scenario models/qwen2.5-0.5b/bench/varlen.yaml --device 6
+#   → models/qwen2.5-0.5b/results/<run_id>/{run,perf,accuracy}.json + perf.md/accuracy.md
+
+# 5) 吞吐 / 限核 / profiling
 ./runtime/build/ge_runtime models/qwen2.5-0.5b/deploy/manifest.json --device 6 \
     --sweep 1,2,4,8 --requests 800
 ./runtime/build/ge_runtime <manifest> --device 6 --bench 20 --profiling --profiling_output ./prof
 python3 tools/parse_profiling.py parse-and-export --profiling_dir ./prof
 
-# 5) 直接调 C++ 运行时 (部署态, 无 bundle)
+# 6) 直接调 C++ 运行时 (部署态, 无 bundle)
 ./runtime/build/ge_runtime <manifest> --device 6 \
     --input actual_seq_lengths:2:/path/asl.bin --input input_ids:32:/path/ids.bin \
     --input position_ids:32:/path/pos.bin
 ```
 
 `ge_runtime` 的完整选项：`--output_dir --input --device --warmup --bench --threads --requests
---sweep --graph_run_mode --precision_mode --aicore_num --output_reserve --dump* --profiling*`（`--help`）。
+--sweep --bench-plan --graph_run_mode --precision_mode --aicore_num --output_reserve --dump*
+--profiling*`（`--help`）。性能/精度报告的格式与归档见 `models/<model>/results/README.md`。
 
 ## 测试
 

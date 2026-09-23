@@ -1,0 +1,79 @@
+{
+  "schema": "ge-bench-run/1",
+  "run_id": "20260923T103135-78c9f09-qwen2.5-0.5b-varlen",
+  "scenario": {
+    "scenario": "qwen2.5-0.5b-varlen",
+    "soc": "Ascend910_9382",
+    "manifest": "models/qwen2.5-0.5b/deploy/manifest.json",
+    "instances": 4,
+    "requests": 2000,
+    "warmup": 50,
+    "seed": 0,
+    "inputs": {
+      "mode": "pool",
+      "dir": "models/qwen2.5-0.5b/bench/requests"
+    },
+    "generate": [
+      {
+        "path": "tools/varlen.py",
+        "script": "models/qwen2.5-0.5b/scripts/gen_requests.py",
+        "args": [
+          "--count",
+          "200",
+          "--dist",
+          "lognormal",
+          "--mu",
+          "4.997",
+          "--sigma",
+          "0.167",
+          "--min-len",
+          "1",
+          "--max-len",
+          "218",
+          "--batch",
+          "10",
+          "--vocab",
+          "151936",
+          "--seed",
+          "0"
+        ]
+      }
+    ],
+    "accuracy": {
+      "enabled": true,
+      "dtype": "float16"
+    },
+    "backend_options": {
+      "output_reserve_mb": 256
+    },
+    "report": {
+      "dir": "models/qwen2.5-0.5b/results"
+    }
+  },
+  "scenario_path": "/export/home/ext.hejun23/workspace/ascend-ge-adapters/models/qwen2.5-0.5b/bench/varlen.yaml",
+  "provenance": {
+    "model": "qwen2.5-0.5b-varlen",
+    "soc": "Ascend910_9382",
+    "git_commit": "78c9f09044939b4d26bc4b36d236130c2fbe67bb",
+    "torch_npu": "2.9.0.post2",
+    "transformers": "5.10.1",
+    "timestamp": "2026-09-23T10:31:55.924354",
+    "cann": "cann-9.0.0"
+  },
+  "perf_summary": {
+    "backend": "om_acl",
+    "device": 8,
+    "qps": 107.678673915595,
+    "wall_ms": 928.689,
+    "e2e_ms": {
+      "avg": 18.541110000000007,
+      "max": 20.198,
+      "min": 17.179,
+      "p50": 18.589,
+      "p99": 20.198
+    },
+    "requests": 100,
+    "errors": 0,
+    "distinct_shapes": 138
+  }
+}

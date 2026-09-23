@@ -68,9 +68,11 @@ class SetupEntry:
     path    三方源目录 (如 third_party/custom_development_code/fusion_pass/XxxPass)。
             作用是**溯源**(配置里一眼看出 pass/算子从哪来) + 传给脚本 ($GE_SRC_DIR),
             框架自己不拿它构建。
+    args    传给脚本的额外参数 (如请求池生成器的 --count/--dist)
     """
     script: str
     path: str = ""
+    args: list = field(default_factory=list)
 
 
 @dataclass
@@ -118,7 +120,8 @@ def _setup_entries(raw) -> list:
             script = item.get("script") or item.get("install") or ""
             if not script:
                 raise ValueError(f"passes/custom_ops 条目缺 script 字段: {item}")
-            entries.append(SetupEntry(script=str(script), path=str(item.get("path") or "")))
+            entries.append(SetupEntry(script=str(script), path=str(item.get("path") or ""),
+                                      args=[str(a) for a in (item.get("args") or [])]))
         else:
             raise ValueError(f"passes/custom_ops 条目须是字符串或 {{path, script}} 映射: {item!r}")
     return entries
