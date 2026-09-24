@@ -7,7 +7,7 @@
 # 只有 prefix 链路需要 (adapt.params.prefix: true); 基线链路用不到, 但脚本幂等且
 # 已装即跳过, 所以留在配置里无害。
 #
-# 源码: third_party/ascend-ops/prefix-attention (vendored, **不修改**; build.sh 只在其
+# 源码: third_party/ascend-ops/prefix-attention (git submodule, **不修改**; build.sh 只在其
 #       目录内产 build_out/, 已被该源自己的 .gitignore 忽略)
 # 交付: ① CANN 算子包 .run → $ASCEND_HOME_PATH/opp/vendors/custom_prefix_attn/
 #       ② torch 绑定包 npu_prefix_infer_attention_score (pip 装, 失败则回退 PYTHONPATH)
@@ -40,17 +40,20 @@ emit_env() {
     } >> "${GE_ENV_FILE}"
 }
 
-# ---- 0. 源码在不在 ----
-if [ ! -d "${OP_DIR}" ]; then
-    warn "算子源码不存在: ${OP_DIR} (见 third_party/README.md 的引入方式)"
-    exit 1
-fi
-
-# ---- 1. 已装则跳过构建 ----
+# ---- 0. 已装则跳过构建 (先于源码检查: 装好了就不需要源码, submodule 未 init 也能跑管线) ----
 if [ -d "${VENDOR_DIR}" ] && python3 -c "import ${BINDING}" > /dev/null 2>&1; then
     log "已安装 (${VENDOR_DIR} + ${BINDING}) → 跳过构建 (~4min)"
     emit_env
     exit 0
+fi
+
+# ---- 1. 要构建就得有源码 (submodule 未克隆 → 硬失败: model.py 随后 import 绑定会崩,
+#         静默继续只会把错误推到更难查的下游) ----
+if [ ! -d "${OP_DIR}" ] || [ ! -f "${OP_DIR}/build.sh" ]; then
+    warn "算子源码不存在: ${OP_DIR}"
+    warn "  → git submodule update --init --recursive   (需能访问 github.com:443;"
+    warn "     该端口在部分网络环境不可达, 离线兜底见 third_party/README.md 的 tarball 步骤)"
+    exit 1
 fi
 
 # ---- 2. 构建 CANN 算子包 (~4min) ----

@@ -6,7 +6,8 @@
 |---|---|
 | `varlen.py` | varlen 输入生成（token 拼接 + position ids，基线/prefix） |
 | `atc_utils.py` | ATC 编译（AIR → OM，含 NzWeightPass / 限核支持） |
-| `compare.py` | 精度对比（golden vs 实际输出，多种指标） |
+| `compare.py` | 精度对比（golden vs 实际输出，多种指标；门限可传参） |
+| `sweep.py` | 并发档位扫描（逐档起进程调 `core.bench`，汇总 scaling 表） |
 | `parse_dump.py` | CANN ACL dump 数据解析（protobuf v2.0 格式 → npy → 分析） |
 | `parse_profiling.py` | CANN profiling 数据解析（msprof 封装 + CSV/JSON 分析） |
 

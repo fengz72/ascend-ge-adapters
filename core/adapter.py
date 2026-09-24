@@ -101,6 +101,24 @@ class GeModelAdapter:
         """
         raise NotImplementedError
 
+    # ---- 原版参考比对 (可选能力: 证明"适配"本身正确, 不只是"编译"正确) ----
+
+    def unpack_requests(self, inputs):
+        """把图输入拆回**逐请求**的 (input_ids, position_ids) — 供原版 HF 参考前向。
+
+        适配后的图接口通常是打包/变形过的 (varlen 拼接、prefix 内嵌、mask 省略…),
+        原版模型吃不进去; 只有 adapter 知道怎么还原成"一条请求一次前向"的形态。
+        返回 None (默认) = 该 adapter 不支持参考比对, verify 会 WARN 并跳过。
+
+        返回: list[(input_ids 1D, position_ids 1D)], 顺序 = 输出的行序。
+        """
+        return None
+
+    def reference_columns(self):
+        """适配收窄了输出时 (如 lm_head 词表剪裁), 返回参考输出要取的列下标 list[int];
+        None (默认) = 全词表逐列比对。"""
+        return None
+
     def apply_patches(self):
         """应用 patch_specs 全部替换 (幂等, 重复调用不覆盖备份)。"""
         for target, name, fn in self.patch_specs():

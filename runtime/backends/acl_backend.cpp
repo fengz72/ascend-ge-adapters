@@ -606,13 +606,11 @@ bool RunAclBackend(const Manifest &manifest, const IoSpec &spec,
     res.threadEnter = [&runner](int) { aclrtSetCurrentContext(runner.Context()); };
 
     if (IsThroughputMode(opt.bench)) {
-        std::vector<ThroughputStats> all;
-        if (!BenchSweep(opt.bench, res, all)) {
+        ThroughputStats stats;
+        if (!BenchThroughput(opt.bench, res, stats)) {
             return false;
         }
-        for (const auto &s : all) {
-            PrintThroughputStats("ACL OM execute+sync throughput", s);
-        }
+        PrintThroughputStats("ACL OM execute+sync throughput", stats);
         // 吞吐跑完后资源已释放: 单开一份资源跑一次, 取输出落盘
         if (!runner.CreateContext(0) || !runner.Execute(0)) {
             return false;

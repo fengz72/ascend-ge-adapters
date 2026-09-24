@@ -21,16 +21,15 @@ log/
 *.log
 
 # ===== 模型编译产物与验证数据（体积大，可重新生成）=====
-# air/(AIR + pbtxt + io_spec) om/(OM) deploy/(manifest) verification/(bundle + inputs + golden + outputs)
+# air/(AIR + pbtxt + io_spec) om/(OM) io/(manifest + bundle + inputs + golden + outputs + pool)
 models/*/air/
 models/*/om/
-models/*/deploy/
-models/*/verification/
-# 性能测试: 请求池 (可重新生成) 与逐请求明细/原始产物 (体积大); json+md 报告入库
-models/*/bench/requests/
-models/*/results/*/raw/
+models/*/io/
+# 性能测试报告: json+md 入库 (小、可 diff、可归档); 逐请求明细/plan/raw 忽略 (体积大或可重生)
+# 请求池在 io/pool, 已被上面 models/*/io/ 覆盖
 models/*/results/*/perf_requests.csv
 models/*/results/*/plan.json
+models/*/results/*/raw/
 **/*.so
 
 # ===== 会话日志 =====
@@ -44,6 +43,3 @@ session-ses_*.md
 
 # ===== pass 构建缓存 (out-of-source, 不污染 submodule) =====
 .pass_build/
-
-# ===== 归档用 fork clone (独立 git 仓, 非 submodule; 归档目标见 tools/archive_monkey_patch.py) =====
-/custom_development_code/

@@ -22,20 +22,21 @@ from core.source import load_source
 from core.graph import Graph, IoNode, IoSpec
 from core.exporter import GeExporter
 from core.setup_scripts import run_scripts
-from core.backend import compile_graph, default_output_dir, run_runtime
+from core.backend import backend_extra, compile_graph, default_output_dir, run_runtime
 from core.verify import Verifier, bundle_has_golden, collect_provenance
 
 
 def run(config_path, skip=(), dtype=torch.float16, device=None,
         batch_size=None, seq_len=None, work_dir=None,
-        warmup=0, bench=1, runtime_extra=(), runtime_inputs=()):
-    """跑管线, 返回产物路径 dict。skip ⊂ {ops,export,passes,compile,run,compare}。
+        warmup=0, bench=1, runtime_extra=()):
+    """跑管线, 返回产物路径 dict。skip ⊂ {ops,export,passes,compile,run,compare,reference}。
 
     run/compare 为阶段二闭环: run 调 C++ runtime (manifest 驱动, OM/ACL 或 GeSession),
     compare 用 bundle golden 比对运行时输出 (docs §10)。
 
-    runtime_inputs: 部署态输入规格 ("logical:d0,d1,...:file.bin", 可多条) — 仅 ONNX 形态需要
-            (它没有 adapter/build_inputs, 因而没有 bundle), torch 形态由 bundle 提供输入。
+    reference (只在 export 阶段, 与 golden 同时算): **原版未 patch 的 HF** 逐请求前向,
+    与 patched-eager golden 比对 — 隔离出"适配"这一个变量 (compare 隔离的是"编译")。
+    adapter 未实现 unpack_requests 时自动跳过并 WARN。
     """
     cfg = load_config(config_path)
     skip = set(skip)
@@ -49,7 +50,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     base = work_dir or md
     air_dir = os.path.join(base, "air")
     om_dir = os.path.join(base, "om")
-    bundle_dir = os.path.join(base, "verification")
+    bundle_dir = os.path.join(base, "io")
     air_path = os.path.join(air_dir, f"{name}.air")
     io_spec_path = os.path.join(air_dir, f"{name}.io_spec.json")
 
@@ -57,60 +58,40 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
         batch_size=cfg.inputs.batch_size if batch_size is None else batch_size,
         seq_len=cfg.inputs.seq_len if seq_len is None else seq_len,
         prefix_len=cfg.inputs.prefix_len,
+        seed=cfg.inputs.seed,
     )
 
     # ---- 自定义算子安装脚本: 必须在 load_adapter 之前 (model.py 可能 import 算子绑定) ----
     if "ops" not in skip:
-        run_scripts(cfg.custom_ops, "custom_ops", model_dir=md)
+        run_scripts(cfg.custom_ops, "custom_ops")
 
-    # ---- ONNX 源: 原样, 无适配/golden ----
-    if cfg.source.type == "onnx":
-        # 形态③ 只能走离线后端: GeSession 的 Graph::LoadFromFile 不解析 ONNX。
-        # 在读图/编译之前就拦 (配置期), 而不是等 C++ 运行期报错。
-        if cfg.backend.type != "om_acl":
-            raise ValueError(
-                f"source.type=onnx 只支持 backend.type=om_acl (当前 {cfg.backend.type!r}): "
-                "GeSession 在线后端只加载 GE 图 (.air/.pbtxt)。ONNX 请经 ATC "
-                "(--framework=5) 编译为 OM 后执行 — docs §1/§9")
-        graph = load_source(cfg, md, device=device)
-        graph.io_spec.to_json(io_spec_path)
-        if "passes" not in skip:
-            run_scripts(cfg.passes, "passes", model_dir=md)
-        om = _compile(cfg, graph, base, skip)
-        mp = write_manifest(cfg, graph.path, om, io_spec_path, None, base_dir=base, device=device)
-
-        # 形态③ 无 adapter/build_inputs → 没有 bundle (无 golden, 也无 .bin)。
-        # run 走**部署态**: 由调用方用 --input logical:shape:file 给具体输入 (docs §5.5)。
-        outputs_dir = default_output_dir(mp)
-        if "run" not in skip:
-            if not runtime_inputs:
-                raise ValueError(
-                    "ONNX 形态无 bundle, run 阶段需要具体输入: "
-                    "--input logical:d0,d1,...:file.bin (逐输入, 可重复; "
-                    f"io_spec 需要 {[n.logical for n in graph.io_spec.inputs]})")
-            run_runtime(mp, output_dir=outputs_dir, device=device, warmup=warmup,
-                        bench=bench, extra=runtime_extra, inputs=runtime_inputs)
-            print("[pipeline] ONNX 形态无 golden → 不做 compare (需自行比对, 如 onnxruntime 参考输出)")
-        return {"graph": graph.path, "io_spec": io_spec_path, "om": om, "manifest": mp,
-                "outputs": outputs_dir if "run" not in skip else None}
-
-    # ---- torch 源 (name / 源码): source 加载 + adapter 适配 ----
+    # ---- torch 源: source 加载 + adapter 适配 ----
     adapter = load_adapter(cfg)
-    raw = load_source(cfg, md, dtype=dtype, device=device)
-    # graph.dynamic.max_seq_len 是人工声明的唯一事实源 → 透传给 setup (RoPE 表/因果 mask
-    # 等图常量据此定长; 不传则 adapter 用默认值, 与 yaml 声明脱节 → 长序列 Gather 越界)
-    model = adapter.adapt(raw, max_seq_len=cfg.graph.dynamic.max_seq_len)
     exporter = GeExporter(adapter, air_dir, name)
     verify = Verifier()
+    ref_report = None
 
     if "export" in skip:
-        graph = Graph(kind="air", path=air_path, io_spec=IoSpec.from_json(io_spec_path))
+        graph = Graph(path=air_path, io_spec=IoSpec.from_json(io_spec_path))
         bundle_path = os.path.join(bundle_dir, "bundle.json")
         bundle_path = bundle_path if os.path.exists(bundle_path) else None
     else:
-        inputs = adapter.build_inputs(model, **input_kwargs)
+        raw = load_source(cfg, md, dtype=dtype, device=device)
+        inputs = adapter.build_inputs(raw, **input_kwargs)
         want_golden = cfg.verify.enabled and "verify" not in skip
+
+        # 原版参考必须在 adapt **之前**算: patch 是类级 monkey-patch (进程全局), adapt 之后
+        # 同进程里任何同架构实例都走 patched forward, "原版"就名存实亡 (docs §10)
+        reference = (verify.reference(raw, adapter, inputs)
+                     if want_golden and "reference" not in skip else None)
+
+        # graph.dynamic.max_seq_len 是人工声明的唯一事实源 → 透传给 setup (RoPE 表/因果 mask
+        # 等图常量据此定长; 不传则 adapter 用默认值, 与 yaml 声明脱节 → 长序列 Gather 越界)
+        model = adapter.adapt(raw, max_seq_len=cfg.graph.dynamic.max_seq_len)
         golden = verify.golden(model, inputs) if want_golden else None   # trace 前算 (docs §10)
+        if reference is not None:
+            ref_report = verify.compare_reference(
+                golden, reference, path=os.path.join(bundle_dir, "reference.json"))
         air_path = exporter.trace(model, inputs, **input_kwargs)
 
         in_nodes = adapter.io_input_nodes(inputs, **input_kwargs)
@@ -121,21 +102,22 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
         # bundle 总要落 (run 阶段需要具体 shape + .bin); golden 为 None (verify.enabled=false)
         # 时只写 inputs, bundle.golden=null → compare 阶段自动跳过
         # adapt.params = 形态事实源 (prefix/prune…): 记进 provenance, 报告才能自证形态
-        prov = collect_provenance(seed=cfg.inputs.seed, model=cfg.model.name,
+        prov = collect_provenance(model=cfg.model.name,
                                   soc=cfg.model.soc, dtype=str(dtype),
                                   adapt_params=dict(cfg.adapt.params), **input_kwargs)
         bundle_path = verify.save_bundle(bundle_dir, inputs, golden, graph.io_spec, prov,
                                          logical_order=[n.logical for n in in_nodes])
 
     if "passes" not in skip:
-        run_scripts(cfg.passes, "passes", model_dir=md)
+        run_scripts(cfg.passes, "passes")
     om = _compile(cfg, graph, base, skip)
     mp = write_manifest(cfg, graph.path, om, io_spec_path, bundle_path, base_dir=base, device=device)
 
     outputs_dir = default_output_dir(mp)
     if "run" not in skip:
         run_runtime(mp, output_dir=outputs_dir, device=device,
-                    warmup=warmup, bench=bench, extra=runtime_extra)
+                    warmup=warmup, bench=bench,
+                    extra=backend_extra(cfg) + tuple(runtime_extra))
 
     report = None
     if "compare" not in skip and bundle_path:
@@ -149,7 +131,8 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
 
     return {"air": air_path, "io_spec": io_spec_path, "om": om,
             "bundle": bundle_path, "manifest": mp,
-            "outputs": outputs_dir if "run" not in skip else None, "report": report}
+            "outputs": outputs_dir if "run" not in skip else None,
+            "reference": ref_report, "report": report}
 
 
 def _output_node(golden):
@@ -194,7 +177,7 @@ def main():
     p = argparse.ArgumentParser(description="GE 适配管线 (配置驱动)")
     p.add_argument("--config", required=True, help="model.yaml 路径")
     p.add_argument("--skip", default="",
-                   help="逗号分隔: ops,export,passes,compile,run,compare")
+                   help="逗号分隔: ops,export,passes,compile,run,compare,reference")
     p.add_argument("--device", type=int, required=True,
                    help="NPU 设备号 (必填; 运行期事实, 不进 model.yaml)")
     p.add_argument("--batch-size", type=int, default=None)
@@ -205,28 +188,31 @@ def main():
     p.add_argument("--bench", type=int, default=1, help="C++ runtime 计时执行次数")
     p.add_argument("--runtime-opt", action="append", default=[],
                    help="透传 C++ runtime 的选项 (可重复), 如 --runtime-opt --aicore_num=12")
-    p.add_argument("--input", action="append", default=[], dest="inputs",
-                   help="部署态输入 (可重复): logical:d0,d1,...:file.bin — ONNX 形态 run 阶段必需")
     args = p.parse_args()
 
     dtype = getattr(torch, args.dtype)
     skip = tuple(s for s in args.skip.split(",") if s)
     out = run(args.config, skip=skip, dtype=dtype, device=args.device,
               batch_size=args.batch_size, seq_len=args.seq_len, work_dir=args.work_dir,
-              warmup=args.warmup, bench=args.bench, runtime_extra=tuple(args.runtime_opt),
-              runtime_inputs=tuple(args.inputs))
+              warmup=args.warmup, bench=args.bench, runtime_extra=tuple(args.runtime_opt))
     print("=== 管线产物 ===")
     for k, v in out.items():
-        if k != "report":
+        if k not in ("report", "reference"):
             print(f"  {k}: {v}")
 
-    report = out.get("report")
-    if report is None:
-        return
-    verdict = "PASS" if report.get("pass_overall") else "FAIL"
-    print(f"  compare: {verdict} (cosine={report['cosine_similarity']:.8f}, "
-          f"rel_l2={report['relative_l2_error']:.3e})")
-    if verdict == "FAIL":
+    # 两道门, 各隔离一个变量 (docs §10): reference = 适配是否正确, compare = 编译是否正确
+    failed = []
+    for key, label in (("reference", "reference (原版 HF vs 适配后 eager)"),
+                       ("report", "compare  (运行时输出 vs golden)")):
+        rep = out.get(key)
+        if rep is None:
+            continue
+        verdict = "PASS" if rep.get("pass_overall") else "FAIL"
+        print(f"  {label}: {verdict} (cosine={rep['cosine_similarity']:.8f}, "
+              f"rel_l2={rep['relative_l2_error']:.3e})")
+        if verdict == "FAIL":
+            failed.append(label)
+    if failed:
         raise SystemExit(1)
 
 

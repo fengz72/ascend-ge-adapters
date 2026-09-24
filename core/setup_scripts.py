@@ -18,7 +18,9 @@
   归脚本。也允许只写脚本路径 (纯字符串条目)。
 
 约定:
-  - 路径解析 (script 与 path 同规则): 绝对路径 / 相对仓库根 / 相对 model_dir / 相对 CWD
+  - 路径解析 (script 与 path 同规则): **只认绝对路径或相对仓库根** (如 models/m/scripts/x.sh);
+    相对 model_dir / CWD 一律硬失败 — 多基准会让同一份配置混两种写法, 且 CWD 相对意味着
+    "换个目录跑就找不到脚本"
   - 执行方式: `.py` → 当前解释器; 其余 → `bash <script>` (不要求 +x 与 shebang)
   - 环境: 继承当前进程 env (先 source CANN 的 set_env.sh 与 models/<model>/env.sh);
     脚本若要回传环境变量, 把 `KEY=VALUE` 行写进 `$GE_ENV_FILE` — 框架读进 os.environ,
@@ -38,28 +40,32 @@ import tempfile
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def resolve_script(entry, model_dir=None):
-    """把 yaml 里的脚本条目解析成绝对路径; 找不到返回 None。
+def resolve_path(entry, is_file=False):
+    """**配置里声明的路径**→ 绝对路径; 不存在返回 None。
 
-    依次尝试: 绝对路径 → 相对仓库根 → 相对 model_dir → 相对 CWD。
+    只认两种写法: 绝对路径, 或相对**仓库根** (如 `models/m/scripts/x.sh`、
+    `models/m/config/target_tokens.json`)。yaml 里所有路径声明 (script / path /
+    prune_token_file …) 都走这一条规则 —— 多基准会让同一份配置混两种写法 (读的人得先问
+    "这条相对谁"), 且 CWD 相对意味着"换个目录跑就找不到"。写错就硬失败, 不猜。
+
+    is_file=True 时要求是普通文件 (脚本), 否则目录/文件皆可 (三方源)。
     """
     if not entry:
         return None
     entry = str(entry).strip()
     if not entry:
         return None
-    candidates = [entry] if os.path.isabs(entry) else [
-        os.path.join(_REPO_ROOT, entry),
-        os.path.join(model_dir, entry) if model_dir else None,
-        os.path.abspath(entry),
-    ]
-    for path in candidates:
-        if path and os.path.isfile(path):
-            return os.path.normpath(path)
-    return None
+    path = entry if os.path.isabs(entry) else os.path.join(_REPO_ROOT, entry)
+    found = os.path.isfile(path) if is_file else os.path.exists(path)
+    return os.path.normpath(path) if found else None
 
 
-def run_scripts(entries, stage, model_dir=None):
+def resolve_script(entry):
+    """脚本条目 → 绝对路径 (规则见 resolve_path); 找不到返回 None。"""
+    return resolve_path(entry, is_file=True)
+
+
+def run_scripts(entries, stage):
     """按序执行脚本, 返回实际执行过的脚本路径列表。
 
     entries: SetupEntry / dict{path,script} / str(脚本路径) 皆可。
@@ -69,11 +75,12 @@ def run_scripts(entries, stage, model_dir=None):
     ran = []
     for entry in entries or []:
         script_spec, src_spec, extra_args = _entry_fields(entry)
-        script = resolve_script(script_spec, model_dir)
+        script = resolve_script(script_spec)
         if script is None:
             raise FileNotFoundError(
-                f"[{stage}] 找不到脚本: {script_spec!r} (试过: 绝对路径 / 仓库根 {_REPO_ROOT} / "
-                f"model_dir {model_dir} / CWD)")
+                f"[{stage}] 找不到脚本: {script_spec!r} — 只认**绝对路径**或**相对仓库根** "
+                f"({_REPO_ROOT}) 的写法, 如 models/<m>/scripts/x.sh; "
+                f"不支持相对 model_dir / CWD")
 
         env = os.environ.copy()
         fd, env_file = tempfile.mkstemp(prefix="ge_env_")
@@ -83,7 +90,7 @@ def run_scripts(entries, stage, model_dir=None):
         # 三方源目录: 只溯源 + 传给脚本 ($GE_SRC_DIR), 框架不拿它构建
         src_dir = None
         if src_spec:
-            src_dir = _resolve_dir(src_spec, model_dir)
+            src_dir = _resolve_dir(src_spec)
             if src_dir is None:
                 print(f"[{stage}][WARN] 声明的源路径不存在: {src_spec!r} "
                       f"(submodule 未克隆? git submodule update --init --recursive) — "
@@ -124,20 +131,9 @@ def _entry_fields(entry):
             [str(a) for a in (getattr(entry, "args", None) or [])])
 
 
-def _resolve_dir(entry, model_dir=None):
-    """源路径解析 (规则同 resolve_script, 目录或文件皆可); 找不到返回 None。"""
-    if not entry:
-        return None
-    entry = str(entry).strip()
-    candidates = [entry] if os.path.isabs(entry) else [
-        os.path.join(_REPO_ROOT, entry),
-        os.path.join(model_dir, entry) if model_dir else None,
-        os.path.abspath(entry),
-    ]
-    for path in candidates:
-        if path and os.path.exists(path):
-            return os.path.normpath(path)
-    return None
+def _resolve_dir(entry):
+    """三方源路径 → 绝对路径 (规则见 resolve_path, 目录或文件皆可); 找不到返回 None。"""
+    return resolve_path(entry)
 
 
 def _apply_env_file(path):

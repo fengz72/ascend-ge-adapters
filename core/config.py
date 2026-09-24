@@ -1,8 +1,8 @@
 """模型配置 (YAML 人工声明) 解析 + 运行时 manifest (JSON) 生成。
 
 契约见 docs/architecture.md §5:
-    model.yaml   人工声明 (source/adapt/inputs/graph/passes/custom_ops/backend/verify; 不含 device)
-    manifest.json 生成的 C++ 运行时契约 (deploy/manifest.json)
+    model.yaml   人工声明 (source/adapt/inputs/graph/passes/custom_ops/backend/verify/bench; 不含 device)
+    manifest.json 生成的 C++ 运行时契约 (io/manifest.json)
 """
 
 import json
@@ -21,11 +21,8 @@ class ModelMeta:
 
 @dataclass
 class SourceCfg:
-    type: str                       # name | torch | onnx
-    ref: str = ""                   # name=hub id; torch=权重目录; onnx=.onnx 路径
-    module: str = ""                # torch 源码形态: 模块文件
-    class_name: str = ""            # torch 源码形态: 模型类名
-    weights: str = ""               # torch 源码形态: 权重路径
+    """源为 torch-only: 来路① ref → from_pretrained (来路② 客户源码按 YAGNI 推迟, 未实现, 见 docs §10)。"""
+    ref: str = ""                   # hub id 或本地权重目录
 
 
 @dataclass
@@ -50,7 +47,6 @@ class DynamicCfg:
 
 @dataclass
 class GraphCfg:
-    format: str = "air"             # air | onnx
     dynamic: DynamicCfg = field(default_factory=DynamicCfg)
 
 
@@ -81,6 +77,34 @@ class VerifyCfg:
 
 
 @dataclass
+class BenchCfg:
+    """性能测试口径 (core.bench 用) — **一个模型一个场景**。
+
+    只放"这次压测怎么压"; 模型侧事实一律不在此重复, 由 core.bench 从同一份 ModelConfig 取:
+        soc            ← model.soc
+        manifest       ← <model_dir>/io/manifest.json  (write_manifest 的固定约定)
+        report_dir     ← <model_dir>/results
+        请求池目录      ← <model_dir>/io/pool
+        aicore_num     ← backend.aicore_num (ge_session 的运行期限核)
+        --batch/--prune-tokens/--prefix ← inputs.batch_size / adapt.params (bench._form_args 注入)
+    负载分布 (长度分布/词表上界/套数) 属**模型专属脚本**的口径, 写死在 pool.script 的
+    argparse 默认值里, 配置只在要覆盖时写 pool.args。
+
+    **不含精度开关**: 性能跑不落盘输出 (D2H 污染延迟), 精度只由 verify.enabled 驱动的那两道门
+    度量 (run.sh 的 reference + compare) — 一个变量只由一处度量, 不设第二个开关。
+
+    多场景并存 (同一形态要随机负载 + 固定 shape + 长序列压测三份报告) 目前不支持 —
+    真出现该需求时再拆回独立 scenario 文件 (形状可从 git 历史的 bench/varlen.yaml 取),
+    届时场景名从文件名取即可, 故这里**不设 scenario 字段**: 归档名一律 <model.name>-bench。
+    """
+    instances: int = 1              # = 并发 worker (1:1 绑实例, 无锁)
+    requests: int = 100             # 总请求 (闭环, 均分到实例)
+    warmup: int = 10                # 覆盖 每实例 × 每 shape 档 (GE 首次执行要特化)
+    sample_seed: int = 0            # 请求池**抽样**种子 (每实例 seed+instance_id); ≠ inputs.seed
+    pool: Optional["SetupEntry"] = None   # 请求池生成脚本 (负载口径在脚本默认值里)
+
+
+@dataclass
 class ModelConfig:
     model: ModelMeta
     source: SourceCfg
@@ -91,6 +115,7 @@ class ModelConfig:
     custom_ops: list = field(default_factory=list)    # list[SetupEntry] 自定义算子 (加载 adapter 前)
     backend: BackendCfg = field(default_factory=BackendCfg)
     verify: VerifyCfg = field(default_factory=VerifyCfg)
+    bench: BenchCfg = field(default_factory=BenchCfg)
     model_dir: str = ""             # 配置文件所在模型目录 (load 时填入)
 
 
@@ -138,19 +163,23 @@ def load_config(path) -> ModelConfig:
         raw = yaml.safe_load(f) or {}
 
     model_dir = os.path.dirname(os.path.dirname(os.path.abspath(path)))
-    graph_d = dict(raw.get("graph") or {})
-    dynamic = _sub(DynamicCfg, graph_d.pop("dynamic", {}))
+    dynamic = _sub(DynamicCfg, (raw.get("graph") or {}).get("dynamic", {}))
+    bench_d = dict(raw.get("bench") or {})
+    pool = _setup_entries([bench_d.pop("pool")] if bench_d.get("pool") else [])
+    bench = _sub(BenchCfg, bench_d)
+    bench.pool = pool[0] if pool else None      # SetupEntry 不走 _sub (它只做 yaml 键→字段名映射)
 
     return ModelConfig(
         model=_sub(ModelMeta, raw.get("model")),
-        source=_sub(SourceCfg, raw.get("source"), **{"class": "class_name"}),
+        source=_sub(SourceCfg, raw.get("source")),
         adapt=_sub(AdaptCfg, raw.get("adapt")),
         inputs=_sub(InputsCfg, raw.get("inputs")),
-        graph=GraphCfg(format=graph_d.get("format", "air"), dynamic=dynamic),
+        graph=GraphCfg(dynamic=dynamic),
         passes=_setup_entries(raw.get("passes")),
         custom_ops=_setup_entries(raw.get("custom_ops")),
         backend=_sub(BackendCfg, raw.get("backend")),
         verify=_sub(VerifyCfg, raw.get("verify")),
+        bench=bench,
         model_dir=model_dir,
     )
 
@@ -182,10 +211,14 @@ def load_adapter(cfg: ModelConfig):
     """importlib 从 <model_dir>/model.py 加载 adapt.adapter_class 并按 params 实例化。
 
     params 直接作为 adapter 构造 kwargs (基类 __init__ 收 **params, 故最小 adapter
-    无需自定义构造); 特殊键 prune_token_file (相对 model_dir) **仅在声明时**才被载入成
-    prune_tokens 列表传入 (文件 I/O 在配置层, adapter 只收 list)。
+    无需自定义构造); 特殊键 prune_token_file **仅在声明时**才被载入成 prune_tokens 列表传入
+    (文件 I/O 在配置层, adapter 只收 list)。它的路径规则与 script/path 一致 ——
+    绝对 或 相对**仓库根** (core/setup_scripts.resolve_path), 找不到即硬失败。
     """
     import importlib.util
+
+    from core.setup_scripts import resolve_path
+
     model_py = os.path.join(cfg.model_dir, "model.py")
     spec = importlib.util.spec_from_file_location(f"_ge_adapter_{cfg.model.name}", model_py)
     mod = importlib.util.module_from_spec(spec)
@@ -195,16 +228,23 @@ def load_adapter(cfg: ModelConfig):
     params = dict(cfg.adapt.params)
     ptf = params.pop("prune_token_file", None)
     if ptf:
-        params["prune_tokens"] = load_target_tokens(os.path.join(cfg.model_dir, ptf))
+        resolved = resolve_path(ptf, is_file=True)
+        if resolved is None:
+            raise FileNotFoundError(
+                f"adapt.params.prune_token_file 找不到: {ptf!r} — 只认**绝对路径**或"
+                f"**相对仓库根**的写法, 如 models/{cfg.model.name}/config/target_tokens.json")
+        params["prune_tokens"] = load_target_tokens(resolved)
     return cls(**params)
 
 
 def write_manifest(cfg: ModelConfig, graph_path, om_path, io_spec_path,
                    bundle_path=None, base_dir=None, device=None) -> str:
-    """生成 <base_dir>/deploy/manifest.json (C++ 运行时契约)。
+    """生成 <base_dir>/io/manifest.json (C++ 运行时契约)。
 
     路径相对 base_dir (默认 model_dir), 保证可移植; --work-dir 调试时 base_dir
-    传 work_dir, 产物与 manifest 同根。
+    传 work_dir, 产物与 manifest 同根。C++ 侧的基准是 **manifest 的祖父目录**
+    (runtime/io_spec.cpp: DirName(DirName(path))), 故 manifest 必须落在 base_dir 的
+    一级子目录下 (io/), 换目录名要两侧同步。
 
     device **必填** (来自 CLI --device): manifest 是 C++ 运行时的唯一入口, 缺 device
     它无从知道跑哪张卡; 不设默认值是因为"默认 0 号卡"通常正是被占满的那张。
@@ -224,9 +264,9 @@ def write_manifest(cfg: ModelConfig, graph_path, om_path, io_spec_path,
         "device": device,
         "bundle": rel(bundle_path),
     }
-    deploy_dir = os.path.join(base, "deploy")
-    os.makedirs(deploy_dir, exist_ok=True)
-    manifest_path = os.path.join(deploy_dir, "manifest.json")
+    io_dir = os.path.join(base, "io")
+    os.makedirs(io_dir, exist_ok=True)
+    manifest_path = os.path.join(io_dir, "manifest.json")
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
     return manifest_path

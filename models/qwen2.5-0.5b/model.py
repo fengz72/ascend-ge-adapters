@@ -293,17 +293,23 @@ class Qwen25Adapter(GeModelAdapter):
 
     # ---- 输入接口 (export trace 与 verify golden 共用) ----
 
-    def build_inputs(self, model, batch_size=10, seq_len=208, prefix_len=0, **kwargs):
+    def build_inputs(self, model, batch_size=10, seq_len=208, prefix_len=0, seed=0, **kwargs):
         """生成 varlen 输入 (input_ids, position_ids, actual_seq_lengths), NPU 张量。
 
         prefix 模式由 self.prefix 决定 (创建时定), prefix_len 仅是形状参数;
         二者错配立即报错。
+
+        token 是 **seeded 随机** (可复现): 全 0 token 会让每条请求的输入逐字节相同,
+        精度比对退化成"同一行比 N 次"。词表宽取自 embedding 权重形状, **不是**
+        config.vocab_size — lm_head 剪裁会把后者改成剪裁宽度 (如 8), 用它生成 token
+        就只覆盖 embedding 的前 8 行。
         """
+        vocab = model.get_input_embeddings().weight.shape[0]
         if self.prefix:
             if prefix_len <= 0:
                 raise ValueError("prefix 模式需要 prefix_len > 0")
             concat_ids, concat_pos, act, own_lens = generate_prefix_varlen_inputs(
-                batch_size, seq_len, prefix_len)
+                batch_size, seq_len, prefix_len, vocab_size=vocab, seed=seed)
             print(f"  batch_size={batch_size}, prefix_len={prefix_len}, "
                   f"own_len={own_lens[0]}, total_tokens={prefix_len + sum(own_lens)} "
                   f"(FIA 基线: {batch_size * seq_len})")
@@ -312,7 +318,7 @@ class Qwen25Adapter(GeModelAdapter):
             if prefix_len > 0:
                 raise ValueError("非 prefix 模式不接受 prefix_len (模式由 adapter 创建时决定)")
             concat_ids, concat_pos, seq_lens, cum_seq_lens = generate_varlen_inputs(
-                batch_size, seq_len)
+                batch_size, seq_len, vocab_size=vocab, seed=seed)
             print(f"  batch_size={batch_size}, total_tokens={sum(seq_lens)}, "
                   f"cum_seq_lens[-1]={cum_seq_lens[-1]}")
             asl = cum_seq_lens
@@ -341,3 +347,40 @@ class Qwen25Adapter(GeModelAdapter):
             nodes.append(IoNode(logical=lg, dtype=str(t.dtype).replace('torch.', ''),
                                 format='ND', shape=shape, dynamic_dims=dyn))
         return nodes
+
+    # ---- 原版参考比对 (core/verify.py: 隔离"适配"这一个变量) ----
+
+    def unpack_requests(self, inputs):
+        """打包的图输入 → 逐请求 (input_ids, position_ids), 供原版 HF 一条一条前向。
+
+        prefix 形态: ids = [prefix(P), own_0, own_1, ...], act = cumsum([P, L0, L1, ...])
+            → 请求 i = prefix ++ own_i, position 0..P+L_i-1
+              (packed 布局与"每请求把 prefix 重复展开"语义等价 — 算子按 act 分段,
+               prefix 只在物理上存一份)
+        基线形态: act = cumsum([L0, L1, ...]) → 请求 i = 段 i, position 0..L_i-1
+
+        position 一律用 arange 重新生成, **不取**图输入里的 position_ids: 参考侧要的
+        是"一条独立请求"的语义真值, 打包时 position 若写错正好由比对暴露。
+        """
+        ids, _, act = inputs
+        bounds = [int(x) for x in act.tolist()]
+        requests = []
+
+        def push(tokens):
+            requests.append((tokens,
+                             torch.arange(tokens.numel(), dtype=torch.long, device=ids.device)))
+
+        if self.prefix:
+            prefix = ids[:bounds[0]]
+            for i in range(len(bounds) - 1):
+                push(torch.cat([prefix, ids[bounds[i]:bounds[i + 1]]]))
+        else:
+            prev = 0
+            for end in bounds:
+                push(ids[prev:end])
+                prev = end
+        return requests
+
+    def reference_columns(self):
+        """lm_head 剪裁 → 参考输出只取保留的那些列 (与图输出同宽)。"""
+        return self.prune_tokens

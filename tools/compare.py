@@ -11,7 +11,8 @@ class PrecisionComparator:
     
     @staticmethod
     def compute_metrics(golden: np.ndarray, target: np.ndarray, 
-                        rtol: float = 1e-3, atol: float = 1e-5) -> dict:
+                        rtol: float = 1e-3, atol: float = 1e-5,
+                        cosine_min: float = 0.9999, rel_l2_max: float = 0.01) -> dict:
         """
         计算golden和target之间的各种精度指标
         
@@ -20,6 +21,8 @@ class PrecisionComparator:
             target: 待比较的输出
             rtol: 相对误差容忍度
             atol: 绝对误差容忍度
+            cosine_min: 判定门限 — 余弦相似度下界
+            rel_l2_max: 判定门限 — 相对 L2 误差上界
         
         Returns:
             metrics: 包含各种精度指标的字典
@@ -81,8 +84,10 @@ class PrecisionComparator:
         # 逐元素通过率仅作参考显示，不参与最终判定
         tolerance_mask = abs_diff <= (atol + rtol * np.abs(golden))
         metrics['pass_rate'] = float(np.sum(tolerance_mask)) / total_elements if total_elements > 0 else 0.0
-        metrics['pass_cosine'] = metrics['cosine_similarity'] > 0.9999
-        metrics['pass_l2'] = metrics['relative_l2_error'] < 0.01
+        metrics['cosine_min'] = cosine_min
+        metrics['rel_l2_max'] = rel_l2_max
+        metrics['pass_cosine'] = metrics['cosine_similarity'] > cosine_min
+        metrics['pass_l2'] = metrics['relative_l2_error'] < rel_l2_max
         metrics['pass_overall'] = metrics['pass_cosine'] and metrics['pass_l2']
         
         # 统计误差分布
@@ -115,6 +120,7 @@ class PrecisionComparator:
     def compare_and_report(golden: np.ndarray, target: np.ndarray, 
                           target_name: str = "Target",
                           rtol: float = 1e-3, atol: float = 1e-5,
+                          cosine_min: float = 0.9999, rel_l2_max: float = 0.01,
                           verbose: bool = True) -> dict:
         """
         对比并打印报告
@@ -125,12 +131,16 @@ class PrecisionComparator:
             target_name: 目标平台名称
             rtol: 相对误差容忍度
             atol: 绝对误差容忍度
+            cosine_min: 判定门限 — 余弦相似度下界 (默认 0.9999 = 同源比对;
+                        跨实现比对 (如 融合算子 vs 原版 HF) 应放宽)
+            rel_l2_max: 判定门限 — 相对 L2 误差上界
             verbose: 是否打印详细信息
         
         Returns:
             metrics: 精度指标字典
         """
-        metrics = PrecisionComparator.compute_metrics(golden, target, rtol, atol)
+        metrics = PrecisionComparator.compute_metrics(golden, target, rtol, atol,
+                                                      cosine_min, rel_l2_max)
         
         if verbose:
             print(f"\n{'='*60}")
@@ -166,8 +176,8 @@ class PrecisionComparator:
                     print(f"  {key}: {value:.6e}")
             print(f"\n最大误差位置: {metrics['max_diff_position']}")
             print(f"\n通过判定 (二重, 基于整体分布):")
-            print(f"  余弦相似度 > 0.9999: {metrics['pass_cosine']}  (实际: {metrics['cosine_similarity']:.8f})")
-            print(f"  相对L2误差 < 0.01:   {metrics['pass_l2']}  (实际: {metrics['relative_l2_error']:.6e})")
+            print(f"  余弦相似度 > {cosine_min}: {metrics['pass_cosine']}  (实际: {metrics['cosine_similarity']:.8f})")
+            print(f"  相对L2误差 < {rel_l2_max}:   {metrics['pass_l2']}  (实际: {metrics['relative_l2_error']:.6e})")
             print(f"  综合判定:            {'PASS' if metrics['pass_overall'] else 'FAIL'}")
             print(f"\n逐元素参考 (不参与判定):")
             print(f"  allclose (rtol={rtol}, atol={atol}): {metrics['pass_rtol_atol']}  [fp16下通常False]")

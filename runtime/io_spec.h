@@ -70,10 +70,6 @@ struct HostTensor {
 std::vector<TensorPlan> BuildInputPlans(const IoSpec &spec, const Bundle &bundle,
                                        const std::string &bundle_dir);
 
-// 部署态 (无 bundle): 用 CLI 的 --input logical:d0,d1,...:file 与 io_spec 合成 plan
-std::vector<TensorPlan> BuildInputPlansFromArgs(const IoSpec &spec,
-                                                const std::vector<std::string> &args);
-
 // 用 bundle.golden 的具体 shape 解析 io_spec 输出的动态维 → 精确字节数; 解析不出返回 0
 size_t ExpectedOutputBytes(const IoSpec &spec, const Bundle &bundle, size_t index);
 

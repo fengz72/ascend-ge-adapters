@@ -7,21 +7,23 @@
 import torch
 
 
-def generate_varlen_inputs(batch_size, seq_len):
-    """直接生成全 0 token ids 的 varlen 输入, 不需要 tokenizer。
+def generate_varlen_inputs(batch_size, seq_len, vocab_size=0, seed=None):
+    """生成等长 varlen 输入 (不需要 tokenizer)。
 
     Args:
         batch_size:  序列条数
         seq_len:     每条序列的 token 数
+        vocab_size:  >0 时生成 [0, vocab_size) 的随机 token; 0 则全 0
+        seed:        随机种子 (可复现)
 
     Returns:
-        concat_ids:  [1, total_len] 全 0 token ids
+        concat_ids:  [1, total_len] token ids
         concat_pos:  [1, total_len] 拼接后的 position ids
         seq_lens:    list[int] 每条序列的长度
         cum_seq_lens: list[int] 累积长度 (用于 actual_seq_lengths)
     """
     seq_lens = [seq_len] * batch_size
-    concat_ids = torch.zeros(batch_size * seq_len, dtype=torch.long).unsqueeze(0)
+    concat_ids = _tokens(batch_size * seq_len, vocab_size, seed).unsqueeze(0)
     pos_ids = [torch.arange(seq_len) for _ in range(batch_size)]
     concat_pos = torch.cat(pos_ids).unsqueeze(0)
     cum_seq_lens = []
@@ -30,6 +32,16 @@ def generate_varlen_inputs(batch_size, seq_len):
         acc += s
         cum_seq_lens.append(acc)
     return concat_ids, concat_pos, seq_lens, cum_seq_lens
+
+
+def _tokens(n, vocab_size, seed):
+    """n 个 token id: vocab_size>0 → seeded 随机 (可复现); 否则全 0。"""
+    if not vocab_size or vocab_size <= 0:
+        return torch.zeros(n, dtype=torch.long)
+    import numpy as np
+
+    rng = np.random.RandomState(seed)
+    return torch.from_numpy(rng.randint(0, vocab_size, size=n).astype(np.int64))
 
 
 def generate_varlen_from_lens(seq_lens, vocab_size=0, seed=None):
@@ -68,8 +80,8 @@ def generate_varlen_from_lens(seq_lens, vocab_size=0, seed=None):
             cum)
 
 
-def generate_prefix_varlen_inputs(batch_size, seq_len, prefix_len):
-    """生成 packed prefix-in-Q varlen 输入 (全 0 token, 不需要 tokenizer)。
+def generate_prefix_varlen_inputs(batch_size, seq_len, prefix_len, vocab_size=0, seed=None):
+    """生成 packed prefix-in-Q varlen 输入 (不需要 tokenizer)。
 
     布局: [prefix(P), req0(L), req1(L), ...], 每请求总长 = seq_len = P + L。
     与 generate_varlen_inputs(batch, seq_len) 语义等价 (每条请求 = prefix + own,
@@ -78,8 +90,12 @@ def generate_prefix_varlen_inputs(batch_size, seq_len, prefix_len):
     act 契约 (KV 内嵌版算子): cumsum([P, L0, L1, ...]) — prefix 独立成 batch 0
     (P = act[0]), 请求 i 为 batch i+1, act_q ≡ act_kv。
 
+    Args:
+        vocab_size: >0 时生成 [0, vocab_size) 的随机 token; 0 则全 0
+        seed:       随机种子 (可复现)
+
     Returns:
-        concat_ids:  [1, P + batch*L] 全 0 token ids
+        concat_ids:  [1, P + batch*L] token ids
         concat_pos:  [1, P + batch*L] prefix 行 0..P-1, 每请求行 P..seq_len-1
         act:         list[int] cumsum([P, L, L, ...]) (batch+1 个元素)
         own_lens:    list[int] 每请求自有长度 L
@@ -89,7 +105,7 @@ def generate_prefix_varlen_inputs(batch_size, seq_len, prefix_len):
     own = seq_len - prefix_len
     total = prefix_len + batch_size * own
 
-    concat_ids = torch.zeros(total, dtype=torch.long).unsqueeze(0)
+    concat_ids = _tokens(total, vocab_size, seed).unsqueeze(0)
     pos_prefix = torch.arange(prefix_len)
     pos_req = torch.arange(prefix_len, seq_len)
     concat_pos = torch.cat([pos_prefix] + [pos_req] * batch_size).unsqueeze(0)
@@ -102,3 +118,55 @@ def generate_prefix_varlen_inputs(batch_size, seq_len, prefix_len):
         acc += L
         act.append(acc)
     return concat_ids, concat_pos, act, own_lens
+
+
+def generate_prefix_varlen_from_lens(own_lens, prefix_len, vocab_size=0, seed=None):
+    """按**给定的每请求自有长度**生成 packed prefix-in-Q varlen 输入 (性能测试请求池用)。
+
+    与 generate_prefix_varlen_inputs 的区别: 每条请求的自有长度 L_i 可各不相同
+    (服从任意分布), 而 prefix 长度 P 全套共享一份 (packed 布局的意义所在)。
+    与 generate_varlen_from_lens 的区别: 头部多一段 prefix, act 多一个元素 (batch+1)。
+
+    布局/契约同 generate_prefix_varlen_inputs:
+        ids/pos = [prefix(P), req0(L0), req1(L1), ...]
+        pos     prefix 行 0..P-1, 请求 i 行 P..P+L_i-1
+        act     cumsum([P, L0, L1, ...]) — prefix 独立成 batch 0, 请求 i 为 batch i+1
+
+    Args:
+        own_lens:   list[int] 每条请求的自有 token 数 (>=1, 不含 prefix)
+        prefix_len: 共享 prefix 长度 P (>=1)
+        vocab_size: >0 时生成 [0, vocab_size) 的随机 token; 0 则全 0
+        seed:       随机种子 (可复现)
+
+    Returns:
+        concat_ids:  [P + sum(own_lens)] int64
+        concat_pos:  [P + sum(own_lens)] int64
+        act:         list[int] 累积长度 (actual_seq_lengths, batch+1 个元素)
+    """
+    import numpy as np
+
+    if prefix_len < 1:
+        raise ValueError(f"prefix_len 须 >=1, got {prefix_len}")
+    rng = np.random.RandomState(seed)
+
+    def rand_tokens(n):
+        if vocab_size > 0:
+            return rng.randint(0, vocab_size, size=n).astype(np.int64)
+        return np.zeros(n, dtype=np.int64)
+
+    ids, pos, act = [], [], []
+    ids.append(rand_tokens(prefix_len))
+    pos.append(np.arange(prefix_len, dtype=np.int64))
+    acc = prefix_len
+    act.append(acc)
+    for own in own_lens:
+        own = int(own)
+        if own < 1:
+            raise ValueError(f"own_lens 每项须 >=1, got {own}")
+        ids.append(rand_tokens(own))
+        pos.append(np.arange(prefix_len, prefix_len + own, dtype=np.int64))
+        acc += own
+        act.append(acc)
+    return (torch.from_numpy(np.concatenate(ids)),
+            torch.from_numpy(np.concatenate(pos)),
+            act)

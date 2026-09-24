@@ -6,6 +6,11 @@
     C++:    backend 跑 OM/GeSession on inputs → outputs (.bin)
     Python: compare_bundle(bundle, outputs_dir) → report (复用 tools/compare.py, 不重写比对数学)
 
+golden 只隔离出"**编译**"这一个变量 — 它来自打过 patch 的同一个模型, 适配写错 (错 mask /
+错位置编码 / 错末 token 索引) 时两边一起错, 比对照样 PASS。所以还有第四段:
+    Python: reference = **原版 (未 patch) HF** 逐请求前向 → compare_reference(golden, reference)
+它隔离出"**适配**"这一个变量, 必须在 adapt 之前算 (patch 是进程级类属性)。
+
 两层 shape (docs §6): io_spec 记动态维声明 (-1), bundle 记**具体 shape** (驱动 .bin 加载)。
 bundle.json schema 严格按 docs §5.4: {inputs:[{logical,shape,file}], golden:{...}, provenance:{...}}。
 golden 在 trace 之前算 (docs §10); seed 等 provenance 由调用方塞入, 本模块只负责原样写盘。
@@ -16,21 +21,34 @@ import os
 
 import numpy as np
 
+# 参考比对 (跨实现: NPU 融合算子 vs 原版 HF eager) 的门限 — 比同源比对
+# (compare_bundle 的 0.9999/0.01) 松, 但只松到"数值噪声"的量级。目的是抓**语义错误**:
+# 错 mask / 错位置 / 错末 token 索引 / 剪裁错列会让 cosine 掉到 0.9 以下、rel_l2 上到 0.5+,
+# 而 fp16 融合算子的实测噪声是 cosine 0.999999 / rel_l2 1.5e-3 (qwen2.5-0.5b prefix+prune 形态)
+# —— 门限与噪声之间留 ~2 个数量级, 与真实 bug 之间留 ~1 个数量级。
+REF_COSINE_MIN = 0.999
+REF_REL_L2_MAX = 0.02
+
 
 class Verifier:
-    """golden 生成 / bundle 落盘 / 精度比对 (docs §11 verify.py 接口)。
+    """golden 生成 / 原版参考 / bundle 落盘 / 精度比对 (docs §11 verify.py 接口)。
 
     用法:
         v = Verifier()
-        golden = v.golden(model, inputs)                          # NPU-eager logits (在 NPU)
-        bundle = v.save_bundle(dir, inputs, golden, io_spec, prov)  # → bundle.json 路径
-        report = v.compare_bundle(bundle, outputs_dir, dtype)      # 复用 tools/compare.py
+        ref = v.reference(raw_model, adapter, inputs)                # 原版 HF, adapt **之前**
+        golden = v.golden(model, inputs)                             # NPU-eager logits (在 NPU)
+        v.compare_reference(golden, ref, path)                       # 适配是否正确
+        bundle = v.save_bundle(dir, inputs, golden, io_spec, prov)   # → bundle.json 路径
+        report = v.compare_bundle(bundle, outputs_dir, dtype)        # 编译是否正确
     """
 
-    def __init__(self, rtol=1e-3, atol=1e-5):
+    def __init__(self, rtol=1e-3, atol=1e-5,
+                 ref_cosine_min=REF_COSINE_MIN, ref_rel_l2_max=REF_REL_L2_MAX):
         # 比对默认容忍度 (与 tools/compare.py 一致); compare 可逐次覆盖
         self.rtol = rtol
         self.atol = atol
+        self.ref_cosine_min = ref_cosine_min
+        self.ref_rel_l2_max = ref_rel_l2_max
 
     # ---- golden ----
 
@@ -46,6 +64,81 @@ class Verifier:
 
         with torch.no_grad():
             return model(*inputs)
+
+    # ---- 原版参考 (隔离"适配"这一个变量) ----
+
+    def reference(self, model, adapter, inputs):
+        """**原版 (未 patch)** 模型逐请求前向 → [N, vocab'] 参考 logits。
+
+        调用时机是硬约束: 必须在 `adapter.adapt()` **之前** — patch 是类级 monkey-patch
+        (进程全局, 见 core/adapter.py), adapt 之后同进程里任何同架构实例都会走 patched
+        forward, 参考就退化成"自己比自己"。
+
+        逐请求还原 (unpack_requests) 与输出列剪裁 (reference_columns) 都是模型专属知识,
+        归 adapter; 本函数只负责通用的"一条请求一次前向 + 取末 token"。
+        adapter 未实现 unpack_requests → 返回 None, 调用方 WARN 并跳过。
+        """
+        requests = adapter.unpack_requests(inputs)
+        if not requests:
+            print("[verify][WARN] adapter 未实现 unpack_requests → 跳过原版参考比对 "
+                  "(golden 与图输出同源, 只能证明'编译'正确, 证明不了'适配'正确)")
+            return None
+
+        import torch
+
+        outs = []
+        with torch.no_grad():
+            for ids, pos in requests:
+                out = model(input_ids=ids.view(1, -1), position_ids=pos.view(1, -1),
+                            use_cache=False)
+                logits = getattr(out, "logits", None)
+                if logits is None:
+                    logits = out[0]
+                outs.append(logits[0, -1, :])          # 末 token = 适配后图的输出口径
+        ref = torch.stack(outs)
+
+        columns = adapter.reference_columns()
+        if columns:
+            idx = torch.as_tensor(list(columns), dtype=torch.long, device=ref.device)
+            ref = ref.index_select(-1, idx)            # lm_head 剪裁 → 只比保留的那些列
+        print(f"[verify] 原版参考: {len(requests)} 条请求 → {tuple(ref.shape)} {ref.dtype}"
+              + (f" (剪裁到 {len(columns)} 列)" if columns else ""))
+        return ref
+
+    def compare_reference(self, golden, reference, path=None, verbose=False):
+        """比对 patched-eager golden 与原版参考 → report (门限比 compare_bundle 松, 见模块头)。
+
+        形状不一致直接抛错 (剪裁列数/请求数对不上就是适配 bug, 不做 flatten/截断兜底)。
+        path 非空时把 report 写成 json (io/reference.json)。
+        """
+        from tools.compare import PrecisionComparator
+
+        g = _to_numpy(golden)
+        r = _to_numpy(reference)
+        if g.shape != r.shape:
+            raise ValueError(
+                f"参考比对形状不一致: golden {g.shape} vs 原版参考 {r.shape} "
+                "(请求数或输出列数对不上 — 检查 unpack_requests / reference_columns)")
+
+        report = PrecisionComparator.compare_and_report(
+            r, g, target_name="适配后 eager (golden)",
+            cosine_min=self.ref_cosine_min, rel_l2_max=self.ref_rel_l2_max, verbose=verbose)
+        report = dict(report)
+        report["gate"] = {"cosine_min": self.ref_cosine_min, "rel_l2_max": self.ref_rel_l2_max}
+        report["shape"] = list(g.shape)
+
+        verdict = "PASS" if report["pass_overall"] else "FAIL"
+        print(f"[verify] 原版参考比对 {verdict}: cosine={report['cosine_similarity']:.8f} "
+              f"rel_l2={report['relative_l2_error']:.3e} "
+              f"(门限 cosine>{self.ref_cosine_min}, rel_l2<{self.ref_rel_l2_max})")
+        if path:
+            parent = os.path.dirname(path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(path, "w") as f:
+                json.dump({"schema": "ge-reference/1", **report}, f, indent=2,
+                          ensure_ascii=False, default=_json_default)
+        return report
 
     # ---- bundle ----
 
@@ -97,7 +190,7 @@ class Verifier:
         """比对 C++ 运行时输出与 bundle golden — 验证流第三段 (docs §10)。
 
         输入:
-            bundle_path  verification/bundle.json (golden 的**具体 shape** + file)
+            bundle_path  io/bundle.json (golden 的**具体 shape** + file)
             outputs_dir  C++ 运行时输出目录 (output_<i>.bin + outputs.json)
             dtype        golden 的 dtype — 取自 io_spec (bundle 不记 dtype, docs §5.4)
         输出项按 logical 与 golden 匹配 (匹配不到取第 0 项), 其 dtype/shape 取自
@@ -144,6 +237,22 @@ class Verifier:
 
 # ---- 内部工具 ----
 
+def _to_numpy(t):
+    """张量 → numpy (比对统一在 CPU float 上做; 已是 ndarray 则原样)。"""
+    return t.detach().cpu().numpy() if hasattr(t, "detach") else np.asarray(t)
+
+
+def _json_default(obj):
+    """json.dump 的 default: metrics 里有 numpy 标量与 max_diff_position 元组。"""
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, tuple):
+        return [_json_default(x) for x in obj]
+    return str(obj)
+
+
 def _logical(nodes, i, default):
     """取 io_spec nodes 第 i 项的 logical 名; 越界/空则退回 default。"""
     if nodes and i < len(nodes):
@@ -159,8 +268,7 @@ def _shape(t):
 
 def _dump(t, path):
     """张量 → .cpu().numpy().tofile(path) (原始字节, 保留 dtype)。"""
-    arr = t.detach().cpu().numpy() if hasattr(t, "detach") else np.asarray(t)
-    arr.tofile(path)
+    _to_numpy(t).tofile(path)
 
 
 def bundle_has_golden(bundle_path) -> bool:

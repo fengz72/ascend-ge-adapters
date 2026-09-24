@@ -1,11 +1,11 @@
-"""极小模型 e2e — 低显存跑通阶段二闭环 (两后端), 作为 runtime/ 的 NPU 回归门。
+"""极小模型 e2e — 低显存跑通阶段二闭环 (两后端), 作为 core/ + runtime/ 的回归门。
 
 流程: eager golden → dynamo_export(AIR, dynamic) → io_spec/bundle/manifest (走 core/)
      → ATC → OM → ge_runtime(om_acl) → compare
      → ge_runtime(ge_session, 复用同一 AIR/bundle) → compare
 
-与 tests/smoke.py 的区别: 不加载真实权重 (显存 ~几百 MB, 分钟级), 只验运行时链路;
-真实模型的精度/性能验收仍归 smoke.py 与 models/<model>/docs/。
+不加载真实权重 (显存 ~几百 MB, 分钟级), 只验**运行时链路**; 真实模型的适配正确性
+(原版 HF 参考比对) 与精度/性能验收归 models/<model>/ 的 run.sh 与 docs/。
 
 用法 (需先 bash runtime/build.sh):
     PYTHONPATH=.:$PYTHONPATH python3 tests/tiny_e2e.py --device 1
@@ -91,7 +91,7 @@ def main():
 
         verify = Verifier()
         bundle_path = verify.save_bundle(
-            os.path.join(work, "verification"), [x], golden, graph.io_spec,
+            os.path.join(work, "io"), [x], golden, graph.io_spec,
             collect_provenance(seed=0, model="tiny", soc=args.soc))
 
         om = run_atc(air_path, os.path.join(work, "om"), args.soc)
@@ -122,7 +122,7 @@ def _run_backend(backend, args, work, graph, io_spec_path, bundle_path, om, veri
                     "--device", str(args.device), "--warmup", "1", "--bench", str(args.bench)],
                    check=True)
     report = verify.compare_bundle(bundle_path, out_dir, dtype="float16", verbose=False)
-    kept = os.path.join(work, "verification", f"outputs_{backend}")
+    kept = os.path.join(work, "io", f"outputs_{backend}")
     shutil.rmtree(kept, ignore_errors=True)
     os.rename(out_dir, kept)
     return report

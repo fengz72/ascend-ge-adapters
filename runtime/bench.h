@@ -17,7 +17,6 @@ struct BenchOptions {
     int runs = 1;
     int threads = 1;              // >1 → 吞吐模式 (闭环并发)
     int requests = 0;             // 吞吐模式总请求数 (0 → 每线程 runs 个)
-    std::vector<int> sweep;       // 非空 → 依次跑各线程档, 每档独立建/销线程资源
 };
 
 struct BenchStats {
@@ -111,9 +110,10 @@ void PrintPerfResult(const std::string &label, const PerfResult &perf);
 nlohmann::json PerfToJson(const PerfResult &perf);            // 调用方合并 meta 后落盘
 bool WriteRequestsCsv(const std::string &path, const PerfResult &perf);
 
-// 吞吐: 按 opt.sweep (或 {opt.threads}) 逐档跑; 每档 setup→warmup→并发 requests→release
-bool BenchSweep(const BenchOptions &opt, const ThreadResources &res,
-                std::vector<ThroughputStats> &all);
+// 吞吐: opt.threads 个 worker 闭环跑 (1 worker ↔ 1 份资源, 无锁); setup→warmup→并发→release。
+// **不做档位扫描** — 扫描是"同一件事跑多遍", 归脚本 (tools/sweep.py 逐档起进程),
+// C++ 只负责测准一档。
+bool BenchThroughput(const BenchOptions &opt, const ThreadResources &res, ThroughputStats &stats);
 
 bool IsThroughputMode(const BenchOptions &opt);
 

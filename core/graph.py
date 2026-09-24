@@ -7,7 +7,6 @@
 io_spec 来源:
     AIR  — exporter 提供 logical/shape/dtype/dynamic (它知道 forward 签名与 dummy 张量),
            from_air 只从 dynamo.pbtxt 解析 Data 节点真名 (arg1_1...) 按位置填入。
-    ONNX — from_onnx 直接从 onnx 图 I/O 解析。
 """
 
 import json
@@ -15,18 +14,11 @@ import os
 import re
 from dataclasses import dataclass, field, asdict
 
-# onnx TensorProto elem_type → dtype 字符串
-_ONNX_DTYPE = {
-    1: "float32", 2: "uint8", 3: "int8", 5: "int16", 6: "int32", 7: "int64",
-    9: "bool", 10: "float16", 11: "double", 12: "uint32", 13: "uint64",
-    16: "bfloat16",
-}
-
 
 @dataclass
 class IoNode:
-    node: str = ""                 # 图里真名 (AIR Data 节点 / onnx I/O 名)
-    logical: str = ""              # 语义名 (exporter 声明 / onnx 名)
+    node: str = ""                 # 图里真名 (AIR Data 节点)
+    logical: str = ""              # 语义名 (exporter 声明)
     dtype: str = ""
     format: str = "ND"
     shape: list = field(default_factory=list)        # -1 = 动态维
@@ -56,7 +48,6 @@ class IoSpec:
 
 @dataclass
 class Graph:
-    kind: str                      # air | onnx
     path: str
     io_spec: IoSpec = field(default_factory=IoSpec)
 
@@ -80,7 +71,7 @@ class Graph:
         entries = _parse_air_data_nodes(air_path)
         nodes, unmatched = _pair_by_source(entries, inputs)
         if len(nodes) == len(inputs) and not unmatched:
-            return Graph(kind="air", path=air_path,
+            return Graph(path=air_path,
                          io_spec=IoSpec(inputs=nodes, outputs=outputs))
 
         detail = (f"配对 {len(nodes)}/{len(inputs)}, 未匹配 Data 节点 {unmatched or '无'}, "
@@ -101,32 +92,8 @@ class Graph:
                 io.node = entries[i][1]
             else:
                 io.node = io.node or io.logical
-        return Graph(kind="air", path=air_path,
+        return Graph(path=air_path,
                      io_spec=IoSpec(inputs=fallback, outputs=outputs))
-
-    @staticmethod
-    def from_onnx(onnx_path) -> "Graph":
-        """从 onnx 图 I/O 解析 io_spec (node=logical=onnx 名)。"""
-        import onnx
-        m = onnx.load(onnx_path)
-        g = m.graph
-
-        def parse(vi):
-            t = vi.type.tensor_type
-            dtype = _ONNX_DTYPE.get(t.elem_type, f"onnx_{t.elem_type}")
-            shape, dyn = [], []
-            for i, d in enumerate(t.shape.dim):
-                if d.HasField("dim_value"):
-                    shape.append(d.dim_value)
-                else:
-                    shape.append(-1)
-                    dyn.append(i)
-            return IoNode(node=vi.name, logical=vi.name, dtype=dtype,
-                          format="ND", shape=shape, dynamic_dims=dyn)
-
-        io_spec = IoSpec(inputs=[parse(x) for x in g.input],
-                         outputs=[parse(x) for x in g.output])
-        return Graph(kind="onnx", path=onnx_path, io_spec=io_spec)
 
 
 def _pair_by_source(entries: list, inputs: list):

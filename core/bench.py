@@ -1,21 +1,28 @@
-"""性能测试编排 — scenario yaml → bench plan → ge_runtime → 报告落盘归档。
+"""性能测试编排 — model.yaml 的 bench 段 → bench plan → ge_runtime → 报告落盘归档。
 
 分工 (docs §3/§10): **C++ 只测量并出数据** (perf.json / perf_requests.csv), Python 负责
 编排 (生成请求池 → 建 plan → 起运行时)、provenance、排版 (md) 与归档索引。
 
+配置只有**一份** model.yaml (docs §5.2): bench 段放"这次压测怎么压"(并发/请求数/池套数),
+模型侧事实 (soc / manifest / 报告目录 / 限核 / 形态参数) 一律从同一份配置取, 不在两处重复。
+派生路径按约定: manifest=<model_dir>/io/manifest.json, 池=<model_dir>/io/pool,
+报告=<model_dir>/results。
+
 一次 run 的产物 (docs §10):
-    <report.dir>/<run_id>/
-        run.json          # 快照: git/CANN/torch_npu 版本、device、soc、scenario 全文、plan
+    <model_dir>/results/<run_id>/
+        run.json          # 快照: git/CANN/torch_npu 版本、device、soc、model.yaml 全文、plan
         perf.json         # C++ 出的性能数据 (聚合 + 每实例 + 阶段耗时)
         perf.md           # 人读表
         perf_requests.csv # 逐请求明细 (gitignore)
-        accuracy.json/md  # 精度 (单请求 + compare_bundle; 与性能分开跑, 避免 D2H 污染延迟)
-        raw/              # 精度跑的输出 .bin 等 (gitignore)
-    <report.dir>/index.json   # 历次 run 一行摘要 (趋势/归档)
+        plan.json         # 传给 C++ 的 bench plan (gitignore)
+    <model_dir>/results/index.json   # 历次 run 一行摘要 (趋势/归档)
+
+**不含精度**: 性能跑不落盘输出 (D2H 会污染延迟), 精度由 `run.sh` 的两道门负责
+(`io/reference.json` 门① + compare 门②, docs §10) — 一个变量只由一处度量。
 
 用法:
-    python3 -m core.bench --scenario models/qwen2.5-0.5b/bench/varlen.yaml --device 8
-    python3 -m core.bench --scenario <yaml> --device 8 --instances 4 --requests 2000
+    python3 -m core.bench --config models/qwen2.5-0.5b/config/model.yaml --device 8
+    python3 -m core.bench --config <model.yaml> --device 8 --instances 4 --requests 2000
 """
 
 import argparse
@@ -25,31 +32,20 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 
-from core.backend import RUNTIME_BIN, run_runtime
-from core.config import _setup_entries
-from core.setup_scripts import run_scripts
-from core.verify import Verifier, collect_provenance
+from core.backend import RUNTIME_BIN
+from core.config import _setup_entries, load_config
+from core.setup_scripts import resolve_path, run_scripts
+from core.verify import collect_provenance
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _jsonable(obj):
-    """json.dump 的 default: compare 报告里有 numpy 标量/数组 (如 max_diff_position)。"""
-    import numpy as np
-
-    if isinstance(obj, np.generic):
-        return obj.item()
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    if isinstance(obj, tuple):
-        return [_jsonable(x) for x in obj]
-    return str(obj)
-
-
 @dataclass
 class Scenario:
+    """一次性能测试的**有效配置** = model.yaml 的 bench 段 + 派生约定 + CLI 覆盖。"""
     name: str
     manifest: str
+    model_dir: str = ""
     instances: int = 1
     requests: int = 100
     warmup: int = 10
@@ -57,12 +53,11 @@ class Scenario:
     inputs: dict = field(default_factory=dict)          # {mode: pool, dir: ...}
     generate: list = field(default_factory=list)        # list[SetupEntry] 生成请求池的脚本
     report_dir: str = ""
-    accuracy: dict = field(default_factory=dict)        # {enabled, bundle, dtype}
     backend_options: dict = field(default_factory=dict)
     device: int = None
     soc: str = ""
-    path: str = ""
-    raw: dict = field(default_factory=dict)
+    path: str = ""                                      # model.yaml 路径 (run.json 快照溯源)
+    raw: dict = field(default_factory=dict)             # model.yaml 全文 (run.json 快照)
 
 
 def _resolve(path, base_dir=None):
@@ -78,38 +73,84 @@ def _resolve(path, base_dir=None):
     return os.path.normpath(os.path.join(_REPO_ROOT, path))
 
 
-def load_scenario(path, device=None, instances=None, requests=None, warmup=None,
-                  manifest=None) -> Scenario:
-    """读 scenario yaml → Scenario (CLI 覆盖 device/instances/requests)。"""
+def _form_args(cfg, args):
+    """把**形态事实**拼进请求池生成脚本的 args (负载口径留在 yaml / 脚本默认值里)。
+
+    这三个量若在 yaml 里再抄一遍就会静默错配 (池与图接口对不上, 或报告口径与声明不符),
+    所以由框架从 model.yaml 注入:
+      --batch         prefix 形态下 act 是**静态** [batch+1] (io_spec 无动态维), 池里每套
+                      请求的条数被图烙死, 必须 = inputs.batch_size
+      --prune-tokens  lm_head 剪裁宽 = 图输出宽; 抄漏会让 golden shape 与图输出对不上
+      --prefix        prefix 形态必须是 packed 布局; **范围**属负载口径 (yaml 可写 "20-25"),
+                      没写就用 inputs.prefix_len 保底
+    yaml 的 args 里已显式写过的不覆盖 (便于临时实验)。
+    """
+    out = list(args)
+
+    def add(flag, value):
+        if value is not None and flag not in out:
+            out.extend([flag, str(value)])      # extend 而非 +=: 闭包里 += 会让 out 变成局部名
+
+    add("--batch", cfg.inputs.batch_size)
+    prune = cfg.adapt.params.get("prune_token_file")
+    if prune:
+        # 路径规则与 load_adapter 一致 (绝对 / 相对仓库根); 传给脚本的是绝对路径, 免依赖 CWD
+        resolved = resolve_path(prune, is_file=True)
+        if resolved is None:
+            raise FileNotFoundError(
+                f"adapt.params.prune_token_file 找不到: {prune!r} — 只认**绝对路径**或"
+                f"**相对仓库根**的写法, 如 models/{cfg.model.name}/config/target_tokens.json")
+        add("--prune-tokens", resolved)
+    if cfg.adapt.params.get("prefix"):
+        add("--prefix", cfg.inputs.prefix_len or None)
+    return out
+
+
+def load_bench(config_path, device=None, instances=None, requests=None, warmup=None,
+               manifest=None) -> Scenario:
+    """读 model.yaml → Scenario (bench 段 + 派生约定; CLI 覆盖 device/instances/requests/warmup)。
+
+    派生路径按约定 (与 core/config.write_manifest、core/backend.default_output_dir 同一套):
+        manifest  <model_dir>/io/manifest.json
+        请求池     <model_dir>/io/pool          (跨 run 复用的缓存, 幂等靠脚本的 pool_meta.json)
+        报告       <model_dir>/results
+    """
     import yaml
 
-    with open(path) as f:
+    cfg = load_config(config_path)
+    b = cfg.bench
+    md = cfg.model_dir
+    with open(config_path) as f:
         raw = yaml.safe_load(f) or {}
-    base_dir = os.path.dirname(os.path.abspath(path))
 
-    inputs = dict(raw.get("inputs") or {})
-    if inputs.get("dir"):
-        inputs["dir"] = _resolve(inputs["dir"], base_dir)
-    report = dict(raw.get("report") or {})
-    accuracy = dict(raw.get("accuracy") or {})
-    if accuracy.get("bundle"):
-        accuracy["bundle"] = _resolve(accuracy["bundle"], base_dir)
+    generate = []
+    if b.pool:
+        generate = [_setup_entries([{"script": b.pool.script, "path": b.pool.path,
+                                     "args": _form_args(cfg, b.pool.args)}])[0]]
+
+    # 限核的单一事实源是 backend.aicore_num: om_acl 在 ATC 编译期 (已烙进 OM), ge_session
+    # 在运行期 → 经 plan.json 的 backend_options 传给 C++ (与 pipeline 的 backend_extra 同源)。
+    # 输出缓冲不在此声明: 池模式恒按池内最大 golden shape 分配 (acl_backend.cpp), C++ 侧的
+    # output_reserve_mb 默认值与 --output_reserve CLI (部署态) 都还在, 需要时再加回这个键。
+    backend_options = {}
+    if cfg.backend.type == "ge_session" and cfg.backend.aicore_num:
+        backend_options["aicore_num"] = str(cfg.backend.aicore_num)
 
     sc = Scenario(
-        name=str(raw.get("scenario") or os.path.splitext(os.path.basename(path))[0]),
-        manifest=_resolve(raw.get("manifest") or "", base_dir),
-        instances=int(raw.get("instances", 1)),
-        requests=int(raw.get("requests", 100)),
-        warmup=int(raw.get("warmup", 10)),
-        seed=int(raw.get("seed", 0)),
-        inputs=inputs,
-        generate=_setup_entries(raw.get("generate")),
-        report_dir=_resolve(report.get("dir") or "results", base_dir),
-        accuracy=accuracy,
-        backend_options=dict(raw.get("backend_options") or {}),
-        device=device if device is not None else raw.get("device"),
-        soc=str(raw.get("soc") or ""),
-        path=os.path.abspath(path),
+        name=f"{cfg.model.name}-bench",   # 归档名/run_id 后缀; 一个模型一个场景, 不必再声明
+        manifest=os.path.join(md, "io", "manifest.json"),
+        model_dir=md,
+        instances=b.instances,
+        requests=b.requests,
+        warmup=b.warmup,
+        seed=b.sample_seed,
+        inputs={"mode": "pool", "dir": os.path.join(md, "io", "pool")},
+        generate=generate,
+        report_dir=os.path.join(md, "results"),
+        backend_options=backend_options,
+        device=device,
+        soc=cfg.model.soc,
+        path=os.path.abspath(config_path),
         raw=raw,
     )
     if instances is not None:
@@ -119,17 +160,13 @@ def load_scenario(path, device=None, instances=None, requests=None, warmup=None,
     if warmup is not None:
         sc.warmup = warmup
     if manifest:
-        sc.manifest = _resolve(manifest, base_dir)
+        sc.manifest = _resolve(manifest, md)
 
     if sc.device is None:
-        raise ValueError("scenario 未指定 device 且 CLI 未传 --device (device 是运行期事实, 必填)")
+        raise ValueError("未指定 device (CLI --device): 用哪张卡是运行期事实, 不进 model.yaml")
     if not os.path.exists(sc.manifest):
-        raise ValueError(f"manifest 不存在: {sc.manifest}")
-    if sc.inputs.get("mode", "pool") != "pool":
-        raise ValueError(f"暂只支持 inputs.mode=pool (收到 {sc.inputs.get('mode')!r}); "
-                         f"固定输入直接用 ge_runtime <manifest> --bench N")
-    if not sc.inputs.get("dir"):
-        raise ValueError("scenario 缺 inputs.dir (请求池目录)")
+        raise ValueError(f"manifest 不存在: {sc.manifest} — 先跑管线产出 "
+                         f"(./run.sh --device {sc.device})")
     return sc
 
 
@@ -248,31 +285,8 @@ def render_perf_md(perf, scenario, run_id, provenance) -> str:
         "（串行、一次性，~10s/份），ACL 口径是该实例的 `aclmdlLoadFromFile`+缓冲分配。",
         "- 请求池由模型侧脚本按分布生成（语义自洽由模型侧保证），各实例用 `seed + instance_id` "
         "独立随机抽样，可复现。",
-        "- 精度不在本报告内（见 `accuracy.md`）：性能跑不落盘输出，避免 D2H 污染延迟。",
-        "",
-    ]
-    return "\n".join(lines)
-
-
-def render_accuracy_md(report, case) -> str:
-    gate = case.get("gate") or {}
-    lines = [
-        "# 精度报告",
-        "",
-        "| 项 | 值 |",
-        "|---|---|",
-        f"| 输出 | {case.get('logical')} |",
-        f"| shape | {case.get('shape')} |",
-        f"| dtype | {case.get('dtype')} |",
-        f"| golden | `{case.get('golden')}` |",
-        f"| cosine | {report.get('cosine_similarity', 0):.8f} |",
-        f"| relative_l2 | {report.get('relative_l2_error', 0):.6e} |",
-        f"| max_abs | {report.get('max_abs_error', 0):.6e} |",
-        f"| 门限 | cosine > {gate.get('cosine_min')} 且 rel_l2 < {gate.get('rel_l2_max')} |",
-        f"| **判定** | **{'PASS' if report.get('pass_overall') else 'FAIL'}** |",
-        "",
-        "> 单请求、与性能跑分开（性能跑不落盘输出）。golden = NPU-eager，比对口径见 "
-        "`tools/compare.py`；shape 不一致直接判失败，不做 flatten/截断。",
+        "- 精度不在本报告内：性能跑不落盘输出（避免 D2H 污染延迟），精度由 `run.sh` 的两道门"
+        "负责（`io/reference.json` + 门② compare，docs §10）。",
         "",
     ]
     return "\n".join(lines)
@@ -298,43 +312,6 @@ def form_from_manifest(manifest_path) -> dict:
         return {}
 
 
-def _io_spec_dtype(manifest_path, manifest):
-    try:
-        base = os.path.dirname(os.path.dirname(os.path.abspath(manifest_path)))
-        spec = json.load(open(os.path.join(base, manifest["io_spec"])))
-        return (spec.get("outputs") or [{}])[0].get("dtype") or "float16"
-    except (OSError, ValueError, KeyError, IndexError):
-        return "float16"
-
-
-def run_accuracy(scenario, run_dir) -> dict:
-    """单请求跑一次 + compare_bundle → {case, report} (未启用/无 golden 返回 {})。"""
-    if not scenario.accuracy.get("enabled", True):
-        return {}
-    manifest = json.load(open(scenario.manifest))
-    base = os.path.dirname(os.path.dirname(os.path.abspath(scenario.manifest)))
-    bundle = scenario.accuracy.get("bundle") or (
-        os.path.join(base, manifest["bundle"]) if manifest.get("bundle") else None)
-    if not bundle or not os.path.exists(bundle):
-        print(f"[bench] 无 golden bundle ({bundle}) → 跳过精度")
-        return {}
-
-    out_dir = os.path.join(run_dir, "raw", "accuracy_outputs")
-    run_runtime(scenario.manifest, output_dir=out_dir, device=scenario.device, warmup=0, bench=1)
-    report = Verifier().compare_bundle(
-        bundle, out_dir, dtype=scenario.accuracy.get("dtype")
-        or _io_spec_dtype(scenario.manifest, manifest), verbose=False)
-
-    entries = json.load(open(os.path.join(out_dir, "outputs.json")))["outputs"]
-    case = {"logical": entries[0].get("logical"), "shape": entries[0].get("shape"),
-            "dtype": entries[0].get("dtype"), "golden": bundle,
-            "gate": {"cosine_min": 0.9999, "rel_l2_max": 0.01}}
-    verdict = "PASS" if report.get("pass_overall") else "FAIL"
-    print(f"[bench] 精度 {verdict}: cosine={report['cosine_similarity']:.8f} "
-          f"rel_l2={report['relative_l2_error']:.3e}")
-    return {"case": case, "report": report}
-
-
 def update_index(report_dir, entry) -> str:
     """results/index.json 追加一行摘要 (趋势/归档索引)。"""
     os.makedirs(report_dir, exist_ok=True)
@@ -347,16 +324,15 @@ def update_index(report_dir, entry) -> str:
             runs = []
     runs.append(entry)
     with open(index_path, "w") as f:
-        json.dump({"schema": "ge-bench-index/1", "runs": runs}, f, indent=2, ensure_ascii=False,
-                  default=_jsonable)
+        json.dump({"schema": "ge-bench-index/1", "runs": runs}, f, indent=2, ensure_ascii=False)
     return index_path
 
 
-def run(scenario_path, device=None, instances=None, requests=None, warmup=None, manifest=None,
-        skip_accuracy=False) -> str:
-    """跑一次性能测试, 返回 run 目录。"""
-    sc = load_scenario(scenario_path, device=device, instances=instances, requests=requests,
-                       warmup=warmup, manifest=manifest)
+def run(config_path, device=None, instances=None, requests=None, warmup=None,
+        manifest=None) -> str:
+    """跑一次性能测试 (只出性能数据; 精度归 run.sh 的两道门), 返回 run 目录。"""
+    sc = load_bench(config_path, device=device, instances=instances, requests=requests,
+                    warmup=warmup, manifest=manifest)
     if not os.path.exists(RUNTIME_BIN):
         raise FileNotFoundError(f"C++ 运行时未构建: {RUNTIME_BIN} (先执行 bash runtime/build.sh)")
 
@@ -370,9 +346,9 @@ def run(scenario_path, device=None, instances=None, requests=None, warmup=None, 
             if "--out" not in args:
                 args += ["--out", pool_dir]
             entries.append(type(g)(script=g.script, path=g.path, args=args))
-        run_scripts(entries, "generate", model_dir=os.path.dirname(sc.path))
+        run_scripts(entries, "generate")
     if not os.path.isdir(sc.inputs["dir"]):
-        raise FileNotFoundError(f"请求池目录不存在: {sc.inputs['dir']} (配 generate 或手动生成)")
+        raise FileNotFoundError(f"请求池目录不存在: {sc.inputs['dir']} (配 bench.pool 或手动生成)")
 
     # 2. plan → ge_runtime (C++ 只测量并出数据)
     run_id = make_run_id(sc)
@@ -393,25 +369,16 @@ def run(scenario_path, device=None, instances=None, requests=None, warmup=None, 
         print("[bench][WARN] 未能从 bundle.provenance 取到形态信息 (manifest 无 bundle?) — "
               "本报告无法自证是哪种形态跑出来的")
     with open(os.path.join(run_dir, "run.json"), "w") as f:
-        json.dump({"schema": "ge-bench-run/1", "run_id": run_id, "scenario": sc.raw,
-                   "scenario_path": sc.path, "provenance": provenance,
+        json.dump({"schema": "ge-bench-run/1", "run_id": run_id, "config": sc.raw,
+                   "config_path": sc.path, "provenance": provenance,
                    "perf_summary": {k: perf.get(k) for k in
                                     ("backend", "device", "qps", "wall_ms", "e2e_ms",
                                      "requests", "errors", "distinct_shapes")}},
-                  f, indent=2, ensure_ascii=False, default=_jsonable)
+                   f, indent=2, ensure_ascii=False)
     with open(os.path.join(run_dir, "perf.md"), "w") as f:
         f.write(render_perf_md(perf, sc, run_id, provenance))
 
-    # 4. 精度 (与性能分开跑: 性能跑不落盘输出, 避免 D2H 污染延迟)
-    accuracy = {} if skip_accuracy else run_accuracy(sc, run_dir)
-    if accuracy:
-        with open(os.path.join(run_dir, "accuracy.json"), "w") as f:
-            json.dump({"schema": "ge-accuracy/1", "run_id": run_id, **accuracy},
-                      f, indent=2, ensure_ascii=False, default=_jsonable)
-        with open(os.path.join(run_dir, "accuracy.md"), "w") as f:
-            f.write(render_accuracy_md(accuracy["report"], accuracy["case"]))
-
-    # 5. 归档索引
+    # 4. 归档索引 (精度不在此: 性能跑不落盘输出, 精度由 run.sh 的两道门负责 — docs §10)
     e2e = perf.get("e2e_ms") or {}
     update_index(sc.report_dir, {
         "run_id": run_id, "ts": provenance.get("timestamp"), "scenario": sc.name,
@@ -420,13 +387,11 @@ def run(scenario_path, device=None, instances=None, requests=None, warmup=None, 
         "qps": perf.get("qps"), "e2e_avg_ms": e2e.get("avg"), "e2e_p99_ms": e2e.get("p99"),
         "errors": perf.get("errors"), "distinct_shapes": perf.get("distinct_shapes"),
         "model_form": model_form or None,
-        "accuracy": (accuracy.get("report") or {}).get("pass_overall") if accuracy else None,
         "git_commit": provenance.get("git_commit"), "dir": run_dir,
     })
 
     print(f"\n=== 报告已归档: {run_dir} ===")
-    print("  perf.json / perf.md / perf_requests.csv / run.json"
-          + (" / accuracy.json+md" if accuracy else ""))
+    print("  perf.json / perf.md / perf_requests.csv / run.json")
     if perf.get("errors", 0):
         raise SystemExit(f"[bench] 有 {perf['errors']} 个请求失败, 见 {run_dir}")
     return run_dir
@@ -434,18 +399,18 @@ def run(scenario_path, device=None, instances=None, requests=None, warmup=None, 
 
 def main():
     p = argparse.ArgumentParser(description="GE 性能测试 (多实例 + 请求池回放)")
-    p.add_argument("--scenario", required=True, help="scenario yaml 路径")
-    p.add_argument("--device", type=int, default=None, help="NPU 设备号 (必填, 除非 yaml 里写了)")
-    p.add_argument("--instances", type=int, default=None, help="覆盖 scenario.instances")
-    p.add_argument("--requests", type=int, default=None, help="覆盖 scenario.requests")
-    p.add_argument("--warmup", type=int, default=None, help="覆盖 scenario.warmup")
+    p.add_argument("--config", required=True, help="model.yaml 路径 (bench 段 = 压测口径)")
+    p.add_argument("--device", type=int, required=True,
+                   help="NPU 设备号 (必填; 运行期事实, 不进 model.yaml)")
+    p.add_argument("--instances", type=int, default=None, help="覆盖 bench.instances")
+    p.add_argument("--requests", type=int, default=None, help="覆盖 bench.requests")
+    p.add_argument("--warmup", type=int, default=None, help="覆盖 bench.warmup")
     p.add_argument("--manifest", default=None,
-                   help="覆盖 scenario.manifest (如产物在 --work-dir 下而非模型目录)")
-    p.add_argument("--skip-accuracy", action="store_true", help="只测性能, 不跑精度")
+                   help="覆盖 manifest 路径 (默认 <model_dir>/io/manifest.json; "
+                        "产物在 --work-dir 下时用)")
     args = p.parse_args()
-    run(args.scenario, device=args.device, instances=args.instances,
-        requests=args.requests, warmup=args.warmup, manifest=args.manifest,
-        skip_accuracy=args.skip_accuracy)
+    run(args.config, device=args.device, instances=args.instances,
+        requests=args.requests, warmup=args.warmup, manifest=args.manifest)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,6 @@ struct Options {
     std::string manifest;
     std::string benchPlan;              // 非空 → 多实例变长负载模式 (plan 里含 manifest 路径)
     std::string output_dir;
-    std::vector<std::string> inputs;      // 部署态 (无 bundle): logical:d0,d1,...:file
     int device = -1;
     int warmup = 0;
     int bench = 1;
@@ -29,7 +28,6 @@ struct Options {
     size_t output_reserve_mb = 256;
     int threads = 1;
     int requests = 0;
-    std::vector<int> sweep;
     ge_runtime::DumpConfig dump;
     ge_runtime::ProfilingConfig profiling;
 };
@@ -40,15 +38,13 @@ void PrintUsage(const char *prog) {
         << "       " << prog << " --bench-plan <plan.json>      # 多实例 + 请求池 (性能测试)\n"
         << "\n配置驱动的 GE 运行时: 读 manifest → io_spec/bundle → 按 backend 分发执行 → 落盘输出。\n"
         << "\nOptions:\n"
-        << "  --output_dir <dir>      输出目录 (默认 <manifest 根>/verification/outputs)\n"
-        << "  --input <spec>          部署态 (manifest 无 bundle) 必填, 可重复:\n"
-        << "                            logical:d0,d1,...:file.bin   (dtype/format/node 取自 io_spec)\n"
+        << "  --output_dir <dir>      输出目录 (默认 <manifest 根>/io/outputs)\n"
         << "  --device <id>           覆盖 manifest.device\n"
         << "  --warmup <N>            预热次数 (默认 0)\n"
         << "  --bench <N>             计时执行次数 (默认 1)\n"
         << "  --threads <N>           并发线程数 (>1 → 吞吐模式, 每线程独立 stream/dataset)\n"
         << "  --requests <M>          吞吐模式总请求数 (闭环, 均分到各线程; 默认每线程 --bench 个)\n"
-        << "  --sweep <1,2,4,8>       串行扫描线程档, 每档独立建/销资源并各出一份吞吐报告\n"
+        << "                          (并发档位扫描不在这里: 用 tools/sweep.py 逐档起进程)\n"
         << "  --bench-plan <json>     多实例变长负载: 共享请求池随机抽样 + 分阶段计时,\n"
         << "                          产出 perf.json / perf_requests.csv (由 core/bench.py 生成 plan)\n"
         << "  --graph_run_mode <m>    ge_session: 0=host 1=device (默认 1)\n"
@@ -72,7 +68,7 @@ void PrintUsage(const char *prog) {
         << "  解析: python3 tools/parse_profiling.py summary --profiling_dir <dir>\n"
         << "  -h, --help              显示帮助\n"
         << "\nExample:\n"
-        << "  " << prog << " models/qwen2.5-0.5b/deploy/manifest.json --device 6 --bench 10\n"
+        << "  " << prog << " models/qwen2.5-0.5b/io/manifest.json --device 6 --bench 10\n"
         << std::endl;
 }
 
@@ -93,13 +89,6 @@ bool ParseArgs(const std::vector<std::string> &args, const std::string &prog, Op
             return false;
         } else if (arg == "--output_dir") {
             opt.output_dir = next("--output_dir");
-        } else if (arg == "--input") {
-            std::string spec = next("--input");
-            if (spec.empty()) {
-                missingValue = true;
-            } else {
-                opt.inputs.push_back(spec);
-            }
         } else if (arg == "--device") {
             opt.device = std::atoi(next("--device").c_str());
         } else if (arg == "--warmup") {
@@ -118,14 +107,6 @@ bool ParseArgs(const std::vector<std::string> &args, const std::string &prog, Op
             opt.threads = std::atoi(next("--threads").c_str());
         } else if (arg == "--requests") {
             opt.requests = std::atoi(next("--requests").c_str());
-        } else if (arg == "--sweep") {
-            std::stringstream ss(next("--sweep"));
-            std::string tok;
-            while (std::getline(ss, tok, ',')) {
-                if (!tok.empty()) {
-                    opt.sweep.push_back(std::atoi(tok.c_str()));
-                }
-            }
         } else if (arg == "--dump") {
             opt.dump.enabled = true;
         } else if (arg == "--dump_config") {
@@ -221,27 +202,18 @@ int main(int argc, char *argv[]) {
 
         IoSpec spec = IoSpec::Load(manifest.Resolve(manifest.io_spec));
 
-        // 输入来源二选一: bundle (验证态: 具体 shape + .bin 都在里面) 或 --input (部署态)
-        Bundle bundle;
-        bool haveBundle = !manifest.bundle.empty();
-        std::vector<TensorPlan> plans;
-        if (haveBundle) {
-            std::string bundlePath = manifest.Resolve(manifest.bundle);
-            bundle = Bundle::Load(bundlePath);
-            plans = BuildInputPlans(spec, bundle, DirName(bundlePath));
-        } else if (!opt.inputs.empty()) {
-            plans = BuildInputPlansFromArgs(spec, opt.inputs);
-            std::cout << "[INFO] 部署态: manifest 无 bundle, 输入来自 --input ("
-                      << plans.size() << " 项)" << std::endl;
-        } else {
-            fprintf(stderr, "[ERROR] 输入无来源: manifest 没有 bundle, 也没给 --input\n"
-                            "        验证态: manifest.bundle → verification/bundle.json (docs §5.4)\n"
-                            "        部署态: --input logical:d0,d1,...:file.bin (逐输入, 可重复)\n");
+        // 输入来源: bundle (验证态: 具体 shape + .bin 都在里面); 部署态 --input 已移除
+        if (manifest.bundle.empty()) {
+            fprintf(stderr, "[ERROR] manifest 无 bundle: 验证态需要 io/bundle.json; "
+                            "部署态 --input 已移除\n");
             return 1;
         }
+        std::string bundlePath = manifest.Resolve(manifest.bundle);
+        Bundle bundle = Bundle::Load(bundlePath);
+        std::vector<TensorPlan> plans = BuildInputPlans(spec, bundle, DirName(bundlePath));
 
         std::string outputDir = opt.output_dir.empty()
-                                    ? manifest.Resolve("verification/outputs")
+                                    ? manifest.Resolve("io/outputs")
                                     : opt.output_dir;
 
         // dump/profiling: om_acl 经 acl.json + aclInit(configPath); ge_session 经 GEInitialize
@@ -284,17 +256,15 @@ int main(int argc, char *argv[]) {
         bench.runs = opt.bench;
         bench.threads = opt.threads;
         bench.requests = opt.requests;
-        bench.sweep = opt.sweep;
         std::vector<HostTensor> outputs;
         bool ok = false;
         if (manifest.backend == "om_acl") {
             AclOptions aclOpt;
             aclOpt.device = device;
             aclOpt.bench = bench;
-            // 单输出且有 bundle 时, 用 golden 的具体 shape 精确推导缓冲 (不靠预留猜);
-            // 多输出/部署态才退回 --output_reserve
-            size_t derived = (haveBundle && spec.outputs.size() == 1)
-                                 ? ExpectedOutputBytes(spec, bundle, 0) : 0;
+            // 单输出时用 golden 的具体 shape 精确推导缓冲 (不靠预留猜);
+            // 多输出才退回 --output_reserve
+            size_t derived = spec.outputs.size() == 1 ? ExpectedOutputBytes(spec, bundle, 0) : 0;
             aclOpt.output_reserve = derived ? derived : opt.output_reserve_mb * 1024 * 1024;
             aclOpt.aclConfigPath = aclConfigPath;
             std::cout << "[INFO] 输出缓冲 " << aclOpt.output_reserve << " 字节 ("

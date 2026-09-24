@@ -240,7 +240,7 @@ public:
 
     bool CreateContext(int tid) {
         if (FindContext(tid) != nullptr) {
-            return true;                       // 幂等: sweep 各档复用同一份图绑定
+            return true;                       // 幂等: 吞吐跑完后取输出会再调一次 (tid=0)
         }
         if (tid + 1 > numGraphs_) {
             fprintf(stderr, "[ERROR] tid=%d 超出已编译图实例数 %d\n", tid, numGraphs_);
@@ -423,7 +423,7 @@ public:
         return true;
     }
 
-    // 不逐份释放: LoadGraph 对同一 graphId 只能调一次, sweep 各档必须复用图绑定;
+    // 不逐份释放: LoadGraph 对同一 graphId 只能调一次, 取输出时还要复用同一份图绑定;
     // 全部资源在 Destroy() 里统一释放。
     void ReleaseContext(int) {}
 
@@ -511,21 +511,12 @@ bool RunGeSessionBackend(const Manifest &manifest, const IoSpec &spec,
                          const std::vector<TensorPlan> &inputs, const GeSessionOptions &opt,
                          std::vector<HostTensor> &outputs, PerfResult *perf) {
     if (manifest.graph_path.empty()) {
-        fprintf(stderr, "[ERROR] manifest 无 graph_path (backend=ge_session 需要 AIR/ONNX)\n");
+        fprintf(stderr, "[ERROR] manifest 无 graph_path (backend=ge_session 需要 AIR)\n");
         return false;
     }
     std::string graphPath = manifest.Resolve(manifest.graph_path);
-    if (graphPath.size() >= 5 &&
-        graphPath.compare(graphPath.size() - 5, 5, ".onnx") == 0) {
-        fprintf(stderr, "[ERROR] GeSession 在线后端只吃 GE 图 (.air/.pbtxt), 收到 ONNX: %s\n"
-                        "        ONNX 请先经 ATC (--framework=5) 转 OM 走 om_acl 后端 (docs §1/§15)\n",
-                graphPath.c_str());
-        return false;
-    }
 
-    int numGraphs = opt.bench.sweep.empty() ? std::max(1, opt.bench.threads)
-                                           : *std::max_element(opt.bench.sweep.begin(),
-                                                               opt.bench.sweep.end());
+    int numGraphs = std::max(1, opt.bench.threads);
     GeRunner runner(opt);
     if (!runner.Init(graphPath, numGraphs)) {
         return false;
@@ -571,13 +562,11 @@ bool RunGeSessionBackend(const Manifest &manifest, const IoSpec &spec,
     res.threadEnter = [&runner](int) { aclrtSetCurrentContext(runner.Context()); };
 
     if (IsThroughputMode(opt.bench)) {
-        std::vector<ThroughputStats> all;
-        if (!BenchSweep(opt.bench, res, all)) {
+        ThroughputStats stats;
+        if (!BenchThroughput(opt.bench, res, stats)) {
             return false;
         }
-        for (const auto &s : all) {
-            PrintThroughputStats("GeSession execute+sync throughput", s);
-        }
+        PrintThroughputStats("GeSession execute+sync throughput", stats);
         if (!runner.CreateContext(0) || !runner.Execute(0)) {
             return false;
         }

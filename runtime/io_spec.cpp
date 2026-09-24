@@ -6,7 +6,6 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
-#include <map>
 #include <sstream>
 #include <stdexcept>
 
@@ -75,23 +74,7 @@ BundleEntry ToBundleEntry(const Json &j) {
     return e;
 }
 
-std::string Join(const std::vector<std::string> &items, const std::string &sep) {
-    std::string out;
-    for (size_t i = 0; i < items.size(); i++) {
-        out += (i ? sep : "") + items[i];
-    }
-    return out;
-}
-
-std::vector<std::string> LogicalNames(const IoSpec &spec) {
-    std::vector<std::string> names;
-    for (const auto &n : spec.inputs) {
-        names.push_back(n.logical);
-    }
-    return names;
-}
-
-// plan 的公共校验 (bundle 路径与 --input 部署态路径共用): dtype 可识别、shape 具体、
+// bundle 路径的 plan 校验: dtype 可识别、shape 具体、
 // .bin 存在且字节数 == shape×dtype。只 stat 不读盘 — 真正的读发生在 backend 的 H2D。
 void ValidatePlan(const TensorPlan &p, const char *shapeFrom) {
     if (p.dtype.empty()) {
@@ -193,7 +176,7 @@ Manifest Manifest::Load(const std::string &path) {
     if (j.contains("device") && j["device"].is_number_integer()) {
         m.device = j["device"].get<int>();
     }
-    // manifest 内路径相对 base_dir (= deploy/ 的父目录, 见 docs §5.5)
+    // manifest 内路径相对 base_dir (= io/ 的父目录, 见 docs §5.5)
     m.base_dir = DirName(DirName(path));
     if (m.backend.empty()) {
         throw std::runtime_error("manifest missing 'backend': " + path);
@@ -235,80 +218,6 @@ std::vector<TensorPlan> BuildInputPlans(const IoSpec &spec, const Bundle &bundle
 
         ValidatePlan(p, "bundle");
         plans.push_back(p);
-    }
-    return plans;
-}
-
-std::vector<TensorPlan> BuildInputPlansFromArgs(const IoSpec &spec,
-                                                const std::vector<std::string> &args) {
-    std::map<std::string, std::pair<std::vector<int64_t>, std::string>> given;
-    for (const auto &arg : args) {
-        size_t first = arg.find(':');
-        size_t last = arg.rfind(':');
-        if (first == std::string::npos || last == first) {
-            throw std::runtime_error("--input 格式应为 logical:d0,d1,...:file, 收到: " + arg);
-        }
-        std::string logical = arg.substr(0, first);
-        std::string shapeStr = arg.substr(first + 1, last - first - 1);
-        std::string file = arg.substr(last + 1);
-
-        std::vector<int64_t> shape;
-        std::stringstream ss(shapeStr);
-        std::string tok;
-        while (std::getline(ss, tok, ',')) {
-            if (tok.empty()) {
-                continue;
-            }
-            try {
-                shape.push_back(std::stoll(tok));
-            } catch (const std::exception &) {
-                throw std::runtime_error("--input 的 shape 非法 ('" + shapeStr + "'): " + arg);
-            }
-        }
-        if (given.count(logical) != 0) {
-            throw std::runtime_error("--input 重复给出 logical '" + logical + "': " + arg);
-        }
-        given[logical] = {shape, file};
-    }
-
-    std::vector<std::string> missing, unknown;
-    for (const auto &kv : given) {
-        bool found = false;
-        for (const auto &node : spec.inputs) {
-            if (node.logical == kv.first) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            unknown.push_back(kv.first);
-        }
-    }
-    if (!unknown.empty()) {
-        throw std::runtime_error("--input 的 logical 不在 io_spec 里: " + Join(unknown, ", ") +
-                                 " (io_spec 输入: " + Join(LogicalNames(spec), ", ") + ")");
-    }
-
-    std::vector<TensorPlan> plans;
-    for (const auto &node : spec.inputs) {          // 按 io_spec 的图序产出, 与 CLI 顺序无关
-        auto it = given.find(node.logical);
-        if (it == given.end()) {
-            missing.push_back(node.logical);
-            continue;
-        }
-        TensorPlan p;
-        p.node = node.node.empty() ? node.logical : node.node;
-        p.logical = node.logical;
-        p.dtype = node.dtype;
-        p.format = node.format.empty() ? "ND" : node.format;
-        p.shape = it->second.first;
-        p.file = it->second.second;
-        ValidatePlan(p, "--input");
-        plans.push_back(p);
-    }
-    if (!missing.empty()) {
-        throw std::runtime_error("缺少 --input: " + Join(missing, ", ") +
-                                 " (io_spec 要求全部输入都给具体 shape + .bin)");
     }
     return plans;
 }

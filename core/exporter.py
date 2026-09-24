@@ -8,7 +8,7 @@ GE 导出基类 — PyTorch → AIR 的通用管线
     build_inputs(model, **kw)    dummy 输入 (与 patched forward 签名一致, NPU 张量)
     mark_dynamic(inputs, **kw)   标记动态维度 (默认 no-op)
 
-ATC 编译 (AIR/ONNX → OM) 不在此处 — 归 core/backend.compile_graph (委托 tools.atc_utils)。
+ATC 编译 (AIR → OM) 不在此处 — 归 core/backend.compile_graph (委托 tools.atc_utils)。
 """
 
 import os
