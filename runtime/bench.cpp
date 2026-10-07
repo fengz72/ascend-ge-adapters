@@ -372,6 +372,8 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
 
     // ---- 汇总: 每实例 (含首次命中该 shape 的特化耗时) + 聚合 ----
     std::vector<double> allE2e;
+    std::vector<double> allExec;
+    std::vector<double> allTokens;
     for (int t = 0; t < instances; t++) {
         InstancePerf ip;
         ip.name = "instance_" + std::to_string(t);
@@ -393,6 +395,7 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
             exec.push_back(rec.execMs);
             h2d.push_back(rec.h2dMs);
             desc.push_back(rec.descMs);
+            allTokens.push_back(static_cast<double>(rec.tokens));
         }
         ip.distinctShapes = seen.size();
         if (shapesInMeasure > 0) {
@@ -408,6 +411,7 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
             ip.h2dAvgMs = Mean(h2d);
             ip.descAvgMs = Mean(desc);
             allE2e.insert(allE2e.end(), e2e.begin(), e2e.end());
+            allExec.insert(allExec.end(), exec.begin(), exec.end());
         }
         ip.qps = out.wallMs > 0 ? static_cast<double>(ip.requests) / (out.wallMs / 1000.0) : 0.0;
         if (res.loadMs) {
@@ -422,6 +426,15 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
     if (!allE2e.empty()) {
         Percentiles p = Summarize(allE2e);
         out.avgMs = p.avg; out.minMs = p.min; out.p50Ms = p.p50; out.p99Ms = p.p99; out.maxMs = p.max;
+    }
+    if (!allExec.empty()) {
+        Percentiles pe = Summarize(allExec);
+        out.execAvgMs = pe.avg; out.execP99Ms = pe.p99;
+    }
+    if (!allTokens.empty()) {
+        Percentiles pt = Summarize(allTokens);
+        out.tokAvg = pt.avg; out.tokMin = pt.min; out.tokP50 = pt.p50; out.tokP99 = pt.p99;
+        out.tokMax = pt.max;
     }
 
     ReleasePool(res, created);
@@ -438,6 +451,11 @@ void PrintPerfResult(const std::string &label, const PerfResult &p) {
               << "  QPS:       " << std::setprecision(2) << p.qps << " req/s\n"
               << "  e2e  ms:   avg " << std::setprecision(3) << p.avgMs << "  min " << p.minMs
               << "  p50 " << p.p50Ms << "  p99 " << p.p99Ms << "  max " << p.maxMs << "\n"
+              << "  exec ms:   avg " << std::setprecision(3) << p.execAvgMs
+              << "  p99 " << p.execP99Ms << "  (execute+sync, 不含 h2d/desc)\n"
+              << "  tokens:    avg " << std::setprecision(1) << p.tokAvg << "  min "
+              << std::setprecision(0) << p.tokMin << "  p50 " << p.tokP50 << "  p99 " << p.tokP99
+              << "  max " << p.tokMax << "  (每请求 packed T)\n"
               << "  warmup:    " << p.warmupRuns << " 次 / " << std::setprecision(1) << p.warmupMs
               << " ms   distinct shapes: " << p.distinctShapes << "\n";
     if (p.hbmBaseMb >= 0 && p.hbmPeakMb >= 0) {
@@ -484,6 +502,9 @@ nlohmann::json PerfToJson(const PerfResult &p) {
                 {"qps", p.qps},
                 {"e2e_ms", {{"avg", p.avgMs}, {"min", p.minMs}, {"p50", p.p50Ms},
                             {"p99", p.p99Ms}, {"max", p.maxMs}}},
+                {"exec_ms", {{"avg", p.execAvgMs}, {"p99", p.execP99Ms}}},
+                {"tokens", {{"avg", p.tokAvg}, {"min", p.tokMin}, {"p50", p.tokP50},
+                            {"p99", p.tokP99}, {"max", p.tokMax}}},
                 {"warmup", {{"runs", p.warmupRuns}, {"ms", p.warmupMs}}},
                 {"distinct_shapes", p.distinctShapes},
                 {"hbm_mb", {{"base", p.hbmBaseMb}, {"peak", p.hbmPeakMb}}},

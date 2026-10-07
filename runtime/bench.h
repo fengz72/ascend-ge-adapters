@@ -86,6 +86,8 @@ struct PerfResult {
     size_t requests = 0, errors = 0;
     double wallMs = 0.0, qps = 0.0;
     double avgMs = 0.0, minMs = 0.0, p50Ms = 0.0, p99Ms = 0.0, maxMs = 0.0;
+    double execAvgMs = 0.0, execP99Ms = 0.0;   // 聚合 exec (execute+sync, 不含 h2d/desc)
+    double tokAvg = 0.0, tokMin = 0.0, tokP50 = 0.0, tokP99 = 0.0, tokMax = 0.0;  // 每请求 packed token 数 T 的分布
     double hbmBaseMb = 0.0, hbmPeakMb = 0.0;   // 建实例前 / 建完实例后的整机 HBM 占用
     double warmupMs = 0.0;
     size_t warmupRuns = 0, distinctShapes = 0;

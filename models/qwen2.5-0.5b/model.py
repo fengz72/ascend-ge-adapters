@@ -296,8 +296,10 @@ class Qwen25Adapter(GeModelAdapter):
     def build_inputs(self, model, batch_size=10, seq_len=208, prefix_len=0, seed=0, **kwargs):
         """生成 varlen 输入 (input_ids, position_ids, actual_seq_lengths), NPU 张量。
 
-        prefix 模式由 self.prefix 决定 (创建时定), prefix_len 仅是形状参数;
-        二者错配立即报错。
+        prefix 模式由 self.prefix 决定 (创建时定); prefix_len 是 **prefix 形态专属**参数,
+        非 prefix 形态**忽略**它 (而非报错) —— 这样 prefix_len 可在 yaml 常驻, 翻
+        adapt.params.prefix 一个开关即无缝切形态 (bench 侧的 --prefix 去留同理由
+        core.bench._form_args 按 flag 管辖)。仅 prefix=true 却 prefix_len<=0 才报错 (真错误)。
 
         token 是 **seeded 随机** (可复现): 全 0 token 会让每条请求的输入逐字节相同,
         精度比对退化成"同一行比 N 次"。词表宽取自 embedding 权重形状, **不是**
@@ -315,12 +317,11 @@ class Qwen25Adapter(GeModelAdapter):
                   f"(FIA 基线: {batch_size * seq_len})")
             asl = act
         else:
-            if prefix_len > 0:
-                raise ValueError("非 prefix 模式不接受 prefix_len (模式由 adapter 创建时决定)")
             concat_ids, concat_pos, seq_lens, cum_seq_lens = generate_varlen_inputs(
                 batch_size, seq_len, vocab_size=vocab, seed=seed)
+            ignored = f" (忽略 prefix_len={prefix_len}: 非 prefix 形态)" if prefix_len else ""
             print(f"  batch_size={batch_size}, total_tokens={sum(seq_lens)}, "
-                  f"cum_seq_lens[-1]={cum_seq_lens[-1]}")
+                  f"cum_seq_lens[-1]={cum_seq_lens[-1]}{ignored}")
             asl = cum_seq_lens
 
         return (concat_ids.squeeze(0).npu(),

@@ -11,7 +11,7 @@ source:
 adapt:
   adapter_class: Qwen25Adapter     # 同目录 model.py 里的类
   params:                          # 直接作为 adapter 构造 kwargs (= 形态开关)
-    prefix: true                   # true → PIA (prefix-in-Q, npu_prefix_infer_attention_score)
+    prefix: false                   # true → PIA (prefix-in-Q, npu_prefix_infer_attention_score)
     prune_token_file: models/qwen2.5-0.5b/config/target_tokens.json   # 声明即启用 lm_head 词表剪裁
 
 inputs:                            # 输入生成 (export trace 与 verify golden 共用)
@@ -40,10 +40,12 @@ verify:
   enabled: true
 
 bench:
-  instances: 4                       # = 并发 worker (1:1 绑实例, 无锁)
-  requests: 2000                     # 总请求 (闭环, 均分到实例)
+  instances: 3                       # = 并发 worker (1:1 绑实例, 无锁)
+  requests: 3000                     # 总请求 (闭环, 均分到实例)
   warmup: 50                         # 覆盖 每实例 × 每 shape 档 (GE 首次执行要特化)
   sample_seed: 0                     # 请求池**抽样**种子 (每实例 seed+instance_id); ≠ inputs.seed
   pool:
     script: models/qwen2.5-0.5b/scripts/gen_requests.py
+    # --prefix 仅 adapt.params.prefix:true 时生效; false 时框架自动移除 (core.bench._form_args),
+    # 故翻 prefix 一个开关即无缝切形态, 不必手改这行。范围 "20-25" 属负载口径 (每套抽一个 P)。
     args: [--count, "200", --prefix, "20-25"]

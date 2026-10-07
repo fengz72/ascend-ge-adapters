@@ -74,6 +74,27 @@ def _resolve(path, base_dir=None):
     return os.path.normpath(os.path.join(_REPO_ROOT, path))
 
 
+def _strip_flag(args, flag):
+    """从 argv 列表移除一个 flag 及其值 (兼容 `--flag X` 与 `--flag=X` 两种写法), 返回新列表。
+
+    纯函数。用于 _form_args 在非 prefix 形态下移除 yaml 里手写的 --prefix —— 范围值属
+    **负载口径**(留在 args), 但 flag 的**存在与否**由 prefix 标志管辖 (见 _form_args)。
+    `--flag=` 前缀匹配不会误伤 `--flag-other` (后者不以 `--flag=` 开头, 也不 == `--flag`)。
+    """
+    out, skip = [], False
+    for a in args:
+        if skip:                        # 上一个是被删的 `--flag`, 这个是它的值 → 一并删
+            skip = False
+            continue
+        if a == flag:                   # `--flag X`: 删 flag, 下一个 (值) 也删
+            skip = True
+            continue
+        if a.startswith(flag + "="):    # `--flag=X`: 整个删
+            continue
+        out.append(a)
+    return out
+
+
 def _form_args(cfg, args):
     """把**形态事实**拼进请求池生成脚本的 args (负载口径留在 yaml / 脚本默认值里)。
 
@@ -85,6 +106,11 @@ def _form_args(cfg, args):
       --prefix        prefix 形态必须是 packed 布局; **范围**属负载口径 (yaml 可写 "20-25"),
                       没写就用 inputs.prefix_len 保底
     yaml 的 args 里已显式写过的不覆盖 (便于临时实验)。
+
+    --prefix 的**存在与否**由 prefix 标志管辖 (范围值仍留在 args): prefix=true 注入/保留,
+    prefix=false 则**移除** yaml 里手写的 --prefix —— 这样翻 adapt.params.prefix 一个开关
+    即可无缝切形态, 不必同时手改 bench.pool.args (否则非 prefix 形态会生成 prefix-packed 池,
+    与基线图接口对不上)。
     """
     out = list(args)
 
@@ -104,6 +130,10 @@ def _form_args(cfg, args):
         add("--prune-tokens", resolved)
     if cfg.adapt.params.get("prefix"):
         add("--prefix", cfg.inputs.prefix_len or None)
+    else:
+        out = _strip_flag(out, "--prefix")
+        assert not any(a == "--prefix" or a.startswith("--prefix=") for a in out), \
+            f"_strip_flag 未彻底移除 --prefix: {out}"
     return out
 
 
@@ -222,6 +252,8 @@ def _form_str(form) -> str:
 def render_perf_md(perf, scenario, run_id, provenance) -> str:
     """perf.json → 人读 markdown (聚合 + 每实例 + 口径说明)。"""
     e2e = perf.get("e2e_ms") or {}
+    execm = perf.get("exec_ms") or {}
+    toks = perf.get("tokens") or {}
     hbm = perf.get("hbm_mb") or {}
     pool = perf.get("pool") or {}
     load = perf.get("load") or {}
@@ -250,6 +282,10 @@ def render_perf_md(perf, scenario, run_id, provenance) -> str:
         f"| e2e avg / p50 / p99 / max | {e2e.get('avg', 0):.3f} / {e2e.get('p50', 0):.3f} / "
         f"{e2e.get('p99', 0):.3f} / {e2e.get('max', 0):.3f} ms |",
         f"| e2e min | {e2e.get('min', 0):.3f} ms |",
+        f"| exec avg / p99 | {execm.get('avg', 0):.3f} / {execm.get('p99', 0):.3f} ms "
+        f"(execute+sync, 不含 h2d/desc) |",
+        f"| tokens avg / p50 / p99 / max | {toks.get('avg', 0):.1f} / {toks.get('p50', 0):.0f} / "
+        f"{toks.get('p99', 0):.0f} / {toks.get('max', 0):.0f} (每请求 packed T) |",
         f"| HBM (建实例前 → 后) | {hbm.get('base', -1):.0f} → {hbm.get('peak', -1):.0f} MB |",
         f"| warmup | {warm.get('runs')} 次 / {warm.get('ms', 0):.1f} ms |",
         f"| errors | {perf.get('errors', 0)} |",
@@ -275,6 +311,9 @@ def render_perf_md(perf, scenario, run_id, provenance) -> str:
         "## 口径",
         "",
         "- `e2e` = h2d + desc(重设该请求 shape) + execute+sync；`exec` 只含 execute+sync。",
+        "- `tokens` = 每请求的 packed 总 token 数 T（一个请求 = N 条序列拼成的 varlen 输入，"
+        "T = input_ids 长度，非单条序列长）；avg/p50/p99/max 是运行时**实际抽样到**的分布"
+        "（池级 min/median/max 见 `io/pool/pool_meta.json`，那是生成期全集、非抽样）。",
         "- 每实例 = 一份独立加载的模型（ACL 每实例独立 `aclmdlLoadFromFile`；GeSession 单 "
         "Session 多图，每实例一份 `CompileGraph`+`LoadGraph`），1 worker ↔ 1 实例，无锁。",
         "- `特化` = 该实例在 **warmup 段**首次命中各 shape 的 exec 耗时之和（ACL 是 tiling 缓存"
@@ -373,8 +412,8 @@ def run(config_path, device=None, instances=None, requests=None, warmup=None,
         json.dump({"schema": "ge-bench-run/1", "run_id": run_id, "config": sc.raw,
                    "config_path": sc.path, "provenance": provenance,
                    "perf_summary": {k: perf.get(k) for k in
-                                    ("backend", "device", "qps", "wall_ms", "e2e_ms",
-                                     "requests", "errors", "distinct_shapes")}},
+                                    ("backend", "device", "qps", "wall_ms", "e2e_ms", "exec_ms",
+                                     "tokens", "requests", "errors", "distinct_shapes")}},
                    f, indent=2, ensure_ascii=False)
     with open(os.path.join(run_dir, "perf.md"), "w") as f:
         f.write(render_perf_md(perf, sc, run_id, provenance))

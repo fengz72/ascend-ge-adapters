@@ -464,7 +464,7 @@ Python: compare(outputs, golden) → report   (verify.compare_bundle → tools/c
 
 ```
 run.json          # 快照: git/CANN/torch_npu 版本、device、soc、model.yaml 全文、性能摘要
-perf.json         # C++ 出的数据: 聚合 + 每实例 (qps/e2e 分位/exec/h2d/desc/load/特化/HBM)
+perf.json         # C++ 出的数据: 聚合 + 每实例 (qps/e2e 分位/exec/tokens 分布/h2d/desc/load/特化/HBM)
 perf.md           # 人读表 + 口径说明 (curate 基线时的素材)
 perf_requests.csv # 逐请求明细
 plan.json         # 传给 C++ 的 bench plan
