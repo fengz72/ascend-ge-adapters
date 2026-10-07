@@ -8,7 +8,7 @@
 
 **不抽 Backend 基类** (与 C++ 侧同一标准, docs §9): 两后端的差异只是"要不要 ATC",
 一个分支足够。ATC 编译留 Python (§9), 包装 tools.atc_utils.run_atc; fusion pass 装进
-opp/vendors 后由 CANN 自动扫描加载, 不需要 env 注入 (core/passes.py, docs §7)。
+opp/vendors 后由 CANN 自动扫描加载, 不需要 env 注入 (core/setup_scripts.py, docs §7)。
 """
 
 import os

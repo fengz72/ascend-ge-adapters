@@ -1,21 +1,22 @@
-"""性能测试编排 — model.yaml 的 bench 段 → bench plan → ge_runtime → 报告落盘归档。
+"""性能测试编排 — model.yaml 的 bench 段 → bench plan → ge_runtime → 报告落盘。
 
 分工 (docs §3/§10): **C++ 只测量并出数据** (perf.json / perf_requests.csv), Python 负责
-编排 (生成请求池 → 建 plan → 起运行时)、provenance、排版 (md) 与归档索引。
+编排 (生成请求池 → 建 plan → 起运行时)、provenance、排版 (md) 与本地索引。
 
 配置只有**一份** model.yaml (docs §5.2): bench 段放"这次压测怎么压"(并发/请求数/池套数),
 模型侧事实 (soc / manifest / 报告目录 / 限核 / 形态参数) 一律从同一份配置取, 不在两处重复。
 派生路径按约定: manifest=<model_dir>/io/manifest.json, 池=<model_dir>/io/pool,
 报告=<model_dir>/results。
 
-一次 run 的产物 (docs §10):
+一次 run 的产物 (docs §10) — **全是本地过程产物, 整个 results/<run_id>/ 与 index.json 都
+gitignored、可重跑再生**; 要长期保留的性能数字由人工 curate 进 results/README.md (唯一入库项):
     <model_dir>/results/<run_id>/
         run.json          # 快照: git/CANN/torch_npu 版本、device、soc、model.yaml 全文、plan
         perf.json         # C++ 出的性能数据 (聚合 + 每实例 + 阶段耗时)
-        perf.md           # 人读表
-        perf_requests.csv # 逐请求明细 (gitignore)
-        plan.json         # 传给 C++ 的 bench plan (gitignore)
-    <model_dir>/results/index.json   # 历次 run 一行摘要 (趋势/归档)
+        perf.md           # 人读表 (curate 基线时的素材)
+        perf_requests.csv # 逐请求明细
+        plan.json         # 传给 C++ 的 bench plan
+    <model_dir>/results/index.json   # 历次 run 一行摘要 (本地趋势)
 
 **不含精度**: 性能跑不落盘输出 (D2H 会污染延迟), 精度由 `run.sh` 的两道门负责
 (`io/reference.json` 门① + compare 门②, docs §10) — 一个变量只由一处度量。
@@ -390,8 +391,9 @@ def run(config_path, device=None, instances=None, requests=None, warmup=None,
         "git_commit": provenance.get("git_commit"), "dir": run_dir,
     })
 
-    print(f"\n=== 报告已归档: {run_dir} ===")
+    print(f"\n=== 报告已落盘 (本地过程产物, 不入库): {run_dir} ===")
     print("  perf.json / perf.md / perf_requests.csv / run.json")
+    print("  满意后把 perf.md 的数字 + provenance curate 进 results/README.md 的「当前基线」(唯一入库项)")
     if perf.get("errors", 0):
         raise SystemExit(f"[bench] 有 {perf['errors']} 个请求失败, 见 {run_dir}")
     return run_dir

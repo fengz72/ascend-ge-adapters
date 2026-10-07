@@ -68,7 +68,14 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     # ---- torch 源: source 加载 + adapter 适配 ----
     adapter = load_adapter(cfg)
     exporter = GeExporter(adapter, air_dir, name)
-    verify = Verifier()
+    # verify 段的门限覆盖透传给 Verifier; None (未覆盖) 的项过滤掉, 让框架默认生效
+    # (直接传 None 会覆盖掉 Verifier 的常量默认 → 比对门限变成 None 而崩)
+    verify = Verifier(**{k: v for k, v in (
+        ("ref_cosine_min", cfg.verify.ref_cosine_min),
+        ("ref_rel_l2_max", cfg.verify.ref_rel_l2_max),
+        ("cmp_cosine_min", cfg.verify.cmp_cosine_min),
+        ("cmp_rel_l2_max", cfg.verify.cmp_rel_l2_max),
+    ) if v is not None})
     ref_report = None
 
     if "export" in skip:

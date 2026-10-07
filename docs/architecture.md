@@ -91,13 +91,15 @@ models/qwen2.5-0.5b/
     reference.json               #   门① 原版 HF vs 适配后 eager 的指标 (docs §10)
     outputs/                     #   门② C++ 运行时输出 (output_<i>.bin + outputs.json)
     pool/                        #   性能测试请求池 (req_NNNN/{bundle.json, inputs/*.bin})
-  results/                       # 生成: 报告归档 (json+md 入库; csv/raw gitignored)
+  results/                       # 生成: 性能 run 目录 (过程产物, 本地 gitignored)
+    README.md                    #   人工 curate 的**性能基线** (唯一入库项: 数字 + provenance)
 ```
 
 **人工只维护 `model.py` + `config/model.yaml`**；其余全是生成物。`io/` 里既有运行时入口
 （`manifest.json`）也有验证数据（bundle/inputs/golden/outputs）——两者都是**一次运行的派生物**：
 输入由 `config/model.yaml` 的 `inputs`(shape+seed) 现生成、golden 由 patched eager 现算，
-所以整个目录可随时删掉重跑。要长期保留的只有小体积报告（`reference.json`、`results/`）。
+所以整个目录可随时删掉重跑。要长期保留的只有小体积的 `reference.json`（门①指标）与
+`results/README.md`（curate 后的性能基线）；`results/<run_id>/` 是过程产物，本地参考、不入库。
 交付部署（只带图 + 入口）目前没有单独出口，需要时再加 `--emit-deploy`。
 
 > `io/pool/` 是**唯一的例外**：它跨 run 复用（生成 200 套请求要十几秒），幂等由生成脚本自己
@@ -150,6 +152,12 @@ backend:
 
 verify:
   enabled: true
+  # 两道门的门限可选覆盖 (不写 = 用 core/verify.py 的规范默认); 换 dtype(bf16)/更大词表/
+  # 更长序列时噪声量级会变, 改这里即可, 不动框架 (docs §10/§13.8):
+  #   ref_cosine_min: 0.999      # 门① reference (跨实现: 原版 HF vs 适配后 eager)
+  #   ref_rel_l2_max: 0.02
+  #   cmp_cosine_min: 0.9999     # 门② compare (同源: 运行时输出 vs golden)
+  #   cmp_rel_l2_max: 0.01
 
 bench:                           # 性能测试口径 (core.bench / tools.sweep); 一个模型一个场景
   instances: 4                   # = 并发 worker (1:1 绑实例, 无锁)
@@ -411,7 +419,9 @@ Python: compare(outputs, golden) → report   (verify.compare_bundle → tools/c
 | 门 | 比对 | 隔离的变量 | 门限 | 产物 |
 |---|---|---|---|---|
 | ① `reference` | 原版未 patch 的 HF 逐请求末 token logits vs 适配后 eager golden | **适配**（融合算子替换、varlen 打包、prefix 语义、lm_head 剪裁） | cosine > 0.999 且 rel_l2 < 0.02（跨实现；实测噪声 0.999999 / 1.5e-3，`core/verify.py:REF_*`） | `io/reference.json` |
-| ② `compare` | C++ 运行时输出 vs golden | **编译**（AIR→OM/GeSession、图序喂入、动态 shape 特化） | cosine > 0.9999 且 rel_l2 < 0.01（同源） | `io/outputs/` |
+| ② `compare` | C++ 运行时输出 vs golden | **编译**（AIR→OM/GeSession、图序喂入、动态 shape 特化） | cosine > 0.9999 且 rel_l2 < 0.01（同源，`core/verify.py:CMP_*`） | `io/outputs/` |
+
+> 上表门限是 `core/verify.py` 的**规范默认**（`REF_*` / `CMP_*`）；`model.yaml` 的 `verify` 段可逐项覆盖（`ref_cosine_min` / `ref_rel_l2_max` / `cmp_cosine_min` / `cmp_rel_l2_max`，不写即用默认）。换 dtype(bf16) / 更大词表 / 更长序列时噪声量级会变，改 yaml 即可、不动框架（§5.2/§13.8）。
 
 - **`reference` 的时机是硬约束**：必须在 `adapter.adapt()` **之前**算——patch 是类级
   monkey-patch（进程全局，见 §8），adapt 之后同进程里任何同架构实例都走 patched forward，
@@ -450,18 +460,24 @@ Python: compare(outputs, golden) → report   (verify.compare_bundle → tools/c
 - **池的 distinct shape 数直接决定 warmup 成本**：warmup 必须覆盖 每实例 × 每 shape（否则测量段付特化代价，csv 里 `first_hit=1` 且 stderr WARN）。实测 qwen 138 种 shape × 2 实例 = 276 次 warmup ≈ 3.4s（ACL）；GE 的图特化更贵，**建议 GE 用分档池**（少量 shape）。
 - 每请求记 `h2d / desc / execute+sync / e2e` 四段（定位瓶颈：H2D 占比高说明该增大 batch 或用 pinned memory）。
 
-**报告与归档**（`<model_dir>/results/<run_id>/`，run_id = 时间戳-git短sha-`<model>-bench`；一个模型一个负载场景，故归档名不再单独声明）：
+**报告与产物**（`<model_dir>/results/<run_id>/`，run_id = 时间戳-git短sha-`<model>-bench`；一个模型一个负载场景，故归档名不再单独声明）：
 
 ```
 run.json          # 快照: git/CANN/torch_npu 版本、device、soc、model.yaml 全文、性能摘要
 perf.json         # C++ 出的数据: 聚合 + 每实例 (qps/e2e 分位/exec/h2d/desc/load/特化/HBM)
-perf.md           # 人读表 + 口径说明
-perf_requests.csv # 逐请求明细 (gitignore)
-plan.json         # 传给 C++ 的 bench plan (gitignore)
+perf.md           # 人读表 + 口径说明 (curate 基线时的素材)
+perf_requests.csv # 逐请求明细
+plan.json         # 传给 C++ 的 bench plan
 results/index.json# 历次 run 一行摘要 (趋势)
+results/README.md # 人工 curate 的**性能基线** (数字 + provenance + 复现口径)
 ```
 
-json + md **入库**（小、可 diff、可归档），csv/plan 忽略。基线数据归 `models/<model>/results/`（逐模型），架构层只规定"有 bench 阶段 + 归档位置 + 报告格式"，**不写死全局阈值**——验收线逐模型定。
+**run 目录 / index.json / sweep-*.md 都是过程产物**（机器生成、可重跑再生、`perf.md` 带本地绝对
+路径、`index.json` 无限增长会撞 merge），一律**本地 gitignored、不入库**；只有人工 curate 进
+`results/README.md` 的**基线数字**入库（它是 `results/` 直属文件，不被 run 目录的 ignore 模式匹配）。
+调试完把 `perf.md` 的最终数字 + provenance 抄进 `README.md` 的「当前基线」节即可，原始 run 目录留本地。
+基线数据归 `models/<model>/results/README.md`（逐模型），架构层只规定"有 bench 阶段 + 基线归宿 + 报告
+格式"，**不写死全局阈值**——验收线逐模型定。
 
 > **性能报告不含精度**：池模式不落盘输出（每请求 D2H 会污染延迟数字，`runtime/bench_plan.cpp`），精度只由 §10 的两道门度量（`run.sh` 的 `reference` + `compare`）。一个变量只由一处度量——原来 bench 里还有一次"单请求精度复核"（`accuracy.json/md`），与门② 用同一份 bundle、同一份 golden，只是多花一次 ge_session 图编译（实测 ~10s/run），已删除。
 
@@ -480,6 +496,8 @@ json + md **入库**（小、可 diff、可归档），csv/plan 忽略。基线�
 @dataclass ModelConfig: model; source; adapt; inputs; graph; passes; custom_ops;
                         backend; verify; bench                    # 无 device (运行期 --device)
 @dataclass SetupEntry: script; path       # passes/custom_ops/bench.pool 的条目 (脚本 + 三方源)
+@dataclass VerifyCfg: enabled; ref_cosine_min; ref_rel_l2_max; cmp_cosine_min; cmp_rel_l2_max
+                        # 门限默认 None = 用 core/verify.py 的 REF_*/CMP_*; 显式值即覆盖 (§10)
 @dataclass BenchCfg: instances; requests; warmup; sample_seed; pool
                                                  # 只放压测口径, 模型侧事实从其它段取 (§5.2)
 def load_config(path) -> ModelConfig
@@ -546,16 +564,19 @@ def form_from_manifest(manifest_path) -> dict            # 顺着 manifest→bun
 def update_index(report_dir, entry) -> index_path
 
 # verify.py
-class Verifier:                                  # 门限: compare=同源(0.9999/0.01),
-    def reference(self, model, adapter, inputs) -> Tensor | None   # reference=跨实现(0.99/0.05)
+class Verifier:                                  # 门限规范默认 (可被 model.yaml verify 段覆盖):
+    def __init__(self, rtol, atol,               #   门① reference=跨实现 REF_*(0.999/0.02),
+                 ref_cosine_min, ref_rel_l2_max,  #   门② compare=同源 CMP_*(0.9999/0.01)
+                 cmp_cosine_min, cmp_rel_l2_max)
+    def reference(self, model, adapter, inputs) -> Tensor | None
                                                  # **原版未 patch** 模型逐请求末 token logits;
                                                  # 必须在 adapt 之前调 (patch 是进程级类属性)
-    def compare_reference(self, golden, reference, path=None) -> report   # 门① 适配是否正确
+    def compare_reference(self, golden, reference, path=None) -> report   # 门① 适配是否正确 (用 ref_*)
     def golden(self, model, inputs) -> Tensor            # eager forward (NPU)
     def save_bundle(self, dir, inputs, golden, io_spec, provenance,
                      logical_order=None) -> bundle_path   # 写 bundle.json + .bin (forward 序标签)
                                                            # golden=None → 只落 inputs (verify.enabled: false)
-    def compare_bundle(self, bundle_path, outputs_dir, dtype) -> report   # 门② 编译是否正确
+    def compare_bundle(self, bundle_path, outputs_dir, dtype) -> report   # 门② 编译是否正确 (用 cmp_*)
 def bundle_has_golden(bundle_path) -> bool               # pipeline 据此决定是否 compare
 def collect_provenance(..., adapt_params, **extra)       # 形态 (prefix/prune) 进 provenance
 
@@ -591,9 +612,8 @@ ascend-ge-adapters/
 │       ├── model.py               # Adapter (模型专属, 唯一手写代码之一)
 │       ├── config/model.yaml      # 声明 (唯一手写配置: 形态 + 后端 + 验证 + bench 口径)
 │       ├── scripts/               # 用户脚本: install_{nz_pass,prefix_attn}.sh / gen_requests.py
-│       ├── results/               # 报告归档 (json+md 入库; csv/raw gitignored)
-│       ├── run.sh env.sh          # 薄封装 core/pipeline + 运行环境
-│       └── docs/                  # DEPLOYMENT_GUIDE.md + reports/ aicore/ prefix-attention/
+│       ├── results/               # 性能 run 目录 (过程产物, 本地 gitignored) + README.md (curate 的基线, 唯一入库)
+│       └── run.sh env.sh          # 薄封装 core/pipeline + 运行环境
 ├── tools/                         # varlen / atc_utils / compare / sweep / parse_dump / parse_profiling
 ├── tests/                         # tiny_e2e (需 NPU 的脚本, 手动跑)
 └── docs/architecture.md

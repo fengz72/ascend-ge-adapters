@@ -25,11 +25,12 @@ log/
 models/*/air/
 models/*/om/
 models/*/io/
-# 性能测试报告: json+md 入库 (小、可 diff、可归档); 逐请求明细/plan/raw 忽略 (体积大或可重生)
+# 性能测试: run 目录/index/sweep 都是**过程产物**(可重跑再生), 一律本地不入库;
+# 只有 curate 进 results/README.md 的基线数字入库 (它是 results/ 直属文件, 不被下面目录模式匹配)。
 # 请求池在 io/pool, 已被上面 models/*/io/ 覆盖
-models/*/results/*/perf_requests.csv
-models/*/results/*/plan.json
-models/*/results/*/raw/
+models/*/results/*/
+models/*/results/index.json
+models/*/results/sweep-*.md
 **/*.so
 
 # ===== 会话日志 =====

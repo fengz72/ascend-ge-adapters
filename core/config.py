@@ -73,7 +73,17 @@ class SetupEntry:
 
 @dataclass
 class VerifyCfg:
+    """验证开关 + 两道精度门的门限覆盖。
+
+    四个门限默认 None = 用 core/verify.py 的规范默认 (门① reference 0.999/0.02 跨实现,
+    门② compare 0.9999/0.01 同源); 填显式值即覆盖。换 dtype(bf16)/更大词表/更长序列时
+    噪声量级会变, 改这里即可, 不动框架 (docs §10/§13.8)。pipeline 构造 Verifier 时透传。
+    """
     enabled: bool = True
+    ref_cosine_min: Optional[float] = None    # 门① 原版 HF vs 适配后 eager (跨实现)
+    ref_rel_l2_max: Optional[float] = None
+    cmp_cosine_min: Optional[float] = None    # 门② 运行时输出 vs golden (同源)
+    cmp_rel_l2_max: Optional[float] = None
 
 
 @dataclass

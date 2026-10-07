@@ -113,7 +113,7 @@ def main():
 def _run_backend(backend, args, work, graph, io_spec_path, bundle_path, om, verify):
     """写 manifest (backend 二选一) → 跑 ge_runtime → compare, 返回指标 dict。"""
     cfg = ModelConfig(model=ModelMeta(name="tiny", soc=args.soc),
-                      source=SourceCfg(type="torch"),
+                      source=SourceCfg(),
                       backend=BackendCfg(type=backend))
     manifest = write_manifest(cfg, graph.path, om if backend == "om_acl" else None,
                               io_spec_path, bundle_path, base_dir=work, device=args.device)

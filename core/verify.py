@@ -29,6 +29,14 @@ import numpy as np
 REF_COSINE_MIN = 0.999
 REF_REL_L2_MAX = 0.02
 
+# 编译比对 (同源: C++ 运行时输出 vs patched-eager golden) 的门限 — 两边同出一个模型,
+# 只差 AIR→OM/GeSession 的编译与图序喂入, 故比跨实现的 reference 门紧一档。
+CMP_COSINE_MIN = 0.9999
+CMP_REL_L2_MAX = 0.01
+
+# 四个门限都是**规范默认值**: model.yaml 的 verify 段可逐项覆盖 (VerifyCfg 里默认 None
+# = 用这里的值), 换 dtype(bf16)/更大词表/更长序列时噪声量级会变, 改 yaml 即可, 不动框架。
+
 
 class Verifier:
     """golden 生成 / 原版参考 / bundle 落盘 / 精度比对 (docs §11 verify.py 接口)。
@@ -43,12 +51,17 @@ class Verifier:
     """
 
     def __init__(self, rtol=1e-3, atol=1e-5,
-                 ref_cosine_min=REF_COSINE_MIN, ref_rel_l2_max=REF_REL_L2_MAX):
+                 ref_cosine_min=REF_COSINE_MIN, ref_rel_l2_max=REF_REL_L2_MAX,
+                 cmp_cosine_min=CMP_COSINE_MIN, cmp_rel_l2_max=CMP_REL_L2_MAX):
         # 比对默认容忍度 (与 tools/compare.py 一致); compare 可逐次覆盖
         self.rtol = rtol
         self.atol = atol
+        # 门① reference (跨实现) 与门② compare (同源) 的判定门限 — 均可由 model.yaml
+        # 的 verify 段覆盖 (pipeline 构造 Verifier 时透传), 换 dtype/词表规模时改 yaml 即可
         self.ref_cosine_min = ref_cosine_min
         self.ref_rel_l2_max = ref_rel_l2_max
+        self.cmp_cosine_min = cmp_cosine_min
+        self.cmp_rel_l2_max = cmp_rel_l2_max
 
     # ---- golden ----
 
@@ -195,6 +208,8 @@ class Verifier:
             dtype        golden 的 dtype — 取自 io_spec (bundle 不记 dtype, docs §5.4)
         输出项按 logical 与 golden 匹配 (匹配不到取第 0 项), 其 dtype/shape 取自
         outputs.json (运行时实测)。返回 compare.py 的指标 dict (pass_overall 为判定)。
+        判定门限用门② 的 self.cmp_cosine_min/cmp_rel_l2_max (同源, 默认 0.9999/0.01;
+        可由 model.yaml 的 verify 段覆盖)。
         """
         from tools.compare import PrecisionComparator, load_file
 
@@ -232,7 +247,9 @@ class Verifier:
 
         return PrecisionComparator.compare_and_report(
             g, t, target_name=entry.get("logical") or "outputs",
-            rtol=rtol, atol=atol, verbose=verbose)
+            rtol=rtol, atol=atol,
+            cosine_min=self.cmp_cosine_min, rel_l2_max=self.cmp_rel_l2_max,
+            verbose=verbose)
 
 
 # ---- 内部工具 ----

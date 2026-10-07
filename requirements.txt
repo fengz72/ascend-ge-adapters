@@ -11,9 +11,3 @@ torch_npu==2.9.0.post2
 transformers==5.10.1
 numpy==1.26.4
 PyYAML==6.0.3
-
-# ---- 形态③ ONNX (source.type=onnx 时才需要) ----
-onnx==1.17.0
-
-# ---- 测试 (tests/tiny_*_e2e.py, 需 NPU) ----
-onnxruntime==1.26.0        # 仅 tests/tiny_onnx_e2e.py 用作 CPU 参考输出

@@ -9,16 +9,17 @@ Source ──[Adapt]──> Graph(AIR) ──[Passes]──> Backend ──> out
 ```
 
 - **设计文档**：[`docs/architecture.md`](docs/architecture.md)（契约、动态 shape 策略、pass 子系统、适配协议、实测结论）
-- **逐模型文档**：`models/<model>/docs/`（部署指南 + 实测报告）
+- **逐模型文档**：`models/<model>/results/README.md`（curate 的**性能基线** + 复现口径；run 目录是本地过程产物，不入库）
 - **适配新模型**：照 `models/qwen2.5-0.5b/model.py` 复制修改 + 写 `config/model.yaml`，框架零改动
+- **当前复用边界**：**decoder-only CausalLM、单 logits 输出**（`source` 只走 `AutoModelForCausalLM`、`pipeline` 固定 `logical="logits"`、bundle 单 golden、C++ 仅在单输出时精确推导缓冲）。ViT / encoder / seq2seq / 多输出模型能复用适配协议与运行时，但需先扩这几处——见 [`docs/architecture.md`](docs/architecture.md) §10「已知限制」。
 
 ## 目录
 
 | 路径 | 职责 |
 |---|---|
-| `core/` | 通用框架（Python）：config / source / adapter / exporter / graph / passes / backend / verify / pipeline |
+| `core/` | 通用框架（Python）：config / source / adapter / exporter / graph / setup_scripts / backend / verify / bench / pipeline |
 | `runtime/` | 通用执行运行时（C++）：单入口 + manifest 分发 + `acl_backend`(OM) / `gesession_backend`(AIR) + bench |
-| `models/<name>/` | 逐模型：`model.py`(Adapter) + `config/model.yaml`(声明) + 产物 + docs |
+| `models/<name>/` | 逐模型：`model.py`(Adapter) + `config/model.yaml`(声明) + 产物 + `results/README.md`(性能基线) |
 | `tools/` | varlen 输入生成 / ATC 封装 / 精度比对 / dump·profiling 解析（见 `tools/README.md`） |
 | `tests/` | 回归门：`tiny_e2e`（需 NPU 的脚本，极小模型跑通两后端闭环） |
 | `third_party/` | 三方源，一律**只读**：`custom_development_code`(submodule, fusion pass) + `ascend-ops`(submodule, PIA 自定义算子) + `nlohmann/json.hpp` |
@@ -52,7 +53,7 @@ bash runtime/build.sh                       # → runtime/build/ge_runtime
 # 4) 只跑执行 + 比对 (复用已有 AIR/OM/bundle)
 ./models/qwen2.5-0.5b/run.sh --device 6 --skip export,passes,compile --warmup 10 --bench 100
 
-# 5) 变长负载性能测试 (多实例 + 请求池回放 → 归档报告; 口径在 model.yaml 的 bench 段)
+# 5) 变长负载性能测试 (多实例 + 请求池回放 → 本地报告; 口径在 model.yaml 的 bench 段)
 python3 -m core.bench --config models/qwen2.5-0.5b/config/model.yaml --device 6
 #   → models/qwen2.5-0.5b/results/<run_id>/{run,perf}.json + perf.md (只出性能; 精度归 run.sh 两道门)
 #   覆盖: --instances 8 --requests 4000
@@ -72,7 +73,7 @@ python3 tools/parse_profiling.py parse-and-export --profiling_dir ./prof
 --bench-plan --graph_run_mode --precision_mode --aicore_num --output_reserve --dump*
 --profiling*`（`--help`）。**一次只测一档并发**（`--threads`）——档位扫描是"同一件事跑 N 遍"，
 归 `tools/sweep.py`（每档独立进程，资源彻底建/销，HBM 归还干净）。
-性能/精度报告的格式与归档见 `models/<model>/results/README.md`。
+性能报告的格式、curate 基线与复现口径见 `models/<model>/results/README.md`（run 目录是本地过程产物，不入库）。
 
 ## 测试
 

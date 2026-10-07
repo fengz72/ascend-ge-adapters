@@ -10,8 +10,9 @@
     动态图 (io_spec 含 -1 维) 由调用方决定**不传** `--input_shape`, GE 运行期自行特化
     (docs §6②: 同一 OM 可跨 shape 复用, 无需 ATC 分档)。
 
-fusion pass 不在此处激活: 装到 `$ASCEND_HOME_PATH/opp/vendors/<model>/custom_fusion_passes/`
-后由 CANN 自动扫描加载 (core/passes.py, docs §7)。
+fusion pass 不在此处激活: 装到 `$ASCEND_HOME_PATH/opp/vendors/<vendor>/custom_fusion_passes/`
+(pass 装进它自己的 vendor 目录、全局一份, 非 per-model — 见 docs §7.1)
+后由 CANN 自动扫描加载 (core/setup_scripts.py, docs §7)。
 """
 
 import glob
