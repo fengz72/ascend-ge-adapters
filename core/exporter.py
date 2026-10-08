@@ -1,12 +1,12 @@
 """
 GE 导出基类 — PyTorch → AIR 的通用管线
 
-管线: adapter.adapt → build_inputs → golden → trace (mark_dynamic
+管线: adapter.adapt → 激励 (inputs.script 落盘) → golden → trace (mark_dynamic
     → dynamo_export, frozen_parameter + dynamic=True) → 校验
 图的边界由模型文件的 patched forward 决定 (适配后 model(...) 即图接口)。
 子类钩子 (模型相关):
-    build_inputs(model, **kw)    dummy 输入 (与 patched forward 签名一致, NPU 张量)
     mark_dynamic(inputs, **kw)   标记动态维度 (默认 no-op)
+  激励不在此: 输入由 model.yaml 的 inputs.script 声明的用户脚本落盘, pipeline 读回后传入。
 
 ATC 编译 (AIR → OM) 不在此处 — 归 core/backend.compile_graph (委托 tools.atc_utils)。
 """
@@ -22,7 +22,7 @@ class GeExporter:
     """通用 AIR 导出器 — 无模型专属逻辑。
 
     输入生成/动态标记/io_spec 节点声明全部委托给 adapter (模型专属知识归 adapter,
-    见 GeModelAdapter.build_inputs/mark_dynamic/io_input_nodes)。本类只负责
+    见 GeModelAdapter.mark_dynamic/io_input_nodes 与 inputs.script)。本类只负责
     mark_dynamic 后的 dynamo_export 通用流程。
 
     用法:

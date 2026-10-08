@@ -13,6 +13,7 @@
 import argparse
 import glob
 import os
+from dataclasses import replace
 
 import torch
 import torch_npu
@@ -22,7 +23,7 @@ from core.config import (check_build_record, export_name, load_config, load_adap
 from core.source import load_source
 from core.graph import Graph, IoNode, IoSpec
 from core.exporter import GeExporter
-from core.setup_scripts import run_scripts
+from core.setup_scripts import run_scripts, strip_flag
 from core.backend import backend_extra, compile_graph, default_output_dir, run_runtime
 from core.verify import Verifier, bundle_has_golden, collect_provenance
 
@@ -65,6 +66,10 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
         prefix_len=cfg.inputs.prefix_len,
         seed=cfg.inputs.seed,
     )
+    # CLI 覆盖 (--batch-size/--seq-len) 回写进 cfg.inputs, 让它成为**唯一**的有效输入口径:
+    # _inputs_args (注入给脚本) 与 build_fingerprint (构建指纹) 都读 cfg.inputs, 不回写就会
+    # 静默忽略覆盖 — 冒烟用的 --batch-size 2 会被脚本按 yaml 的 10 生成, 且指纹记的也是 10。
+    cfg = replace(cfg, inputs=replace(cfg.inputs, **input_kwargs))
 
     # ---- 自定义算子安装脚本: 必须在 load_adapter 之前 (model.py 可能 import 算子绑定) ----
     if "ops" not in skip:
@@ -92,7 +97,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
         bundle_path = bundle_path if os.path.exists(bundle_path) else None
     else:
         raw = load_source(cfg, md, dtype=dtype, device=device)
-        inputs = adapter.build_inputs(raw, **input_kwargs)
+        inputs, in_logical = _generate_inputs(cfg, raw, bundle_dir, device)
         want_golden = cfg.verify.enabled and "verify" not in skip
 
         # 原版参考必须在 adapt **之前**算: patch 是类级 monkey-patch (进程全局), adapt 之后
@@ -111,6 +116,14 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
         write_build_record(air_path, cfg, dtype)      # 与 AIR 同名的 .build.json (--skip export 时校验)
 
         in_nodes = adapter.io_input_nodes(inputs, **input_kwargs)
+        # 激励现在来自**进程外**(输入脚本), 故 logical 序不再由同一个函数保证 — 对账:
+        # 脚本落盘的顺序必须 == adapter 声明的 forward 序, 否则 save_bundle 会把 .bin
+        # 贴错 logical 标签 (C++ 按名配对 → 静默喂错张量)
+        if [n.logical for n in in_nodes] != in_logical:
+            raise ValueError(
+                f"输入脚本的 logical 序 {in_logical} ≠ adapter.io_input_nodes 声明的 "
+                f"{[n.logical for n in in_nodes]} — 两者都须 == patched forward 入参序 "
+                f"(脚本侧见其 FORWARD_ORDER, adapter 侧见 io_input_nodes)")
         out_nodes = [_output_node(golden)]
         graph = Graph.from_air(air_path, in_nodes, out_nodes)
         graph.io_spec.to_json(io_spec_path)
@@ -151,6 +164,53 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
             "bundle": bundle_path, "manifest": mp,
             "outputs": outputs_dir if "run" not in skip else None,
             "reference": ref_report, "report": report}
+
+
+def _inputs_args(cfg, vocab, out_dir):
+    """输入脚本的 argv: 框架注入规范值, yaml 的 inputs.args 只放额外覆盖 (已写过的不覆盖)。
+
+    注入 --out/--vocab/--batch-size/--seq-len/--seed; --prefix-len 的**存在与否**由
+    adapt.params.prefix 管辖 (与 core.bench._form_args 同一套哲学: 形态事实源只有一处,
+    yaml 里那行常驻, 翻开关即无缝切形态)。--vocab 必须是**已加载模型**的 embedding 行数,
+    不是 config.vocab_size —— lm_head 剪裁会改写后者 (见 gen_inputs.py docstring)。
+    """
+    args = list(cfg.inputs.args)
+
+    def add(flag, value):
+        if value is not None and flag not in args:
+            args.extend([flag, str(value)])      # extend 而非 +=: 闭包里 += 会让 args 变局部名
+
+    add("--out", out_dir)
+    add("--vocab", vocab)
+    add("--batch-size", cfg.inputs.batch_size)
+    add("--seq-len", cfg.inputs.seq_len)
+    add("--seed", cfg.inputs.seed)
+    if cfg.adapt.params.get("prefix"):
+        add("--prefix-len", cfg.inputs.prefix_len or None)
+    else:
+        args = strip_flag(args, "--prefix-len")
+        assert not any(a == "--prefix-len" or a.startswith("--prefix-len=") for a in args), \
+            f"strip_flag 未彻底移除 --prefix-len: {args}"
+    return args
+
+
+def _generate_inputs(cfg, model, out_dir, device):
+    """跑输入脚本落盘 → 读回张量。返回 (inputs tuple, logical 序)。
+
+    激励是三层 (L0 reference / L1 golden / L2 trace+bundle) 的**共同输入**, 故必须在 adapt
+    之前用 L0 模型生成 (读的是未手术的 embedding 形状)。落盘而非进程内造 → L0/L1 的 golden
+    可脱离 export 重跑, 生成阶段不占卡。
+    """
+    from tools.varlen import INPUTS_JSON, load_inputs
+
+    vocab = model.get_input_embeddings().weight.shape[0]
+    run_scripts([{"script": cfg.inputs.script,
+                  "args": _inputs_args(cfg, vocab, out_dir)}], "inputs")
+    inputs, logical, prov = load_inputs(out_dir, device="npu" if device is not None else None)
+    print(f"[inputs] {len(inputs)} 个张量 ← {os.path.join(out_dir, INPUTS_JSON)} | "
+          + " ".join(f"{n}{tuple(t.shape)}" for n, t in zip(logical, inputs))
+          + f" | vocab={vocab} T={prov.get('total_tokens')} 段数={prov.get('segments')}")
+    return inputs, logical
 
 
 def _output_node(golden):

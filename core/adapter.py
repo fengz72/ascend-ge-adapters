@@ -11,10 +11,15 @@
     ② L0↔L1 边界翻译器  unpack_requests / reference_columns
                         可选 — L0 的接口 ≠ L1 (L0 吃逐请求 HF 形态, L1 吃打包 varlen;
                         L1 还可能收窄了输出), 只有要门① 时才需实现
-    ③ 激励与图接口      build_inputs / mark_dynamic / io_input_nodes
-                        三者与 patch_specs 的 forward 签名**同源**: 改 forward 签名要同步这三处
+    ③ 图接口契约          mark_dynamic / io_input_nodes
+                        两者与 patch_specs 的 forward 签名**同源**: 改 forward 签名要同步这两处
                         (io_input_nodes 的 logical 名还须与 forward 入参名逐字一致 —
                          graph.from_air 靠图 Data 节点的 _source_name 配对)
+
+**激励不在本类**: 输入由 model.yaml 的 `inputs.script` 声明的用户脚本生成并落盘
+(<base>/io/{inputs.json, inputs/*.bin}), pipeline 读回后喂给三层 —— 落盘而非进程内造,
+激励才是三层真正共用的**独立产物** (L0/L1 的 golden 可脱离 export 重跑, 生成阶段不占卡)。
+脚本落盘的 logical 序须与 io_input_nodes 声明的一致, pipeline 会对账 (不一致硬失败)。
 
 注意: 替换实现必须是模型文件里的模块级普通函数, 第一个参数是被替换的 transformers 实例
 (RMSNorm/attention 层), 不能写成 GeModelAdapter 的实例方法, 否则 self 错绑。
@@ -34,7 +39,7 @@ class GeModelAdapter:
     用法 (= pipeline 的实际路径):
         adapter = Qwen25Adapter(prefix=True)
         raw     = load_source(cfg, model_dir, dtype, device)         # L0
-        inputs  = adapter.build_inputs(raw, **input_kwargs)          # 激励 (三层共用)
+        inputs  = <inputs.script 落盘 → tools.varlen.load_inputs>    # 激励 (三层共用)
         ref     = verify.reference(raw, adapter, inputs)             # L0 golden, 必须在 adapt 前
         model   = adapter.adapt(raw, max_seq_len=...)                # L1
     """
@@ -101,15 +106,15 @@ class GeModelAdapter:
         列下标 list[int]; None (默认) = 全词表逐列比对。"""
         return None
 
-    # ---- ③ 激励与图接口契约 (与 patch_specs 的 forward 签名同源) ----
-
-    def build_inputs(self, model, **input_kwargs):
-        """生成一组输入张量 (顺序 = patched forward 入参序), 子类实现。
-
-        产物是**激励**: L0 (reference)、L1 (golden)、L2 (trace/bundle) 三层共用同一份,
-        故必须在 adapt 之前用 L0 模型生成 (读的是未手术的权重形状)。
-        """
-        raise NotImplementedError
+    # ---- ③ 图接口契约 (与 patch_specs 的 forward 签名同源) ----
+    #
+    # **激励不在此**: 输入由 model.yaml 的 inputs.script 声明的用户脚本生成并落盘
+    # (tools/varlen.write_inputs → <base>/io/{inputs.json, inputs/*.bin}), pipeline 读回后
+    # 喂给三层。本类只剩"图接口怎么声明"。但两者仍与 patched forward 签名同源:
+    #   mark_dynamic    哪一维动态由形态决定
+    #   io_input_nodes  logical 名须 == forward 入参名 (graph.from_air 靠图 Data 节点的
+    #                   _source_name 配对), 且**顺序**须 == 脚本落盘的 logical 序
+    #                   (pipeline 对账, 不一致硬失败 — 否则 .bin 会贴错 logical 标签)
 
     def mark_dynamic(self, inputs, **input_kwargs):
         """标记动态维度 (默认原样返回), 子类按需实现。"""
@@ -117,7 +122,7 @@ class GeModelAdapter:
 
     def io_input_nodes(self, inputs, **input_kwargs):
         """返回 io_spec 输入节点 list[IoNode] (logical/dtype/shape(-1 动态)/dynamic_dims),
-        顺序须与 build_inputs/forward 入参一致。子类实现。
+        顺序须与输入脚本落盘的 logical 序 (= patched forward 入参序) 一致。子类实现。
 
         logical 名须与 forward 入参名一致 — 导出图的 Data 节点带 `_source_name`
         (= forward 入参名), graph.from_air 据此自动完成 node↔logical 配对与图序排列。

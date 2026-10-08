@@ -56,6 +56,20 @@ class AdaptCfg:
 
 @dataclass
 class InputsCfg:
+    """激励生成 (L0 reference / L1 golden / L2 trace+bundle 三层共用同一份)。
+
+    生成走**用户脚本** (与 passes/custom_ops/bench.pool 同一套 {script, args} 接口), 产物落
+    <base>/io/{inputs.json, inputs/*.bin}。落盘而非在进程里造 (原来是 adapter.build_inputs),
+    于是激励成为三层的**独立共同输入**: L0/L1 的 golden 可脱离 L2 (export) 重跑, 生成阶段
+    不占卡 (脚本产 CPU .bin, 上卡是框架的事), 输入可检视、参数可归档。
+
+    batch_size/seq_len/prefix_len/seed 是**规范值**, 由框架注入给脚本 (pipeline._inputs_args),
+    yaml 的 args 只放额外覆盖; --vocab 同样由框架注入 (从已加载模型的 embedding 行数读,
+    **不是** config.vocab_size —— lm_head 剪裁会改写它)。--prefix-len 的去留由
+    adapt.params.prefix 管辖, 故翻形态一个开关即无缝切换 (同 bench._form_args 的哲学)。
+    """
+    script: str = ""                # 必填: 输入生成脚本 (绝对路径或相对仓库根)
+    args: list = field(default_factory=list)   # 额外覆盖 (规范值由框架注入, 已写过的不覆盖)
     batch_size: int = 10
     seq_len: int = 208
     prefix_len: int = 0
@@ -267,7 +281,7 @@ def load_config(path) -> ModelConfig:
         model=_sub(ModelMeta, raw.get("model")),
         source=_sub(SourceCfg, raw.get("source")),
         adapt=_sub(AdaptCfg, raw.get("adapt")),
-        inputs=_sub(InputsCfg, raw.get("inputs")),
+        inputs=_inputs(raw.get("inputs")),
         graph=GraphCfg(dynamic=dynamic),
         backend=_sub(BackendCfg, raw.get("backend")),
         verify=_sub(VerifyCfg, raw.get("verify")),
@@ -275,6 +289,18 @@ def load_config(path) -> ModelConfig:
         platforms=_platforms(raw.get("platforms")),
         model_dir=model_dir,
     )
+
+
+def _inputs(raw) -> InputsCfg:
+    """inputs 段 → InputsCfg。script 必填 (激励是用户脚本, 框架不生成模型专属负载)。"""
+    cfg = _sub(InputsCfg, raw)
+    if not cfg.script:
+        raise ValueError(
+            "model.yaml 的 inputs.script 必填 — 输入由**用户脚本**生成并落盘 "
+            "(<base>/io/{inputs.json, inputs/*.bin}), 框架不生成模型专属负载 "
+            "(语义自洽只有模型侧能保证); 可照抄 models/<m>/scripts/gen_inputs.py")
+    cfg.args = [str(a) for a in (cfg.args or [])]
+    return cfg
 
 
 def resolve_platform(cfg: ModelConfig, device=None, platform=None) -> ModelConfig:

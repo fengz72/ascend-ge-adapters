@@ -1,10 +1,19 @@
 """
-变长 (varlen) 输入处理 — token 拼接与位置编码
+变长 (varlen) 输入处理 — token 拼接、位置编码、落盘/读回、结构不变量
 
 通用工具, 不依赖具体模型结构。
+
+落盘 schema (write_inputs / load_inputs) 由**输入生成脚本**与**框架**共用:
+脚本产 <out>/{inputs.json, inputs/*.bin}, pipeline 读回成张量喂给三层 (L0 reference /
+L1 golden / L2 trace+bundle)。inputs.json 的 inputs 段与 bundle.json 的 inputs 段同形
+({logical, shape, file}), 只多一个 dtype —— bundle 不记 dtype 是因为 C++ 从 io_spec 取,
+而输入脚本在 io_spec 之前跑, Python 侧读回 .bin 必须自己知道 dtype。
 """
 
 import torch
+
+INPUTS_JSON = "inputs.json"
+INPUTS_SUBDIR = "inputs"
 
 
 def generate_varlen_inputs(batch_size, seq_len, vocab_size=0, seed=None):
@@ -170,3 +179,120 @@ def generate_prefix_varlen_from_lens(own_lens, prefix_len, vocab_size=0, seed=No
     return (torch.from_numpy(np.concatenate(ids)),
             torch.from_numpy(np.concatenate(pos)),
             act)
+
+
+# ==================== 落盘 / 读回 (脚本与框架共用的 schema) ====================
+
+def write_inputs(out_dir, tensors: dict, logical_order, provenance=None) -> str:
+    """{logical: ndarray} 按 logical_order 落盘 → <out>/inputs/<logical>.bin + inputs.json。
+
+    logical_order = **forward 入参序** (与 bundle/io_spec 同一口径; C++ 按 logical 名配对,
+    但顺序仍要一致 —— pipeline 会拿它与 adapter.io_input_nodes 的 logical 序对账)。
+    返回 inputs.json 路径。
+    """
+    import json
+    import os
+
+    extra = set(tensors) - set(logical_order)
+    if extra:
+        raise ValueError(f"tensors 有 logical_order 未声明的键: {sorted(extra)}")
+    missing = [n for n in logical_order if n not in tensors]
+    if missing:
+        raise ValueError(f"logical_order 声明了但 tensors 里没有: {missing}")
+
+    os.makedirs(os.path.join(out_dir, INPUTS_SUBDIR), exist_ok=True)
+    entries = []
+    for logical in logical_order:
+        arr = tensors[logical]
+        rel = f"{INPUTS_SUBDIR}/{logical}.bin"
+        arr.tofile(os.path.join(out_dir, rel))
+        entries.append({"logical": logical, "shape": [int(x) for x in arr.shape],
+                        "dtype": str(arr.dtype), "file": rel})
+    path = os.path.join(out_dir, INPUTS_JSON)
+    with open(path, "w") as f:
+        json.dump({"inputs": entries, "provenance": provenance or {}},
+                  f, indent=2, ensure_ascii=False)
+    return path
+
+
+def load_inputs(out_dir, device=None):
+    """读回 write_inputs 的产物 → (tuple[Tensor], list[logical], provenance)。
+
+    校验文件字节数 == prod(shape) × dtype 字节数: 产物被截断/与声明不一致时当场失败,
+    而不是喂进图后表现为 tiling 崩或精度全错 (与 graph.from_air 拒绝按位置硬配同一哲学)。
+    device 非空则搬上去 —— 脚本产 CPU .bin (生成阶段不占卡), 上卡是框架的事。
+    """
+    import json
+    import os
+
+    import numpy as np
+
+    path = os.path.join(out_dir, INPUTS_JSON)
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"输入未生成: {path} 不存在 — 先跑 inputs 脚本 (即去掉 --skip export)")
+    with open(path) as f:
+        meta = json.load(f)
+    entries = meta.get("inputs") or []
+    if not entries:
+        raise ValueError(f"{path} 的 inputs 为空")
+
+    out, logical = [], []
+    for e in entries:
+        logical.append(e["logical"])
+        fp = os.path.join(out_dir, e["file"])
+        dt = np.dtype(e["dtype"])
+        shape = tuple(int(x) for x in e["shape"])
+        expect = int(np.prod(shape)) * dt.itemsize if shape else dt.itemsize
+        actual = os.path.getsize(fp)
+        if actual != expect:
+            raise ValueError(
+                f"{fp} 字节数 {actual} ≠ shape{shape} × {dt} = {expect} — 产物被截断, 或与 "
+                f"{path} 的声明不一致 (重跑 inputs 脚本)")
+        t = torch.from_numpy(np.fromfile(fp, dtype=dt).reshape(shape))
+        out.append(t.to(device) if device is not None else t)
+    return tuple(out), logical, meta.get("provenance") or {}
+
+
+# ==================== 结构不变量 (生成侧自检 + 加载侧复验) ====================
+
+def check_varlen(ids, pos, asl, prefix_len=0):
+    """varlen 打包的结构不变量; 返回段数 (= batch, prefix 形态为 batch+1)。
+
+    框架**不生成**模型专属负载 (语义自洽只有模型侧能保证), 但**验**语义自洽不需要模型
+    知识, 就是下面几条等式。生成脚本落盘前调一次, 就把"脚本写错 → 图静默算错"变成当场失败。
+
+        prefix_len>0: asl = cumsum([P, L0, L1, ...]) → asl[0] == P, 段 0 是共享 prefix
+        prefix_len=0: asl = cumsum([L0, L1, ...])
+        两形态共同:   asl[-1] == T (ids 元素数), asl 严格递增且首项 >0
+                      position 每段递增: 基线各段 0..L_i-1; prefix 的段 0 是 0..P-1,
+                      段 i>0 是 P..P+L_i-1 (packed 布局下 prefix 物理上只存一份)
+    """
+    ids = torch.as_tensor(ids).reshape(-1)
+    pos = torch.as_tensor(pos).reshape(-1)
+    asl_t = torch.as_tensor(asl).reshape(-1)
+    asl = [int(x) for x in asl_t.tolist()]
+    total = ids.numel()
+
+    if pos.numel() != total:
+        raise ValueError(f"position_ids 元素数 {pos.numel()} ≠ input_ids {total}")
+    if not asl:
+        raise ValueError("actual_seq_lengths 为空")
+    if asl[0] <= 0 or any(b <= a for a, b in zip(asl, asl[1:])):
+        raise ValueError(f"actual_seq_lengths 须严格递增且首项 >0: {asl}")
+    if asl[-1] != total:
+        raise ValueError(f"asl[-1]={asl[-1]} ≠ T={total} — 段长累积须等于 token 总数")
+    if prefix_len and asl[0] != prefix_len:
+        raise ValueError(f"prefix 形态 asl[0] 须 == prefix_len={prefix_len}, got {asl[0]}")
+
+    bounds = [0] + asl
+    for i in range(len(asl)):
+        lo, hi = bounds[i], bounds[i + 1]
+        start = prefix_len if (prefix_len and i > 0) else 0
+        want = torch.arange(start, start + (hi - lo), dtype=pos.dtype)
+        if not torch.equal(pos[lo:hi], want):
+            got = pos[lo:hi][:4].tolist()
+            raise ValueError(
+                f"第 {i} 段 position_ids 须是 arange({start}, {start + hi - lo}) "
+                f"(每段独立从起点递增), got {got}{'...' if hi - lo > 4 else ''}")
+    return len(asl)

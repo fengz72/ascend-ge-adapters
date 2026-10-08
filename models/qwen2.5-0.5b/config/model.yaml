@@ -43,7 +43,14 @@ adapt:                           # torch 源适用
                                  # 注: A5 上 prefix 需要该平台的新算子; 未装时 adapter 构造即硬失败
     prune_token_file: models/qwen2.5-0.5b/config/target_tokens.json   # 声明即启用 lm_head 词表剪裁
 
-inputs:                          # 输入生成 (export trace 与 verify golden 共用)
+inputs:                          # 激励生成 (L0 reference / L1 golden / L2 trace+bundle 三层共用)
+  # 输入由**用户脚本**生成并落盘 (<base>/io/{inputs.json, inputs/*.bin}) — 框架不生成模型
+  # 专属负载 (语义自洽只有模型侧能保证: asl 必须 cumsum、position 每段从起点递增、asl[-1]==T)。
+  # 落盘而非进程内造 → 激励成为三层的独立共同输入, L0/L1 golden 可脱离 export 重跑, 生成不占卡。
+  script: models/qwen2.5-0.5b/scripts/gen_inputs.py
+  args: []                       # 只放额外覆盖; --out/--vocab/--batch-size/--seq-len/--seed
+                                 # 由框架注入, --prefix-len 的去留由 adapt.params.prefix 管辖
+                                 # (core.pipeline._inputs_args), 故翻 prefix 一个开关即切形态
   batch_size: 10
   seq_len: 208
   prefix_len: 20                 # prefix: true 时改为共享 prefix 长度 P (如 20)

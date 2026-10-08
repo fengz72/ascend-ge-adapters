@@ -54,7 +54,7 @@ class Graph:
     @staticmethod
     def from_air(air_path, inputs: list, outputs: list) -> "Graph":
         """inputs/outputs: exporter 提供的 IoNode (logical/shape/dtype/dynamic 已填,
-        **按 forward/build_inputs 入参序**)。从 dynamo.pbtxt 解析 Data 节点真名填入 node。
+        **按 forward 入参序 (= 输入脚本落盘的 logical 序)**)。从 dynamo.pbtxt 解析 Data 节点真名填入 node。
 
         node↔logical 配对靠 Data 节点的 `_source_name` 属性 (= forward 入参名, 由
         core._torchair_source_name 补丁写入), **不靠位置**:

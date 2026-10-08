@@ -65,6 +65,29 @@ def resolve_script(entry):
     return resolve_path(entry, is_file=True)
 
 
+def strip_flag(args, flag):
+    """从 argv 列表移除一个 flag 及其值 (兼容 `--flag X` 与 `--flag=X` 两种写法), 返回新列表。
+
+    纯函数。用于按**形态事实源** (adapt.params.prefix) 增删 yaml 里手写的形态相关 flag —
+    范围/长度值属**负载口径**(留在 args), 但 flag 的**存在与否**由形态开关管辖, 这样翻
+    一个开关即无缝切形态, 不必同时手改 yaml (core.bench._form_args 与 core.pipeline
+    ._inputs_args 共用本函数)。
+    `--flag=` 前缀匹配不会误伤 `--flag-other` (后者不以 `--flag=` 开头, 也不 == `--flag`)。
+    """
+    out, skip = [], False
+    for a in args:
+        if skip:                        # 上一个是被删的 `--flag`, 这个是它的值 → 一并删
+            skip = False
+            continue
+        if a == flag:                   # `--flag X`: 删 flag, 下一个 (值) 也删
+            skip = True
+            continue
+        if a.startswith(flag + "="):    # `--flag=X`: 整个删
+            continue
+        out.append(a)
+    return out
+
+
 def run_scripts(entries, stage):
     """按序执行脚本, 返回实际执行过的脚本路径列表。
 

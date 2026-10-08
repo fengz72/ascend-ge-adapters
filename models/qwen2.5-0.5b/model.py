@@ -36,7 +36,10 @@ adapt 两阶段: apply_patches (类级行为替换) → setup (实例级适配: 
     # adapter = Qwen25Adapter(prefix=True)       # PIA prefix
     # adapter = Qwen25Adapter(prune_tokens=ids)  # + lm_head 剪裁
 
-    inputs = adapter.build_inputs(raw, batch_size=10, seq_len=208)  # 激励, 必须在 adapt 之前
+    # 激励: 由 scripts/gen_inputs.py 落盘 (model.yaml 的 inputs.script), 框架读回;
+    #       必须在 adapt 之前生成 (读的是未手术的 embedding 形状)
+    from tools.varlen import load_inputs
+    inputs, logical, _ = load_inputs('models/qwen2.5-0.5b/io', device='npu')
     model = adapter.adapt(raw, max_seq_len=2048)                    # L0 → L1, 破坏性不可逆
 
     适配后接口 (即导出图的边界):
@@ -51,7 +54,6 @@ from transformers.models.qwen2 import modeling_qwen2
 
 from core.adapter import GeModelAdapter
 from core.graph import IoNode
-from tools.varlen import generate_varlen_inputs, generate_prefix_varlen_inputs
 
 try:
     import npu_prefix_infer_attention_score  # noqa: F401  PIA 算子注册 (schema + eager + torchair converter)
@@ -297,42 +299,10 @@ class Qwen25Adapter(GeModelAdapter):
             (m.Qwen2Attention,       "forward",              _attention_forward),
         ]
 
-    # ---- 输入接口 (export trace 与 verify golden 共用) ----
-
-    def build_inputs(self, model, batch_size=10, seq_len=208, prefix_len=0, seed=0, **kwargs):
-        """生成 varlen 输入 (input_ids, position_ids, actual_seq_lengths), NPU 张量。
-
-        prefix 模式由 self.prefix 决定 (创建时定); prefix_len 是 **prefix 形态专属**参数,
-        非 prefix 形态**忽略**它 (而非报错) —— 这样 prefix_len 可在 yaml 常驻, 翻
-        adapt.params.prefix 一个开关即无缝切形态 (bench 侧的 --prefix 去留同理由
-        core.bench._form_args 按 flag 管辖)。仅 prefix=true 却 prefix_len<=0 才报错 (真错误)。
-
-        token 是 **seeded 随机** (可复现): 全 0 token 会让每条请求的输入逐字节相同,
-        精度比对退化成"同一行比 N 次"。词表宽取自 embedding 权重形状, **不是**
-        config.vocab_size — lm_head 剪裁会把后者改成剪裁宽度 (如 8), 用它生成 token
-        就只覆盖 embedding 的前 8 行。
-        """
-        vocab = model.get_input_embeddings().weight.shape[0]
-        if self.prefix:
-            if prefix_len <= 0:
-                raise ValueError("prefix 模式需要 prefix_len > 0")
-            concat_ids, concat_pos, act, own_lens = generate_prefix_varlen_inputs(
-                batch_size, seq_len, prefix_len, vocab_size=vocab, seed=seed)
-            print(f"  batch_size={batch_size}, prefix_len={prefix_len}, "
-                  f"own_len={own_lens[0]}, total_tokens={prefix_len + sum(own_lens)} "
-                  f"(FIA 基线: {batch_size * seq_len})")
-            asl = act
-        else:
-            concat_ids, concat_pos, seq_lens, cum_seq_lens = generate_varlen_inputs(
-                batch_size, seq_len, vocab_size=vocab, seed=seed)
-            ignored = f" (忽略 prefix_len={prefix_len}: 非 prefix 形态)" if prefix_len else ""
-            print(f"  batch_size={batch_size}, total_tokens={sum(seq_lens)}, "
-                  f"cum_seq_lens[-1]={cum_seq_lens[-1]}{ignored}")
-            asl = cum_seq_lens
-
-        return (concat_ids.squeeze(0).npu(),
-                concat_pos.squeeze(0).npu(),
-                torch.tensor(asl, dtype=torch.int64, device='npu'))
+    # ---- 图接口契约 (激励已移出: 输入由 scripts/gen_inputs.py 落盘, 见 model.yaml 的 inputs.script) ----
+    #
+    # 两处声明仍与 patched forward 签名同源, 且 io_input_nodes 的 logical **顺序**须与
+    # gen_inputs.py 的 FORWARD_ORDER 一致 (pipeline 对账, 不一致硬失败)。
 
     def mark_dynamic(self, inputs, **kwargs):
         input_ids, position_ids, asl = inputs

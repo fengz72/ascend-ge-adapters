@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 
 from core.backend import RUNTIME_BIN
 from core.config import _setup_entries, export_name, load_config, resolve_platform
-from core.setup_scripts import resolve_path, run_scripts
+from core.setup_scripts import resolve_path, run_scripts, strip_flag
 from core.verify import collect_provenance
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,27 +74,6 @@ def _resolve(path, base_dir=None):
     return os.path.normpath(os.path.join(_REPO_ROOT, path))
 
 
-def _strip_flag(args, flag):
-    """从 argv 列表移除一个 flag 及其值 (兼容 `--flag X` 与 `--flag=X` 两种写法), 返回新列表。
-
-    纯函数。用于 _form_args 在非 prefix 形态下移除 yaml 里手写的 --prefix —— 范围值属
-    **负载口径**(留在 args), 但 flag 的**存在与否**由 prefix 标志管辖 (见 _form_args)。
-    `--flag=` 前缀匹配不会误伤 `--flag-other` (后者不以 `--flag=` 开头, 也不 == `--flag`)。
-    """
-    out, skip = [], False
-    for a in args:
-        if skip:                        # 上一个是被删的 `--flag`, 这个是它的值 → 一并删
-            skip = False
-            continue
-        if a == flag:                   # `--flag X`: 删 flag, 下一个 (值) 也删
-            skip = True
-            continue
-        if a.startswith(flag + "="):    # `--flag=X`: 整个删
-            continue
-        out.append(a)
-    return out
-
-
 def _form_args(cfg, args):
     """把**形态事实**拼进请求池生成脚本的 args (负载口径留在 yaml / 脚本默认值里)。
 
@@ -131,9 +110,9 @@ def _form_args(cfg, args):
     if cfg.adapt.params.get("prefix"):
         add("--prefix", cfg.inputs.prefix_len or None)
     else:
-        out = _strip_flag(out, "--prefix")
+        out = strip_flag(out, "--prefix")
         assert not any(a == "--prefix" or a.startswith("--prefix=") for a in out), \
-            f"_strip_flag 未彻底移除 --prefix: {out}"
+            f"strip_flag 未彻底移除 --prefix: {out}"
     return out
 
 
