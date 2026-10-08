@@ -9,7 +9,11 @@
 #   切形态 (prefix/prune): 改 config/model.yaml 的 adapt.params — 产物名自动带后缀, 不互相覆盖
 #   ./run.sh --device 6 --skip export           # 复用已有 AIR
 #   ./run.sh --device 6 --skip export,passes,compile --bench 10   # 复用 AIR/OM, 只跑 runtime + compare
+#   ./run.sh --device 6 --platform a5           # 覆盖平台 profile (缺省按 device 的 soc 自动探测)
 #   ./run.sh --help                             # 完整选项
+#
+# 平台: config/model.yaml 的 platforms: 段声明各平台事实 (soc/aicore_num/custom_ops/passes);
+#       框架用 get_device_properties(--device).name 匹配 soc 自动选定, 产物名带平台后缀不互相覆盖
 #
 # 两道精度门 (FAIL 即非 0 退出, docs/architecture.md §10):
 #   reference — 原版未 patch 的 HF 逐请求前向 vs 适配后 eager  → 验**适配** (--skip reference 跳过)

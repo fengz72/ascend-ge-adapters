@@ -34,7 +34,7 @@ import subprocess
 from dataclasses import dataclass, field
 
 from core.backend import RUNTIME_BIN
-from core.config import _setup_entries, load_config
+from core.config import _setup_entries, export_name, load_config, resolve_platform
 from core.setup_scripts import resolve_path, run_scripts
 from core.verify import collect_provenance
 
@@ -148,7 +148,11 @@ def load_bench(config_path, device=None, instances=None, requests=None, warmup=N
     """
     import yaml
 
-    cfg = load_config(config_path)
+    # device 必填且要先于 resolve_platform: 平台按 device 的 soc 探测, 而 soc/aicore_num
+    # 是下面 Scenario 要读的 (限核口径必须与 pipeline 编译时一致, 否则报告不可比)
+    if device is None:
+        raise ValueError("未指定 device (CLI --device): 用哪张卡是运行期事实, 不进 model.yaml")
+    cfg = resolve_platform(load_config(config_path), device=device)
     b = cfg.bench
     md = cfg.model_dir
     with open(config_path) as f:
@@ -168,7 +172,9 @@ def load_bench(config_path, device=None, instances=None, requests=None, warmup=N
         backend_options["aicore_num"] = str(cfg.backend.aicore_num)
 
     sc = Scenario(
-        name=f"{cfg.model.name}-bench",   # 归档名/run_id 后缀; 一个模型一个场景, 不必再声明
+        # 归档名/run_id 后缀 = export_name (模型+平台+形态) + "-bench" —— 平台长期并存、
+        # 形态影响性能, 两者都要能从报告名自证, 否则两平台/两形态的归档会撞名
+        name=f"{export_name(cfg)}-bench",
         manifest=os.path.join(md, "io", "manifest.json"),
         model_dir=md,
         instances=b.instances,
@@ -193,8 +199,6 @@ def load_bench(config_path, device=None, instances=None, requests=None, warmup=N
     if manifest:
         sc.manifest = _resolve(manifest, md)
 
-    if sc.device is None:
-        raise ValueError("未指定 device (CLI --device): 用哪张卡是运行期事实, 不进 model.yaml")
     if not os.path.exists(sc.manifest):
         raise ValueError(f"manifest 不存在: {sc.manifest} — 先跑管线产出 "
                          f"(./run.sh --device {sc.device})")

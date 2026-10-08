@@ -112,15 +112,32 @@ models/qwen2.5-0.5b/
 ```yaml
 model:
   name: qwen2.5-0.5b
-  soc: Ascend910_9382
+  # soc 已移进 platforms.<name>.soc — 平台相关事实按平台声明, 顶层写会被硬失败拒掉
 
 source:                          # 只有 torch 一种 (来路①②同一条加载路径, 见 §2)
   ref: Qwen/Qwen2.5-0.5B         # hub id 或本地权重目录
   # 来路② (客户 PyTorch 源码, module+class) 未实现 — 出现真实实例时再加 (见 §10/§15)
 
+platforms:                       # 平台表 (长期并存: 每个平台都进回归), 见下方说明
+  ascend910_9382:                # 键 = 短名, 进产物名与 provenance
+    soc: Ascend910_9382          # ① ATC --soc ② 平台探测的匹配键 (须与 get_device_properties().name 逐字一致)
+    aicore_num: "12|24"          # om_acl → ATC --aicore_num; ge_session → GEInitialize 运行期限核
+    custom_ops:                  # 自定义算子 (加载 adapter 前执行), 见 §7
+      - path: third_party/ascend-ops/prefix-attention              # 三方源: 溯源 + $GE_SRC_DIR
+        script: models/qwen2.5-0.5b/scripts/install_prefix_attn.sh # 安装脚本
+    passes:                      # fusion pass (ATC 编译前执行), 见 §7
+      - path: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
+        script: models/qwen2.5-0.5b/scripts/install_nz_pass.sh
+    # max_seq_len: 2048          # 可选: 覆盖 graph.dynamic.max_seq_len (UB/L2 尺寸随平台变)
+  a5:
+    soc: Ascend950PR_9589
+    aicore_num: null             # null = 不限核
+    custom_ops: []               # A5 的 prefix 算子未就绪 → 阶段 1 只跑 baseline (FIA 两平台同一个)
+    passes: []                   # WeightNzAndMatMulV3Pass 是 MatMulV3 专属, A5 暂无对应 pass
+
 adapt:                           # torch 源适用
   adapter_class: Qwen25Adapter   # 约定: 同目录 model.py 里的类
-  params:                        # 仅适配行为开关
+  params:                        # 仅适配行为开关 (= **形态**轴)
     prefix: false
     prune_token_file: null       # 填路径 → lm_head 词表剪裁 (如 models/<m>/config/target_tokens.json)
 
@@ -135,20 +152,12 @@ graph:
     max_seq_len: 2048            # 图常量长度 (RoPE 表 / 因果 mask), 经 adapt(setup_kwargs) 透传
     # 注: 不参与 ATC 分档 — 动态图不传 --input_shape, 见 §6②
 
-custom_ops:                      # 自定义算子 (加载 adapter 前执行), 见 §7
-  - path: third_party/ascend-ops/prefix-attention              # 三方源: 溯源 + $GE_SRC_DIR
-    script: models/qwen2.5-0.5b/scripts/install_prefix_attn.sh # 安装脚本
-
-passes:                          # fusion pass (ATC 编译前执行), 见 §7
-  - path: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
-    script: models/qwen2.5-0.5b/scripts/install_nz_pass.sh
-
 backend:
-  type: om_acl                   # om_acl | ge_session
-  aicore_num: null
+  type: om_acl                   # om_acl | ge_session (平台无关; aicore_num 在 platforms 里)
 
 # 注: 不含 device — 用哪张卡是**运行期事实** (每次运行/每台机器都可能不同),
 #     由 CLI `--device` **必填**传入; 不设默认值 (默认 0 号卡通常正是被占满的那张)
+#     平台同理是运行期事实, 但由 device 的 soc **自动探测**, 不需要 CLI 参数
 
 verify:
   enabled: true
@@ -169,17 +178,26 @@ bench:                           # 性能测试口径 (core.bench / tools.sweep)
     args: [--count, "200", --prefix, "20-25"]   # 只写要覆盖的; 分布口径是脚本的 argparse 默认值
 ```
 
+> **`platforms:` 是两个轴里唯一需要机制的那个。** 平台（910_9382 / A5）**长期并存且都进回归**，形态（prefix / baseline）是**串行演进**（最终收敛到 prefix）——性质不同，故不共用机制：平台走本表，形态走 `adapt.params` + git 历史。
+>
+> - **强 schema**：`PlatformProfile` 只认 `soc` / `aicore_num` / `custom_ops` / `passes` / `max_seq_len`，写未知键即硬失败。这里比其它段严格，是因为它装的是**编译目标**与**要装哪些算子/pass**——拼错键静默忽略的后果是"以为限了核其实全核跑"、"以为装了 pass 其实没装"，都查不出来。
+> - **平台由探测选定，不由 yaml 声明**：`config.resolve_platform(cfg, device)` 用 `torch.npu.get_device_properties(device).name` 去匹配各 profile 的 `soc`（实测两者是同一个字符串）。匹配不到 → 硬失败并列出可选项（静默用错 soc 会让 ATC 产出跑不起来的 OM）；一个 soc 对应多个 profile 也硬失败。`--platform <短名>` 是交叉编译的逃生口。
+> - **摊平而非新增一层**：`resolve_platform` 返回把选中 profile 摊平进 `cfg.model.soc` / `cfg.backend.aicore_num` / `cfg.passes` / `cfg.custom_ops` / `cfg.graph.dynamic.max_seq_len` 的**新** `ModelConfig`，故 `backend.compile_graph` / `write_manifest` / `bench` 全部不需要知道"平台"这一层。
+> - **已移走的顶层键会硬失败**：`model.soc` / `backend.aicore_num` / 顶层 `custom_ops:` / `passes:` 出现在 yaml 里直接报错并指向新位置——静默忽略等于"以为生效其实没有"。
+
 > `adapt.params` 只放**适配行为**（prefix/prune）；`inputs` 放**输入形状/分布**（batch/seq/seed）——换输入分布不动 adapt。
 
-> **`bench` 段只放"这次压测怎么压"，模型侧事实一律不重复**（否则两处会静默分叉）：`soc`←`model.soc`、manifest←`<model_dir>/io/manifest.json`、报告←`<model_dir>/results`、池←`<model_dir>/io/pool`、`aicore_num`←`backend.aicore_num`。**没有精度开关**——精度只由 `verify.enabled` 驱动的两道门度量（§10），bench 只出性能数字。请求池生成脚本的**形态参数**由 `bench._form_args` 从配置注入而不是写在 args 里：`--batch`←`inputs.batch_size`（prefix 形态下 act 是静态 `[batch+1]`，池里每套的条数被图烙死）、`--prune-tokens`←`adapt.params.prune_token_file`（决定 golden 宽）、`--prefix`←`inputs.prefix_len` 保底（**范围**属负载口径，args 里写 `"20-25"` 优先）。负载分布（μ/σ/长度截断/词表上界）是模型专属脚本的口径，写死在脚本默认值里，配置只在要覆盖时写 `pool.args`。
+> **`bench` 段只放"这次压测怎么压"，模型侧事实一律不重复**（否则两处会静默分叉）：`soc`←`model.soc`、manifest←`<model_dir>/io/manifest.json`、报告←`<model_dir>/results`、池←`<model_dir>/io/pool`、`aicore_num`←`backend.aicore_num`（前两者与 `aicore_num` 都由 `resolve_platform` 从选中的 `platforms` profile 摊平而来，故 bench 的限核口径与 pipeline 编译时**必然一致**——这也是 `load_bench` 先要求 `--device` 再解析平台的原因）。归档名 = `export_name(cfg) + "-bench"`（含平台与形态后缀），两平台两形态互不撞名。**没有精度开关**——精度只由 `verify.enabled` 驱动的两道门度量（§10），bench 只出性能数字。请求池生成脚本的**形态参数**由 `bench._form_args` 从配置注入而不是写在 args 里：`--batch`←`inputs.batch_size`（prefix 形态下 act 是静态 `[batch+1]`，池里每套的条数被图烙死）、`--prune-tokens`←`adapt.params.prune_token_file`（决定 golden 宽）、`--prefix`←`inputs.prefix_len` 保底（**范围**属负载口径，args 里写 `"20-25"` 优先）。负载分布（μ/σ/长度截断/词表上界）是模型专属脚本的口径，写死在脚本默认值里，配置只在要覆盖时写 `pool.args`。
 >
 > **刻意不做"多份 scenario 文件"**（原来是 `bench/varlen.yaml`，已合并）：一个模型当前只需要一个负载场景，独立文件只会把 `soc`/`manifest`/限核/形态参数抄成第二份。**重新引入的触发条件**：同一形态要长期并存多份负载报告（随机 varlen + 固定 shape + 长序列压测）——届时把 `bench` 段抽回独立 yaml、`core.bench` 加回 `--scenario` 即可（形状可从 git 历史的 `bench/varlen.yaml` 取）。
 
-> **一份 yaml 只描述"当前形态"，形态演进靠 git**：模型是不断向下演进的（qwen2.5-0.5b 的 prefix/PIA 就是在 FIA 基线上演化的），任一时刻只有一个当前形态值得被配置描述。切形态 = 改 `adapt.params` 那几行（`prefix` / `prune_token_file` + `inputs.prefix_len`），产物名由 `config.export_name` 自动带后缀（`-prefix` / `-prune`），**不会静默覆盖**另一种形态的 AIR/OM/bundle。历史形态要复现就 `git checkout <commit> -- models/<m>/config/model.yaml`。
+> **一份 yaml 只描述"当前形态"，形态演进靠 git**：模型是不断向下演进的（qwen2.5-0.5b 的 prefix/PIA 就是在 FIA 基线上演化的，且最终会收敛到 prefix），任一时刻只有一个当前形态值得被配置描述。切形态 = 改 `adapt.params` 那几行（`prefix` / `prune_token_file` + `inputs.prefix_len`），产物名由 `config.export_name` 自动带后缀（`-<平台>` / `-prefix` / `-prune`），**不会静默覆盖**另一种形态的 AIR/OM/bundle。历史形态要复现就 `git checkout <commit> -- models/<m>/config/model.yaml`。
 >
-> 刻意**不做**"变体覆盖表 / 多份 yaml 并存"：那是为"多形态长期并存的矩阵"设计的机制，用在串行演进上只是多一层要理解的抽象（读者得先问"这次生效的是哪份配置"）。**重新引入的触发条件**：同一模型有 ≥2 种形态需要长期并存且都进回归（例如客户同时部署共享 prefix 与普通 varlen 两套）——届时覆盖表的实现可从 commit `3db0189` 取回（约 20 分钟）。
+> 刻意**不做**"通用变体覆盖表 / 多份 yaml 并存"：那是为"多形态长期并存的矩阵"设计的机制，用在串行演进上只是多一层要理解的抽象（读者得先问"这次生效的是哪份配置"）。**触发条件已部分命中**：平台轴（910_9382 / A5）确实需要长期并存且都进回归，但它已用**专用的强 schema `platforms:` 段**落地（见上），而不是通用的点路径覆盖表——通用覆盖表能覆盖任意键（包括形态），那是过度能力，且会重新引入"这次生效的是哪份配置"的歧义。**形态轴**若哪天也需要长期并存（例如客户同时部署共享 prefix 与普通 varlen 两套），届时覆盖表的实现可从 commit `3db0189` 取回（约 20 分钟）。
 >
-> 形态必须**可归因**：`adapt.params` 全量写进 `bundle.provenance`，性能报告顺着 manifest→bundle 取回来（`bench.form_from_manifest`）并印在 `perf.md` / `index.json` 上——否则 A/B 两份报告分不清哪份是哪种形态。
+> 刻意**不做**"按平台分目录/分 yaml"（`model.910.yaml` / `model.a5.yaml`）：副本会随基线**漂移**——改了权重路径 / `max_seq_len` / `inputs`，副本不跟，跑另一个平台时静默用旧值。这正是 `3db0189` 之前删掉 `model.prefix.yaml` 的理由，在长期并存下更严重。
+>
+> 形态与平台都必须**可归因**：`platform` + `soc` + `adapt.params` 全量写进 `bundle.provenance`，性能报告顺着 manifest→bundle 取回来（`bench.form_from_manifest`）并印在 `perf.md` / `index.json` 上——否则 A/B 两份报告分不清哪份是哪个平台哪种形态。归档名同理带平台（`bench.load_bench` 用 `export_name(cfg) + "-bench"`）。
 
 ### 5.3 io_spec.json（生成，图接口，独立文件）
 
@@ -275,12 +293,19 @@ pipeline 编排完        → 汇总 backend/路径/io_spec 引用/device/vendor
 框架**不内置**任何 pass / 算子的构建安装逻辑——每个三方源的方式都不一样（fusion pass 是 cmake 出 `.so` 拷进 vendor；AscendC 自定义算子是 `build.sh` 产 `.run` 再 `--install-path`，还要 pip 装 torch 绑定 wheel）。内置一种就会对不上号，还得跟着上游改版。所以只提供一个稳定接口：**yaml 填脚本路径，框架按序执行**（`core/setup_scripts.py`）。
 
 ```yaml
-custom_ops:                        # 在**加载 adapter 之前**执行 (model.py 可能 import 算子绑定)
-  - path: third_party/ascend-ops/prefix-attention              # 三方源在哪 (溯源)
-    script: models/qwen2.5-0.5b/scripts/install_prefix_attn.sh # 怎么装 (用户脚本)
-passes:                            # 在 **ATC 编译之前**执行
-  - path: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
-    script: models/qwen2.5-0.5b/scripts/install_nz_pass.sh
+platforms:                         # 两者都**按平台声明** (§5.2): 装哪些算子/pass 是平台事实
+  ascend910_9382:
+    soc: Ascend910_9382
+    custom_ops:                    # 在**加载 adapter 之前**执行 (model.py 可能 import 算子绑定)
+      - path: third_party/ascend-ops/prefix-attention              # 三方源在哪 (溯源)
+        script: models/qwen2.5-0.5b/scripts/install_prefix_attn.sh # 怎么装 (用户脚本)
+    passes:                        # 在 **ATC 编译之前**执行
+      - path: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
+        script: models/qwen2.5-0.5b/scripts/install_nz_pass.sh
+  a5:
+    soc: Ascend950PR_9589
+    custom_ops: []                 # A5 的 prefix 算子未就绪 → 阶段 1 只跑 baseline
+    passes: []                     # WeightNzAndMatMulV3Pass 是 MatMulV3 专属, A5 暂无对应 pass
 ```
 
 **条目 = `path` + `script`**（`core.config.SetupEntry`；也允许只写脚本路径的纯字符串条目）：
@@ -371,8 +396,12 @@ adapter 声明三层结构（§10）里的三组契约：
 3. **形态开关写进 yaml 注释**，产物名由 `config.export_name` 带后缀（`-prefix`/`-prune`），A/B 互不覆盖。
 
 配套的两个 YAGNI 触发点（等第二个实例出现再做，别提前抽象）：
-- `models/qwen2.5-0.5b/scripts/install_prefix_attn.sh` 目前归 qwen 私有；**A5 是第二个消费者** → 那时上提到仓库级 `scripts/`，两个模型的 yaml 都指过去（同 `models/common → core/` 的套路）。
+- `models/qwen2.5-0.5b/scripts/install_prefix_attn.sh` 目前归 qwen 私有；**A5 成为第二个消费者时**上提到仓库级 `scripts/`，两处 yaml 都指过去（同 `models/common → core/` 的套路）。**尚未触发**：A5 的 prefix 算子与 910_9382 的 PIA 不是同一个（PIA 不支持 A5，需另写），故 A5 阶段 1 的 `custom_ops` 是空的；等 A5 算子就绪、确实要复用同一个安装脚本时再上提。
 - 若 A5 与 qwen 的 adapter 出现重复结构（相同的 lm_head 剪裁、相同的 varlen forward 骨架）→ 上提到 `core/`（§8.2 第 5 条）。
+
+**A5 适配现状（平台轴，非模型轴）**：A5 是**第二个平台**（soc `Ascend950PR_9589`），不是第二个模型——同一个 `models/qwen2.5-0.5b/` 要在两个 SoC 上都跑，故走 §5.2 的 `platforms:` 表。分两阶段：
+1. **阶段 1（baseline）**：A5 用与 910_9382 **同一个** FIA 算子（`npu_fused_infer_attention_score`），故 `model.py` **零改动**——两平台差异全在配置层（soc / aicore_num / passes 空 / custom_ops 空）。这一步的价值是把"平台本身通不通"（soc、ATC、runtime）与"算子对不对"两个变量分开。
+2. **阶段 2（prefix）**：PIA 不支持 A5，需另写算子；其接口与 PIA 不一致但**所需参数是 PIA 参数集的子集**，故**图接口不变**（图级输入仍是 `input_ids/position_ids/actual_seq_lengths`，`atten_mask` 是 `setup` 注册的 buffer 即图常量）——只需在 `_attention_forward` 的 prefix 分支按平台二选一。算子未装时 `(A5, prefix)` 组合必须**硬失败**（复用 `model.py` 里 `prefix=True` 但 PIA 缺失即 RuntimeError 的既有模式），不静默退回 baseline。
 
 ## 9. C++ 运行时（重建，通用）
 
@@ -507,16 +536,23 @@ results/README.md # 人工 curate 的**性能基线** (数字 + provenance + 复
 
 ```python
 # config.py
+@dataclass PlatformProfile: soc; aicore_num; custom_ops; passes; max_seq_len   # 强 schema, 未知键硬失败
 @dataclass ModelConfig: model; source; adapt; inputs; graph; passes; custom_ops;
-                        backend; verify; bench                    # 无 device (运行期 --device)
+                        backend; verify; bench; platforms; platform
+                        # 无 device (运行期 --device); passes/custom_ops/model.soc/
+                        # backend.aicore_num/platform 由 resolve_platform 摊平填入
 @dataclass SetupEntry: script; path       # passes/custom_ops/bench.pool 的条目 (脚本 + 三方源)
 @dataclass VerifyCfg: enabled; ref_cosine_min; ref_rel_l2_max; cmp_cosine_min; cmp_rel_l2_max
                         # 门限默认 None = 用 core/verify.py 的 REF_*/CMP_*; 显式值即覆盖 (§10)
 @dataclass BenchCfg: instances; requests; warmup; sample_seed; pool
                                                  # 只放压测口径, 模型侧事实从其它段取 (§5.2)
-def load_config(path) -> ModelConfig
+def load_config(path) -> ModelConfig            # 解析 platforms 表, 但**不选**平台 (需 device)
+def resolve_platform(cfg, device=None, platform=None) -> ModelConfig
+        # 探测 get_device_properties(device).name → 按 soc 匹配 profile (--platform 覆盖)
+        # → 返回把 profile 摊平进 model.soc/backend.aicore_num/passes/custom_ops/max_seq_len 的新 cfg
+        # 匹配不到 / 一个 soc 多个 profile / 既无 device 又无 platform → 硬失败
 def load_adapter(cfg) -> GeModelAdapter        # importlib 从 <model_dir>/model.py 取 adapter_class
-def export_name(cfg) -> str                    # 产物名 = 模型名 + 形态后缀 (-prefix/-prune)
+def export_name(cfg) -> str                    # 产物名 = 模型名 + 平台 + 形态后缀 (-<platform>/-prefix/-prune)
 def write_manifest(cfg, graph, om, io_spec, bundle, base_dir, device) -> path
                                                  # 写 io/manifest.json; device 必填
 

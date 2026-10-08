@@ -1,13 +1,18 @@
 """模型配置 (YAML 人工声明) 解析 + 运行时 manifest (JSON) 生成。
 
 契约见 docs/architecture.md §5:
-    model.yaml   人工声明 (source/adapt/inputs/graph/passes/custom_ops/backend/verify/bench; 不含 device)
+    model.yaml   人工声明 (source/adapt/inputs/graph/platforms/backend/verify/bench; 不含 device)
     manifest.json 生成的 C++ 运行时契约 (io/manifest.json)
+
+**平台**是运行期事实 (由机器上的卡决定), 但"这个模型支持哪些平台、各平台的事实是什么"
+是模型声明 → `platforms:` 表进 yaml, 由 resolve_platform 按 soc 探测选定 (CLI --platform
+可覆盖), 再把选中的 profile **摊平**回 cfg.model.soc / cfg.passes / cfg.custom_ops /
+cfg.backend.aicore_num — 下游 (backend/write_manifest/bench) 不需要知道"平台"这一层。
 """
 
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 import yaml
@@ -16,7 +21,25 @@ import yaml
 @dataclass
 class ModelMeta:
     name: str
-    soc: str = "Ascend910_9382"
+    soc: str = ""       # 由 resolve_platform 从选中的 profile 填入; yaml 不再顶层声明
+
+
+@dataclass
+class PlatformProfile:
+    """一个平台的**全部**平台相关事实。**强 schema**: yaml 写未知键 → 硬失败。
+
+    只收平台相关键。形态开关 (prefix/prune) 属 adapt.params —— 形态是**串行演进**
+    (最终收敛到 prefix), 平台是**长期并存且都进回归**, 两轴性质不同故不共用机制:
+    形态靠改 adapt.params + git 记历史, 平台靠本表 (docs §5.2)。
+
+    soc 有双重身份: ① ATC 的 --soc ② 平台探测的匹配键 (须与
+    torch.npu.get_device_properties(device).name 返回值逐字一致)。
+    """
+    soc: str
+    aicore_num: Optional[str] = None           # om_acl → ATC --aicore_num; ge_session → 运行期限核
+    custom_ops: list = field(default_factory=list)   # list[SetupEntry] 自定义算子 (加载 adapter 前)
+    passes: list = field(default_factory=list)       # list[SetupEntry] fusion pass (ATC 编译前)
+    max_seq_len: Optional[int] = None          # 覆盖 graph.dynamic.max_seq_len (UB/L2 尺寸随平台变)
 
 
 @dataclass
@@ -52,8 +75,8 @@ class GraphCfg:
 
 @dataclass
 class BackendCfg:
-    type: str = "om_acl"            # om_acl | ge_session
-    aicore_num: Optional[str] = None
+    type: str = "om_acl"            # om_acl | ge_session   (平台无关, 留在顶层)
+    aicore_num: Optional[str] = None   # 由 resolve_platform 从 profile 填入; yaml 不再顶层声明
 
 
 @dataclass
@@ -91,11 +114,11 @@ class BenchCfg:
     """性能测试口径 (core.bench 用) — **一个模型一个场景**。
 
     只放"这次压测怎么压"; 模型侧事实一律不在此重复, 由 core.bench 从同一份 ModelConfig 取:
-        soc            ← model.soc
+        soc            ← model.soc            (resolve_platform 从选中的 profile 摊平)
         manifest       ← <model_dir>/io/manifest.json  (write_manifest 的固定约定)
         report_dir     ← <model_dir>/results
         请求池目录      ← <model_dir>/io/pool
-        aicore_num     ← backend.aicore_num (ge_session 的运行期限核)
+        aicore_num     ← backend.aicore_num   (同上, 来自 profile; ge_session 的运行期限核)
         --batch/--prune-tokens/--prefix ← inputs.batch_size / adapt.params (bench._form_args 注入)
     负载分布 (长度分布/词表上界/套数) 属**模型专属脚本**的口径, 写死在 pool.script 的
     argparse 默认值里, 配置只在要覆盖时写 pool.args。
@@ -104,8 +127,9 @@ class BenchCfg:
     度量 (run.sh 的 reference + compare) — 一个变量只由一处度量, 不设第二个开关。
 
     多场景并存 (同一形态要随机负载 + 固定 shape + 长序列压测三份报告) 目前不支持 —
-    真出现该需求时再拆回独立 scenario 文件 (形状可从 git 历史的 bench/varlen.yaml 取),
-    届时场景名从文件名取即可, 故这里**不设 scenario 字段**: 归档名一律 <model.name>-bench。
+    真出现该需求时再拆回独立 scenario 文件 (形状可从 git 历史的 bench/varlen.yaml 取)。
+    归档名 = export_name(cfg) + "-bench" (含平台与形态后缀), 故**不设 scenario 字段**:
+    平台/形态的区分由产物名承担, 两平台两形态的归档互不撞名。
     """
     instances: int = 1              # = 并发 worker (1:1 绑实例, 无锁)
     requests: int = 100             # 总请求 (闭环, 均分到实例)
@@ -121,11 +145,13 @@ class ModelConfig:
     adapt: AdaptCfg = field(default_factory=AdaptCfg)
     inputs: InputsCfg = field(default_factory=InputsCfg)
     graph: GraphCfg = field(default_factory=GraphCfg)
-    passes: list = field(default_factory=list)        # list[SetupEntry] fusion pass (ATC 前执行)
-    custom_ops: list = field(default_factory=list)    # list[SetupEntry] 自定义算子 (加载 adapter 前)
+    passes: list = field(default_factory=list)        # list[SetupEntry] — resolve_platform 摊平填入
+    custom_ops: list = field(default_factory=list)    # list[SetupEntry] — resolve_platform 摊平填入
     backend: BackendCfg = field(default_factory=BackendCfg)
     verify: VerifyCfg = field(default_factory=VerifyCfg)
     bench: BenchCfg = field(default_factory=BenchCfg)
+    platforms: dict = field(default_factory=dict)     # 短名 → PlatformProfile (yaml 声明)
+    platform: str = ""              # resolve_platform 选中的 profile 短名 (进产物名/provenance)
     model_dir: str = ""             # 配置文件所在模型目录 (load 时填入)
 
 
@@ -162,15 +188,73 @@ def _setup_entries(raw) -> list:
     return entries
 
 
+def _platforms(raw) -> dict:
+    """yaml 的 platforms: 段 → {短名: PlatformProfile}。**强 schema**: 未知键硬失败。
+
+    为什么这里严格而 _sub 宽松: 平台 profile 是新引入的段, 没有历史包袱; 且它装的是
+    **编译目标**(soc)与**要装哪些算子/pass** —— 拼错键静默忽略的后果是"以为限了核其实
+    全核跑"、"以为装了 pass 其实没装", 都属于查不出来的静默错配。
+    """
+    valid = set(PlatformProfile.__dataclass_fields__)
+    out = {}
+    for name, body in (raw or {}).items():
+        body = dict(body or {})
+        unknown = set(body) - valid
+        if unknown:
+            raise ValueError(
+                f"platforms.{name} 有未知键 {sorted(unknown)} — 平台 profile 是强 schema, "
+                f"只认 {sorted(valid)}。形态开关 (prefix/prune_token_file) 属 adapt.params, "
+                f"不放这里 (形态串行演进, 平台长期并存, 两轴不共用机制)")
+        if not body.get("soc"):
+            raise ValueError(
+                f"platforms.{name} 缺 soc — 它既是 ATC 的 --soc, 也是平台探测的匹配键 "
+                f"(须与 torch.npu.get_device_properties(device).name 逐字一致)")
+        aicore = body.get("aicore_num")
+        out[str(name)] = PlatformProfile(
+            soc=str(body["soc"]),
+            aicore_num=None if aicore is None else str(aicore),
+            custom_ops=_setup_entries(body.get("custom_ops")),
+            passes=_setup_entries(body.get("passes")),
+            max_seq_len=body.get("max_seq_len"),
+        )
+    if not out:
+        raise ValueError("model.yaml 缺 platforms: 段 — 至少声明一个平台 (soc 必填); "
+                         "平台相关事实 (soc/custom_ops/passes/aicore_num) 已从顶层移进该段")
+    return out
+
+
+# 已移进 platforms.<name> 的顶层键 → 出现在 yaml 里即硬失败 (静默忽略 = 以为生效其实没有)
+_MOVED_TO_PLATFORM = {
+    ("model", "soc"): "platforms.<name>.soc",
+    ("backend", "aicore_num"): "platforms.<name>.aicore_num",
+}
+_MOVED_TOP_LEVEL = {"custom_ops": "platforms.<name>.custom_ops",
+                    "passes": "platforms.<name>.passes"}
+
+
+def _reject_moved_keys(raw):
+    for section, key in _MOVED_TO_PLATFORM:
+        if key in (raw.get(section) or {}):
+            raise ValueError(
+                f"model.yaml 的 {section}.{key} 已移进 {_MOVED_TO_PLATFORM[(section, key)]} "
+                f"— 平台相关事实按平台声明, 顶层写会被静默忽略故直接硬失败")
+    for key, dest in _MOVED_TOP_LEVEL.items():
+        if raw.get(key) is not None:
+            raise ValueError(f"model.yaml 顶层的 {key}: 已移进 {dest} (平台相关)")
+
+
 def load_config(path) -> ModelConfig:
     """解析 model.yaml → ModelConfig。model_dir = config/ 的父目录。
 
     **不含 device**: 用哪张卡是运行期事实 (每次运行/每台机器都可能不同), 由 CLI `--device`
     必填传入 (pipeline → load_source/write_manifest → manifest.device → C++ 运行时)。
-    yaml 里多余的 `runtime:` 段会被忽略。
+    **不含平台选择**: platforms 表在此解析, 但选哪个由 resolve_platform 在拿到 device 后定
+    (cfg.passes/custom_ops/model.soc/backend.aicore_num 在那之前是空的)。
+    yaml 里多余的 `runtime:` 段会被忽略; 已移进 platforms 的顶层键则硬失败。
     """
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
+    _reject_moved_keys(raw)
 
     model_dir = os.path.dirname(os.path.dirname(os.path.abspath(path)))
     dynamic = _sub(DynamicCfg, (raw.get("graph") or {}).get("dynamic", {}))
@@ -185,13 +269,58 @@ def load_config(path) -> ModelConfig:
         adapt=_sub(AdaptCfg, raw.get("adapt")),
         inputs=_sub(InputsCfg, raw.get("inputs")),
         graph=GraphCfg(dynamic=dynamic),
-        passes=_setup_entries(raw.get("passes")),
-        custom_ops=_setup_entries(raw.get("custom_ops")),
         backend=_sub(BackendCfg, raw.get("backend")),
         verify=_sub(VerifyCfg, raw.get("verify")),
         bench=bench,
+        platforms=_platforms(raw.get("platforms")),
         model_dir=model_dir,
     )
+
+
+def resolve_platform(cfg: ModelConfig, device=None, platform=None) -> ModelConfig:
+    """选定平台 → 返回把该 profile **摊平**进 cfg 的新 ModelConfig (原 cfg 不改)。
+
+    平台由谁定:
+        platform (CLI --platform) 优先 — 交叉编译 / 无卡机器上解析配置的逃生口
+        否则探测: torch.npu.get_device_properties(device).name 去 platforms 表按 soc 匹配
+    匹配不到 → 硬失败并列出可选项 (静默用错 soc 会让 ATC 产出跑不起来的 OM)。
+
+    摊平后下游 (backend.compile_graph / write_manifest / bench) 仍读 cfg.model.soc、
+    cfg.backend.aicore_num、cfg.passes、cfg.custom_ops, 不需要知道"平台"这一层。
+    """
+    if platform is not None:
+        name = platform
+        if name not in cfg.platforms:
+            raise ValueError(f"--platform {name!r} 不在 model.yaml 的 platforms 表里 "
+                             f"(可选: {sorted(cfg.platforms)})")
+    else:
+        if device is None:
+            raise ValueError("resolve_platform 需要 device (探测平台) 或 platform (显式指定)")
+        import torch
+        import torch_npu  # noqa: F401  torch.npu 依赖
+
+        soc = torch.npu.get_device_properties(device).name
+        hits = [n for n, p in cfg.platforms.items() if p.soc == soc]
+        if not hits:
+            raise ValueError(
+                f"device {device} 的 soc {soc!r} 不在 model.yaml 的 platforms 表里 "
+                f"(已声明: {[(n, p.soc) for n, p in cfg.platforms.items()]}) — "
+                f"补一个 profile, 或用 --platform 显式指定")
+        if len(hits) > 1:
+            raise ValueError(f"platforms 表里 soc={soc!r} 对应多个 profile {hits} — soc 须唯一")
+        name = hits[0]
+
+    p = cfg.platforms[name]
+    graph = cfg.graph
+    if p.max_seq_len is not None:
+        graph = GraphCfg(dynamic=replace(cfg.graph.dynamic, max_seq_len=p.max_seq_len))
+    return replace(cfg,
+                   platform=name,
+                   model=replace(cfg.model, soc=p.soc),
+                   custom_ops=list(p.custom_ops),
+                   passes=list(p.passes),
+                   backend=replace(cfg.backend, aicore_num=p.aicore_num),
+                   graph=graph)
 
 
 def load_target_tokens(json_path):
@@ -204,12 +333,18 @@ def load_target_tokens(json_path):
 
 
 def export_name(cfg: ModelConfig) -> str:
-    """产物名 = 模型名 + **形态后缀** (AIR/OM/bundle/manifest 都以此命名)。
+    """产物名 = 模型名 + **平台** + **形态后缀** (AIR/OM/bundle/manifest 都以此命名)。
 
-    凡是影响图结构的 adapt.params 开关都要编进名字, 否则切换形态时会**静默覆盖**上一种
-    形态的产物 (你以为在做 A/B, 其实基线已经被冲掉)。新增形态开关时记得在这里加后缀。
+    凡是影响图结构或编译目标的开关都要编进名字, 否则切换时会**静默覆盖**上一种的产物
+    (你以为在做 A/B, 其实基线已经被冲掉)。新增开关时记得在这里加后缀。
+
+    平台后缀 = resolve_platform 选中的 profile 短名。平台长期并存 (910_9382 与 A5 都进
+    回归), 故两平台产物必须互不覆盖; 未解析 (cfg.platform 为空) 则不加 —— 那意味着 cfg
+    还没过 resolve_platform, 而 pipeline/bench 一定先调它。
     """
     name = cfg.model.name
+    if cfg.platform:
+        name += f"-{cfg.platform}"
     if cfg.adapt.params.get("prefix"):
         name += "-prefix"
     if cfg.adapt.params.get("prune_token_file"):

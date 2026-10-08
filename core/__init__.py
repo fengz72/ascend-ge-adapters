@@ -10,5 +10,6 @@ __init__ 只 re-export **契约层** (无 torch/torch_npu/torchair 依赖) — �
 `from core.adapter import GeModelAdapter`、`from core.exporter import GeExporter`。
 """
 
-from .config import ModelConfig, load_config, load_adapter, write_manifest
+from .config import (ModelConfig, PlatformProfile, load_config, load_adapter,
+                     resolve_platform, write_manifest)
 from .graph import IoNode, IoSpec, Graph

@@ -17,7 +17,8 @@ import os
 import torch
 import torch_npu
 
-from core.config import export_name, load_config, load_adapter, write_manifest
+from core.config import (export_name, load_config, load_adapter, resolve_platform,
+                         write_manifest)
 from core.source import load_source
 from core.graph import Graph, IoNode, IoSpec
 from core.exporter import GeExporter
@@ -28,7 +29,7 @@ from core.verify import Verifier, bundle_has_golden, collect_provenance
 
 def run(config_path, skip=(), dtype=torch.float16, device=None,
         batch_size=None, seq_len=None, work_dir=None,
-        warmup=0, bench=1, runtime_extra=()):
+        warmup=0, bench=1, runtime_extra=(), platform=None):
     """跑管线, 返回产物路径 dict。skip ⊂ {ops,export,passes,compile,run,compare,reference}。
 
     run/compare 为阶段二闭环: run 调 C++ runtime (manifest 驱动, OM/ACL 或 GeSession),
@@ -37,6 +38,9 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     reference (只在 export 阶段, 与 golden 同时算): **原版未 patch 的 HF** 逐请求前向,
     与 patched-eager golden 比对 — 隔离出"适配"这一个变量 (compare 隔离的是"编译")。
     adapter 未实现 unpack_requests 时自动跳过并 WARN。
+
+    platform: 显式指定 platforms 表的 profile 短名 (缺省按 device 的 soc 自动探测);
+              只在交叉编译 (在本机为别的 soc 出产物) 时才需要。
     """
     cfg = load_config(config_path)
     skip = set(skip)
@@ -44,7 +48,8 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     if device is None:
         raise ValueError("必须指定 device (CLI --device): 用哪张卡是运行期事实, 不进 model.yaml")
     torch_npu.npu.set_device(device)
-    print(f"[pipeline] device={device}")
+    cfg = resolve_platform(cfg, device=device, platform=platform)
+    print(f"[pipeline] device={device} platform={cfg.platform} (soc={cfg.model.soc})")
 
     name = export_name(cfg)
     base = work_dir or md
@@ -108,9 +113,11 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
 
         # bundle 总要落 (run 阶段需要具体 shape + .bin); golden 为 None (verify.enabled=false)
         # 时只写 inputs, bundle.golden=null → compare 阶段自动跳过
-        # adapt.params = 形态事实源 (prefix/prune…): 记进 provenance, 报告才能自证形态
+        # adapt.params = 形态事实源 (prefix/prune…), platform/soc = 平台事实源:
+        # 都记进 provenance, 报告才能自证是哪个平台哪种形态
         prov = collect_provenance(model=cfg.model.name,
                                   soc=cfg.model.soc, dtype=str(dtype),
+                                  platform=cfg.platform,
                                   adapt_params=dict(cfg.adapt.params), **input_kwargs)
         bundle_path = verify.save_bundle(bundle_dir, inputs, golden, graph.io_spec, prov,
                                          logical_order=[n.logical for n in in_nodes])
@@ -187,6 +194,8 @@ def main():
                    help="逗号分隔: ops,export,passes,compile,run,compare,reference")
     p.add_argument("--device", type=int, required=True,
                    help="NPU 设备号 (必填; 运行期事实, 不进 model.yaml)")
+    p.add_argument("--platform", default=None,
+                   help="覆盖平台 profile 短名 (缺省按 device 的 soc 自动探测); 仅交叉编译时需要")
     p.add_argument("--batch-size", type=int, default=None)
     p.add_argument("--seq-len", type=int, default=None)
     p.add_argument("--work-dir", default=None, help="覆盖产物根目录 (默认 model_dir)")
@@ -201,7 +210,8 @@ def main():
     skip = tuple(s for s in args.skip.split(",") if s)
     out = run(args.config, skip=skip, dtype=dtype, device=args.device,
               batch_size=args.batch_size, seq_len=args.seq_len, work_dir=args.work_dir,
-              warmup=args.warmup, bench=args.bench, runtime_extra=tuple(args.runtime_opt))
+              warmup=args.warmup, bench=args.bench, runtime_extra=tuple(args.runtime_opt),
+              platform=args.platform)
     print("=== 管线产物 ===")
     for k, v in out.items():
         if k not in ("report", "reference"):
