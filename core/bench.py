@@ -16,6 +16,7 @@ gitignored、可重跑再生**; 要长期保留的性能数字由人工 curate �
         perf.md           # 人读表 (curate 基线时的素材)
         perf_requests.csv # 逐请求明细
         plan.json         # 传给 C++ 的 bench plan
+        profiling/        # 只在 --profiling 时: PROF_* (交 tools/parse_profiling.py 解析)
     <model_dir>/results/index.json   # 历次 run 一行摘要 (本地趋势)
 
 **不含精度**: 性能跑不落盘输出 (D2H 会污染延迟), 精度由 `run.sh` 的两道门负责
@@ -24,6 +25,7 @@ gitignored、可重跑再生**; 要长期保留的性能数字由人工 curate �
 用法:
     python3 -m core.bench --config models/qwen2.5-0.5b/config/model.yaml --device 8
     python3 -m core.bench --config <model.yaml> --device 8 --instances 4 --requests 2000
+    python3 -m core.bench --config <model.yaml> --device 8 --requests 20 --profiling  # 算子级剖面
 """
 
 import argparse
@@ -33,7 +35,7 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 
-from core.backend import RUNTIME_BIN
+from core.backend import RUNTIME_BIN, parse_profiling
 from core.config import _setup_entries, export_name, load_config, resolve_platform
 from core.setup_scripts import resolve_path, run_scripts, strip_flag
 from core.verify import collect_provenance
@@ -55,6 +57,7 @@ class Scenario:
     generate: list = field(default_factory=list)        # list[SetupEntry] 生成请求池的脚本
     report_dir: str = ""
     backend_options: dict = field(default_factory=dict)
+    profiling: dict = field(default_factory=dict)        # {enabled, output, aic_metrics} — CLI 开关, 不进 yaml
     device: int = None
     soc: str = ""
     path: str = ""                                      # model.yaml 路径 (run.json 快照溯源)
@@ -214,6 +217,13 @@ def build_plan(scenario, run_dir, run_id) -> str:
             "scenario": scenario.name,
         },
     }
+    if scenario.profiling.get("enabled"):
+        # PROF_* 归进本次 run 目录 (与 perf.json 同生命周期: 本地过程产物, 不入库)
+        prof = {"enabled": True,
+                "output": scenario.profiling.get("output") or os.path.join(run_dir, "profiling")}
+        if scenario.profiling.get("aic_metrics"):
+            prof["aic_metrics"] = scenario.profiling["aic_metrics"]
+        plan["profiling"] = prof
     os.makedirs(run_dir, exist_ok=True)
     plan_path = os.path.join(run_dir, "plan.json")
     with open(plan_path, "w") as f:
@@ -352,8 +362,15 @@ def update_index(report_dir, entry) -> str:
 
 
 def run(config_path, device=None, instances=None, requests=None, warmup=None,
-        manifest=None) -> str:
-    """跑一次性能测试 (只出性能数据; 精度归 run.sh 的两道门), 返回 run 目录。"""
+        manifest=None, profiling=False, profiling_output=None,
+        profiling_aic_metrics=None, profiling_parse=False) -> str:
+    """跑一次性能测试 (只出性能数据; 精度归 run.sh 的两道门), 返回 run 目录。
+
+    profiling: 采集 PROF_* 到 <run_dir>/profiling (可用 profiling_output 覆盖); profiling_parse
+               再接着跑 msprof parse+export 并打印算子摘要。注意采集覆盖整个进程 (含每实例
+               CompileGraph 与 warmup), 数据量随 requests 与池的 distinct shape 数涨 — 要算子级
+               剖面请把 requests 压小 (如 --requests 20), 否则数据大且解析慢。
+    """
     sc = load_bench(config_path, device=device, instances=instances, requests=requests,
                     warmup=warmup, manifest=manifest)
     if not os.path.exists(RUNTIME_BIN):
@@ -376,9 +393,20 @@ def run(config_path, device=None, instances=None, requests=None, warmup=None,
     # 2. plan → ge_runtime (C++ 只测量并出数据)
     run_id = make_run_id(sc)
     run_dir = os.path.join(sc.report_dir, run_id)
+    if profiling or profiling_output or profiling_parse:   # 给了输出目录/要解析即视为开启
+        sc.profiling = {"enabled": True,
+                        "output": profiling_output or os.path.join(run_dir, "profiling"),
+                        "aic_metrics": profiling_aic_metrics}
     plan_path = build_plan(sc, run_dir, run_id)
     print(f"=== 性能测试 {run_id} ===\n  plan: {plan_path}\n")
     subprocess.run([RUNTIME_BIN, "--bench-plan", plan_path], check=True)
+    if sc.profiling.get("enabled"):
+        if profiling_parse:
+            parse_profiling(sc.profiling["output"])
+        else:
+            print(f"[bench] profiling 数据 (PROF_*): {sc.profiling['output']}\n"
+                  f"  解析: python3 tools/parse_profiling.py parse-and-export "
+                  f"--profiling_dir {sc.profiling['output']}  (或加 --profiling-parse 自动跑)")
 
     perf = json.load(open(os.path.join(run_dir, "perf.json")))
 
@@ -394,6 +422,7 @@ def run(config_path, device=None, instances=None, requests=None, warmup=None,
     with open(os.path.join(run_dir, "run.json"), "w") as f:
         json.dump({"schema": "ge-bench-run/1", "run_id": run_id, "config": sc.raw,
                    "config_path": sc.path, "provenance": provenance,
+                   "profiling": sc.profiling.get("output"),
                    "perf_summary": {k: perf.get(k) for k in
                                     ("backend", "device", "qps", "wall_ms", "e2e_ms", "exec_ms",
                                      "tokens", "requests", "errors", "distinct_shapes")}},
@@ -414,7 +443,8 @@ def run(config_path, device=None, instances=None, requests=None, warmup=None,
     })
 
     print(f"\n=== 报告已落盘 (本地过程产物, 不入库): {run_dir} ===")
-    print("  perf.json / perf.md / perf_requests.csv / run.json")
+    print("  perf.json / perf.md / perf_requests.csv / run.json"
+          + (" / profiling/PROF_*" if sc.profiling.get("enabled") else ""))
     print("  满意后把 perf.md 的数字 + provenance curate 进 results/README.md 的「当前基线」(唯一入库项)")
     if perf.get("errors", 0):
         raise SystemExit(f"[bench] 有 {perf['errors']} 个请求失败, 见 {run_dir}")
@@ -432,9 +462,22 @@ def main():
     p.add_argument("--manifest", default=None,
                    help="覆盖 manifest 路径 (默认 <model_dir>/io/manifest.json; "
                         "产物在 --work-dir 下时用)")
+    p.add_argument("--profiling", action="store_true",
+                   help="采集 profiling → PROF_* (ge_session 经 GEInitialize 选项); "
+                        "数据量随 requests 涨, 建议配小 --requests")
+    p.add_argument("--profiling-output", default=None,
+                   help="PROF_* 输出目录 (默认 <run_dir>/profiling); 给了即视为开启 --profiling")
+    p.add_argument("--profiling-aic-metrics", default=None,
+                   help="AI Core 指标, 如 PipeUtilization (ge_session 缺省即此)")
+    p.add_argument("--profiling-parse", action="store_true",
+                   help="采集完接着跑 msprof parse+export 并打印算子摘要 "
+                        "(隐含 --profiling; 需 msprof 在 PATH/ASCEND_HOME)")
     args = p.parse_args()
     run(args.config, device=args.device, instances=args.instances,
-        requests=args.requests, warmup=args.warmup, manifest=args.manifest)
+        requests=args.requests, warmup=args.warmup, manifest=args.manifest,
+        profiling=args.profiling, profiling_output=args.profiling_output,
+        profiling_aic_metrics=args.profiling_aic_metrics,
+        profiling_parse=args.profiling_parse)
 
 
 if __name__ == "__main__":

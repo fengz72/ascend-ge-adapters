@@ -9,6 +9,8 @@
 #   切形态 (prefix/prune): 改 config/model.yaml 的 adapt.params — 产物名自动带后缀, 不互相覆盖
 #   ./run.sh --device 6 --skip export           # 复用已有 AIR
 #   ./run.sh --device 6 --skip export,passes,compile --bench 10   # 复用 AIR/OM, 只跑 runtime + compare
+#   ./run.sh --device 6 --skip export,passes,compile --profiling-parse  # 出 PROF_* 到 io/profiling 并自动解析
+#                                                        (只采集不解析: --profiling; 性能测试侧: core.bench --profiling)
 #   ./run.sh --device 6 --platform a5           # 覆盖平台 profile (缺省按 device 的 soc 自动探测)
 #   ./run.sh --help                             # 完整选项
 #

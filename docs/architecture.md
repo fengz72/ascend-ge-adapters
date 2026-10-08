@@ -486,6 +486,9 @@ ge_runtime <manifest.json> [--output_dir DIR] [--device N]
   - 工作线程共享主线程的**默认 context**（`aclrtGetCurrentContext` → 各线程 `aclrtSetCurrentContext`）；显式 `aclrtCreateContext` 会让 GE executor 报 "stream is not in current ctx"。CANN 无 reset 接口，线程退出即释放。
   - **并发档位扫描不进 C++**（`--sweep` 已删）：扫描 = "同一件事跑 N 遍"，每档都要独立建/销资源，进程级隔离最干净（一档崩了不连累其它档，HBM 彻底归还）。C++ 只负责测准**一档**（`BenchThroughput` / `BenchPool`），档位循环归 `tools/sweep.py`（逐档起进程 + 汇总 scaling 表）。
 - **观测**：dump/profiling 在 OM/ACL 路径经 `acl_json.cpp` 生成 `acl.json` 交 `aclInit(configPath)`；GeSession 的 profiling 走 `GEInitialize` 的 `OPTION_EXEC_PROFILING_MODE/OPTIONS`（dump 是 ACL 专属，给了会 WARN 忽略）。产物 `PROF_*` 用 `tools/parse_profiling.py` 解析，dump 数据用 `tools/parse_dump.py`。
+  - **三个入口都能开 profiling**（都是命令行开关，不进 model.yaml——采集与否是运行期意图，不是形态/平台事实）：`ge_runtime <manifest> --profiling`（单请求）、`core.pipeline --profiling`（透传给前者，`PROF_*` 落 `<base>/io/profiling`）、`core.bench --profiling`（写进 `plan.json` 的 `profiling` 段由 `bench_plan.cpp` 消费，落 `results/<run_id>/profiling`）。两个 Python 入口另有 `--profiling-parse`（隐含开启采集）：跑完接着调 `core/backend.parse_profiling` → `tools/parse_profiling.py` 的 `cmd_parse_and_export` + `cmd_summary`，直接把算子摘要打在终端；msprof 缺失只 WARN 不失败（数据已落盘，不该让跑完的管线/压测因解析环节非 0 退出）。
+  - 采集窗口 = **整个进程**（含每实例 `CompileGraph` 与 warmup），要"只圈 execute 段"得换 `acl_prof.h` 的 `aclprofInit/Start/Stop`——未做（YAGNI）；bench 下数据量随 warmup 覆盖的 shape 数与 `requests` 涨（实测 138 shape × warmup + 8 请求 ≈ 69MB），要算子级剖面就把 `--requests` 压小。
+  - `bench-plan` 模式**不为 om_acl 生成 acl.json**（那是 `main.cpp` 单请求路径的职责，不重复一套生成逻辑）：给了 `profiling.enabled` 会 WARN，需要时用 `backend_options.acl_config` 指向自备 acl.json。
 - **抽象时机（YAGNI）**：两后端各暴露一个自由函数（`RunAclBackend` / `RunGeSessionBackend`），`main.cpp` 按 `manifest.backend` switch 分发，**不预设 Backend 基类**——公共部分（契约解析、.bin IO、bench）已下沉到 `io_spec`/`bench`，剩下的差异（ACL dataset vs gert::Tensor）不值得抽象。两后端各自的 dtype 枚举映射表**故意不合并**（ACL 与 GE 是两套枚举，合并要引中间层，比重复更贵）。
 - 构建：C++17 + `-D_GLIBCXX_USE_CXX11_ABI=0`（GE 头/库为旧 ABI）；JSON 用 vendored `third_party/nlohmann/json.hpp`（header-only，离线可构建）。
 - GE 在线路径的运行环境额外要求：`source <model>/env.sh`（CANN + vendor 算子 + 把本地 site-packages 注入 `PYTHONPATH`，否则 GEInitialize 因 tbe pywrapper 缺 numpy 返回 -1）。
@@ -556,6 +559,7 @@ perf.json         # C++ 出的数据: 聚合 + 每实例 (qps/e2e 分位/exec/to
 perf.md           # 人读表 + 口径说明 (curate 基线时的素材)
 perf_requests.csv # 逐请求明细
 plan.json         # 传给 C++ 的 bench plan
+profiling/        # 只在 --profiling 时: PROF_* (交 tools/parse_profiling.py 解析)
 results/index.json# 历次 run 一行摘要 (趋势)
 results/README.md # 人工 curate 的**性能基线** (数字 + provenance + 复现口径)
 ```
@@ -569,7 +573,7 @@ results/README.md # 人工 curate 的**性能基线** (数字 + provenance + 复
 
 > **性能报告不含精度**：池模式不落盘输出（每请求 D2H 会污染延迟数字，`runtime/bench_plan.cpp`），精度只由 §10 的两道门度量（`run.sh` 的 `reference` + `compare`）。一个变量只由一处度量——原来 bench 里还有一次"单请求精度复核"（`accuracy.json/md`），与门② 用同一份 bundle、同一份 golden，只是多花一次 ge_session 图编译（实测 ~10s/run），已删除。
 
-- profiling/dump（`--profiling` / `--dump`）产出 `PROF_*` 与逐算子数据，交 `tools/parse_profiling.py`、`tools/parse_dump.py` 解析；算子级 top-N 进报告属 P2（未做）。
+- profiling/dump 产出 `PROF_*` 与逐算子数据，交 `tools/parse_profiling.py`、`tools/parse_dump.py` 解析；算子级 top-N 进报告属 P2（未做）。profiling 三个入口都有命令行开关（`ge_runtime <manifest> --profiling` / `core.pipeline --profiling` / `core.bench --profiling`，机制与产物归宿见 §9「观测」）；dump 仍只在单请求的 om_acl 路径（`--dump`）。
 
 ### 已知限制（当前契约的边界）
 
@@ -658,10 +662,12 @@ def compile_graph(cfg, graph, base_dir=None) -> om_path | None   # om_acl: run_a
 def default_output_dir(manifest_path) -> str             # <manifest 根>/io/outputs
 def runtime_argv(manifest, output_dir, device, warmup, bench, extra) -> list[str]
 def run_runtime(manifest, ...) -> output_dir             # 子进程跑 ge_runtime (继承 CANN env)
+def parse_profiling(prof_dir)                            # --profiling-parse: msprof parse+export
+                                                         # + 打印算子摘要 (pipeline/bench 共用)
 
 # bench.py  (性能测试编排: model.yaml 的 bench 段 → plan.json → ge_runtime → 报告归档)
 @dataclass Scenario: name; manifest; model_dir; instances; requests; warmup; seed; inputs;
-                     generate; report_dir; backend_options; device; soc
+                     generate; report_dir; backend_options; profiling; device; soc
 def load_bench(config_path, device, instances, requests, warmup, manifest) -> Scenario
                                                  # bench 段 + 派生约定 (io/manifest·io/pool·results)
 def _form_args(cfg, args) -> list                # 形态事实 (--batch/--prune-tokens/--prefix) 注入
@@ -690,7 +696,8 @@ def collect_provenance(..., adapt_params, **extra)       # 形态 (prefix/prune)
 
 # pipeline.py  (YAGNI: 全量 + --skip, 不做 6 阶段枚举)
 def run(config_path, skip=(), dtype, device, batch_size, seq_len, work_dir,
-        warmup, bench, runtime_extra)
+        warmup, bench, runtime_extra, profiling, profiling_output, profiling_aic_metrics,
+        profiling_parse)
                                                  # device 必填
                                                  # skip ⊂ {ops,export,passes,compile,run,compare,reference}
                                                  # 顺序: load_source → 生成激励 → reference

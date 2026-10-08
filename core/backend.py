@@ -15,6 +15,7 @@ import os
 import subprocess
 
 from tools.atc_utils import run_atc
+from tools.parse_profiling import cmd_parse_and_export, cmd_summary, find_msprof
 
 # C++ 运行时二进制 (§9/§14): runtime/ 构建产物 (bash runtime/build.sh)。
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -116,3 +117,20 @@ def run_runtime(manifest_path: str, output_dir=None, device=None,
     os.makedirs(output_dir, exist_ok=True)
     subprocess.run(argv, check=True)
     return output_dir
+
+
+def parse_profiling(prof_dir: str):
+    """PROF_* → msprof parse+export (出 mindstudio_profiler_output/*.csv) → 打印算子摘要。
+
+    `--profiling-parse` 的实现体: 采集在 C++ 侧, 解析在 Python/msprof 侧, pipeline 与 bench
+    两个入口共用故落在这里 (与 run_runtime 同一层: 都是"起外部工具")。msprof 缺失只 WARN —
+    数据已落盘, 不该让跑完的管线/性能测试因解析环节非 0 退出。
+    """
+    if find_msprof() is None:
+        print(f"[profiling][WARN] 找不到 msprof (ASCEND_HOME_PATH="
+              f"{os.environ.get('ASCEND_HOME_PATH', '-')}) — 数据已在 {prof_dir}, 手动解析: "
+              f"python3 tools/parse_profiling.py parse-and-export --profiling_dir {prof_dir}")
+        return
+    print(f"=== 解析 profiling: {prof_dir} ===")
+    cmd_parse_and_export(prof_dir)
+    cmd_summary(prof_dir)

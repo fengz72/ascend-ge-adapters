@@ -6,6 +6,7 @@
 用法:
     python -m core.pipeline --config models/qwen2.5-0.5b/config/model.yaml
     python -m core.pipeline --config <yaml> --skip compile,run,compare
+    python -m core.pipeline --config <yaml> --device 6 --skip export,passes,compile --profiling
     # 冒烟/调试可覆盖: --device 6 (必填) --batch-size 2 --seq-len 16 --work-dir /tmp/x
     # ops/passes 是**用户脚本**接口 (model.yaml 的 custom_ops/passes 填脚本路径, 见 core/setup_scripts.py)
 """
@@ -24,13 +25,16 @@ from core.source import load_source
 from core.graph import Graph, IoNode, IoSpec
 from core.exporter import GeExporter
 from core.setup_scripts import run_scripts, strip_flag
-from core.backend import backend_extra, compile_graph, default_output_dir, run_runtime
+from core.backend import (backend_extra, compile_graph, default_output_dir,
+                          parse_profiling, run_runtime)
 from core.verify import Verifier, bundle_has_golden, collect_provenance
 
 
 def run(config_path, skip=(), dtype=torch.float16, device=None,
         batch_size=None, seq_len=None, work_dir=None,
-        warmup=0, bench=1, runtime_extra=(), platform=None):
+        warmup=0, bench=1, runtime_extra=(), platform=None,
+        profiling=False, profiling_output=None, profiling_aic_metrics=None,
+        profiling_parse=False):
     """跑管线, 返回产物路径 dict。skip ⊂ {ops,export,passes,compile,run,compare,reference}。
 
     run/compare 为阶段二闭环: run 调 C++ runtime (manifest 驱动, OM/ACL 或 GeSession),
@@ -42,6 +46,11 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
 
     platform: 显式指定 platforms 表的 profile 短名 (缺省按 device 的 soc 自动探测);
               只在交叉编译 (在本机为别的 soc 出产物) 时才需要。
+
+    profiling: run 阶段采集 profiling (ge_session 经 GEInitialize 选项, om_acl 经 acl.json),
+               产出 PROF_* 到 profiling_output (默认 <base>/io/profiling); profiling_parse
+               再接着跑 msprof parse+export 并打印算子摘要 (tools/parse_profiling.py)。
+               采集口径含整个进程 (图编译也在内)。
     """
     cfg = load_config(config_path)
     skip = set(skip)
@@ -145,10 +154,25 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     mp = write_manifest(cfg, graph.path, om, io_spec_path, bundle_path, base_dir=base, device=device)
 
     outputs_dir = default_output_dir(mp)
+    prof_dir = None
     if "run" not in skip:
+        extra = list(backend_extra(cfg))
+        # 给了输出目录/要解析即视为开启采集 (与 C++ 侧 --profiling_output 的语义一致)
+        if profiling or profiling_output or profiling_parse:
+            prof_dir = profiling_output or os.path.join(base, "io", "profiling")
+            extra += ["--profiling", "--profiling_output", prof_dir]
+            if profiling_aic_metrics:
+                extra += ["--profiling_aic_metrics", profiling_aic_metrics]
+        extra += list(runtime_extra)      # CLI --runtime-opt 排在最后 → 可覆盖上面的同名项
         run_runtime(mp, output_dir=outputs_dir, device=device,
-                    warmup=warmup, bench=bench,
-                    extra=backend_extra(cfg) + tuple(runtime_extra))
+                    warmup=warmup, bench=bench, extra=tuple(extra))
+        if prof_dir:
+            if profiling_parse:
+                parse_profiling(prof_dir)
+            else:
+                print(f"[pipeline] profiling 数据 (PROF_*): {prof_dir}\n"
+                      f"  解析: python3 tools/parse_profiling.py parse-and-export "
+                      f"--profiling_dir {prof_dir}  (或加 --profiling-parse 自动跑)")
 
     report = None
     if "compare" not in skip and bundle_path:
@@ -163,6 +187,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     return {"air": air_path, "io_spec": io_spec_path, "om": om,
             "bundle": bundle_path, "manifest": mp,
             "outputs": outputs_dir if "run" not in skip else None,
+            "profiling": prof_dir,
             "reference": ref_report, "report": report}
 
 
@@ -273,6 +298,16 @@ def main():
     p.add_argument("--bench", type=int, default=1, help="C++ runtime 计时执行次数")
     p.add_argument("--runtime-opt", action="append", default=[],
                    help="透传 C++ runtime 的选项 (可重复), 如 --runtime-opt --aicore_num=12")
+    p.add_argument("--profiling", action="store_true",
+                   help="run 阶段采集 profiling → PROF_* (ge_session 经 GEInitialize 选项, "
+                        "om_acl 经 acl.json); 解析用 tools/parse_profiling.py")
+    p.add_argument("--profiling-output", default=None,
+                   help="PROF_* 输出目录 (默认 <产物根>/io/profiling); 给了即视为开启 --profiling")
+    p.add_argument("--profiling-aic-metrics", default=None,
+                   help="AI Core 指标, 如 PipeUtilization (ge_session 缺省即此)")
+    p.add_argument("--profiling-parse", action="store_true",
+                   help="采集完接着跑 msprof parse+export 并打印算子摘要 "
+                        "(隐含 --profiling; 需 msprof 在 PATH/ASCEND_HOME)")
     args = p.parse_args()
 
     dtype = getattr(torch, args.dtype)
@@ -280,7 +315,10 @@ def main():
     out = run(args.config, skip=skip, dtype=dtype, device=args.device,
               batch_size=args.batch_size, seq_len=args.seq_len, work_dir=args.work_dir,
               warmup=args.warmup, bench=args.bench, runtime_extra=tuple(args.runtime_opt),
-              platform=args.platform)
+              platform=args.platform, profiling=args.profiling,
+              profiling_output=args.profiling_output,
+              profiling_aic_metrics=args.profiling_aic_metrics,
+              profiling_parse=args.profiling_parse)
     print("=== 管线产物 ===")
     for k, v in out.items():
         if k not in ("report", "reference"):

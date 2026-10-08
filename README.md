@@ -65,8 +65,15 @@ python3 tools/sweep.py --config models/qwen2.5-0.5b/config/model.yaml --device 6
 # 6) 吞吐 / 限核 / profiling
 ./runtime/build/ge_runtime models/qwen2.5-0.5b/io/manifest.json --device 6 \
     --threads 4 --requests 800
+# profiling 三个入口都是命令行开关 (采集覆盖整个进程, 含图编译/warmup):
+./models/qwen2.5-0.5b/run.sh --device 6 --skip export,passes,compile --profiling-parse
+#   → models/qwen2.5-0.5b/io/profiling/PROF_* + 自动 msprof 解析并打印算子摘要
+#   (只采集不解析: --profiling; 改目录: --profiling-output)
+python3 -m core.bench --config models/qwen2.5-0.5b/config/model.yaml --device 6 \
+    --requests 20 --profiling-parse
+#   → models/qwen2.5-0.5b/results/<run_id>/profiling/PROF_*   (性能测试; requests 要压小, 数据量随它涨)
 ./runtime/build/ge_runtime <manifest> --device 6 --bench 20 --profiling --profiling_output ./prof
-python3 tools/parse_profiling.py parse-and-export --profiling_dir ./prof
+python3 tools/parse_profiling.py parse-and-export --profiling_dir ./prof   # → op_summary 等 CSV
 ```
 
 `ge_runtime` 的完整选项：`--output_dir --device --warmup --bench --threads --requests

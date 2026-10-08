@@ -85,6 +85,8 @@ int RunBenchPlan(const std::string &planPath) {
         bench.requests = static_cast<int>(requests);
 
         Json backendCfg = plan.value("backend_options", Json::object());
+        Json profCfg = plan.value("profiling", Json::object());
+        bool profEnabled = profCfg.value("enabled", false);
         PerfResult perf;
         std::vector<HostTensor> outputs;      // 池模式不落盘输出 (精度与性能分开跑)
         bool ok = false;
@@ -98,6 +100,13 @@ int RunBenchPlan(const std::string &planPath) {
             opt.output_reserve = static_cast<size_t>(backendCfg.value("output_reserve_mb", 256)) *
                                  1024 * 1024;
             opt.aclConfigPath = backendCfg.value("acl_config", "");
+            if (profEnabled && opt.aclConfigPath.empty()) {
+                // ACL 的 profiling 只能经 aclInit(acl.json) 生效, 而生成 acl.json 是单请求路径
+                // (main.cpp) 的职责 — 此处不重复一套生成逻辑, 明确告知而非静默忽略。
+                std::cout << "[WARN] bench-plan 模式不为 om_acl 生成 acl.json → profiling 未开启 "
+                             "(改用 ge_session, 或让 backend_options.acl_config 指向自备 acl.json; "
+                             "单请求路径 ge_runtime <manifest> --profiling 会自动生成)" << std::endl;
+            }
             ok = RunAclBackend(manifest, spec, {}, opt, outputs, &perf);
         } else if (manifest.backend == "ge_session") {
             GeSessionOptions opt;
@@ -108,6 +117,14 @@ int RunBenchPlan(const std::string &planPath) {
             opt.graph_run_mode = backendCfg.value("graph_run_mode", 1);
             opt.precision_mode = backendCfg.value("precision_mode", "force_fp16");
             opt.aicore_num = backendCfg.value("aicore_num", "");
+            if (profEnabled) {
+                opt.profiling.enabled = true;
+                opt.profiling.outputPath = profCfg.value("output", "./profiling_data");
+                std::string metrics = profCfg.value("aic_metrics", "");
+                if (!metrics.empty()) {       // 空 → 保留 GeProfilingConfig 的默认指标
+                    opt.profiling.aicMetrics = metrics;
+                }
+            }
             ok = RunGeSessionBackend(manifest, spec, {}, opt, outputs, &perf);
         } else {
             fprintf(stderr, "[ERROR] unknown backend: %s\n", manifest.backend.c_str());
