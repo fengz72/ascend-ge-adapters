@@ -57,7 +57,7 @@ class Graph:
         **按 forward/build_inputs 入参序**)。从 dynamo.pbtxt 解析 Data 节点真名填入 node。
 
         node↔logical 配对靠 Data 节点的 `_source_name` 属性 (= forward 入参名, 由
-        torchair PR#3675 / core._torchair_source_name 回移补丁写入), **不靠位置**:
+        core._torchair_source_name 补丁写入), **不靠位置**:
         图 Data 序 ≠ dynamo_export 入参序 (qwen2.5-0.5b 实测图序为 actual_seq_lengths,
         input_ids, position_ids), 按位置映射会静默喂错张量。
 
@@ -130,7 +130,7 @@ def _parse_air_data_nodes(air_path) -> list:
     """从 dynamo.pbtxt 提取 op=Data 的 (index, 节点名, _source_name), 按 index 升序返回。
 
     index 序 = **图侧喂入序** (C++/ATC 按位置喂入); `_source_name` = forward 入参名
-    (`local:<name>`, 由 torchair PR#3675 或 core._torchair_source_name 回移补丁写入),
+    (`local:<name>`, 由 core._torchair_source_name 补丁写入),
     是 node↔logical 配对的唯一可靠依据 —— 实测图序 ≠ dynamo_export 入参序
     (qwen2.5-0.5b 图序为 actual_seq_lengths, input_ids, position_ids)。
 

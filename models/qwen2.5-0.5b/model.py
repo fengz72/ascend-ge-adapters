@@ -5,7 +5,7 @@ Qwen2.5-0.5b 模型适配 — 全部替换实现 + 运行期注入 + Qwen25Adapt
     1. 改 MODELING 绑定和 patch_specs 里的类名 (Qwen2* → 目标架构类名)
     2. 按模型调整 attention forward (head 配置/布局) 与注入 (rotary 表结构)
     3. 结构差异大时不继承本文件, 直接继承 core.adapter.GeModelAdapter 自写
-    机制层 (load/patch/restore) 见 core/adapter.py — 无需改动。
+    机制层 (adapt/patch/setup) 见 core/adapter.py — 无需改动。
 
 替换项 (类级 patch, 对所有实例生效):
     Qwen2ForCausalLM.forward       → 2D varlen 模型接口 (图边界, 见 _varlen_forward)
@@ -14,7 +14,7 @@ Qwen2.5-0.5b 模型适配 — 全部替换实现 + 运行期注入 + Qwen25Adapt
     Qwen2RotaryEmbedding.forward   → cos/sin 表 Gather
     Qwen2Attention.forward         → 2D varlen (FIA 基线 / PIA prefix, 由 _prefix_mode 区分)
 
-运行期注入 (实例级, 由 load 自动调用 adapter.setup, 无需手工调用):
+运行期注入 (实例级, 由 adapt 自动调用 adapter.setup, 无需手工调用):
     模式标志 _prefix_mode → 模型与每层 self_attn (forward 的 last 索引、
     attention 的 FIA/PIA 算子选择)
     图常量: atten_mask [max_seq_len, max_seq_len] bool + cos/sin 表 [1, max_seq_len, D] fp16
@@ -23,15 +23,21 @@ Qwen2.5-0.5b 模型适配 — 全部替换实现 + 运行期注入 + Qwen25Adapt
     actual_seq_lengths 不注入 — patched forward 每次调用以入参覆盖每层
     self_attn 的属性 (成为图 Data 节点, 换值/换 shape 不重编译)
 
-load 两阶段: apply_patches (类级行为替换) → setup (实例级适配: 手术 + 常量 + 标志)
+adapt 两阶段: apply_patches (类级行为替换) → setup (实例级适配: 手术 + 常量 + 标志)
 
-用法:
+用法 (管线走 core/pipeline.py; 下面是手工复现的顺序):
     import torch, torch_npu
+    from transformers import AutoModelForCausalLM
     torch_npu.npu.set_device(0)                  # 设备由调用方管理
     from model import Qwen25Adapter
-    model = Qwen25Adapter().load(path, dtype=torch.float16)         # FIA 基线
-    model = Qwen25Adapter(prefix=True).load(path)                   # PIA prefix
-    model = Qwen25Adapter(prune_tokens=ids).load(path)              # + lm_head 剪裁
+    raw = AutoModelForCausalLM.from_pretrained(path, dtype=torch.float16).npu()
+
+    adapter = Qwen25Adapter()                    # FIA 基线
+    # adapter = Qwen25Adapter(prefix=True)       # PIA prefix
+    # adapter = Qwen25Adapter(prune_tokens=ids)  # + lm_head 剪裁
+
+    inputs = adapter.build_inputs(raw, batch_size=10, seq_len=208)  # 激励, 必须在 adapt 之前
+    model = adapter.adapt(raw, max_seq_len=2048)                    # L0 → L1, 破坏性不可逆
 
     适配后接口 (即导出图的边界):
     logits = model(input_ids, position_ids, actual_seq_lengths)     # [N, vocab]
@@ -254,7 +260,7 @@ class Qwen25Adapter(GeModelAdapter):
         self.pruned_token_ids = None
 
     def setup(self, model, device='npu', max_seq_len=2048):
-        """实例级适配 (由 load/adapt 自动调用): lm_head 剪裁 + 模式标志 + 图常量注入。
+        """实例级适配 (由 adapt 自动调用): lm_head 剪裁 + 模式标志 + 图常量注入。
 
         1. lm_head vocab 剪裁 (prune_tokens 非空时) — 结构手术,
            输出维度 vocab_size → len(tokens)

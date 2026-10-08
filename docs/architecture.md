@@ -197,7 +197,7 @@ bench:                           # 性能测试口径 (core.bench / tools.sweep)
 ```
 
 - `node`：图里真名（dynamo 导出的 Data 节点，如 `arg1_1`）。
-- `logical`：语义名 = **forward 入参名**（adapter 的 `io_input_nodes` 声明）。node↔logical 由 Data 节点的 `_source_name` 属性（`local:<入参名>`，torchair PR#3675；本机 torch_npu 未带，由 `core/_torchair_source_name.py` 回移）**按名字自动配对**，不靠位置。
+- `logical`：语义名 = **forward 入参名**（adapter 的 `io_input_nodes` 声明）。node↔logical 由 Data 节点的 `_source_name` 属性（`local:<入参名>`，由 `core/_torchair_source_name.py` 写入——上游 torchair 截至 master 无此能力，机制参考 PR#3675）**按名字自动配对**，不靠位置。
 - **inputs 按图 Data 序（index 序）排列**（C++/ATC 按位置喂入），**不一定等于 forward 入参序**——qwen2.5-0.5b 实测图序是 `actual_seq_lengths, input_ids, position_ids`，forward 序是 `input_ids, position_ids, actual_seq_lengths`（见 §15）。bundle 按 forward 序记，两侧靠 `logical` 名配对（C++ `BuildInputPlans` 按 logical 匹配，不按位置）。
 - 配对不全（pbtxt 无 `_source_name`，或 `io_input_nodes` 的 logical 名与 forward 入参名不一致）时 **默认硬失败**——静默按位置映射等于喂错张量（表现为运行期 tiling 崩或精度全错，定位成本极高）。仅在 `GE_ALLOW_POSITIONAL_IO_SPEC=1` 时退回 forward 序位置映射并 WARN。
 - `shape` 中 `-1` = 动态维，`dynamic_dims` 标出哪些轴动态。**不含 file、不含具体 shape**——那是 bundle 的事。
@@ -321,26 +321,40 @@ passes:                            # 在 **ATC 编译之前**执行
 
 适配是逐模型的人类专家活（无法自动化），框架提供基类 + 模板 + 样例。
 
-### 8.1 三阶段适配协议（`GeModelAdapter`）
+### 8.1 适配协议（`GeModelAdapter`）
+
+adapter 声明三层结构（§10）里的三组契约：
 
 ```
-__init__(**params)          ← model.yaml 的 adapt.params 原样传入 (基类只存 self.params)
-load()/adapt():  apply_patches()   ← patch_specs:  类级行为替换 (怎么算)
-                 from_pretrained() (load) / 接收已加载模型 (adapt)
-                 setup(model, **setup_kwargs)  ← 实例级适配 (结构手术 + 常量注入 + 模式标志)
+① L0→L1 适配机制（有副作用，破坏性不可逆）
+   __init__(**params)        ← model.yaml 的 adapt.params 原样作为构造 kwargs（基类不解释、不保存）
+   adapt(model, **setup_kwargs):
+       apply_patches()               ← patch_specs: 类级行为替换（怎么算）
+       model.config.use_cache = False
+       setup(model, **setup_kwargs)  ← 实例级适配（结构手术 + 常量注入 + 模式标志）
+
+② L0↔L1 边界翻译器（可选：只有要门① reference 时才实现）
+   unpack_requests(inputs) → list[(ids, positions)] | None   L1 打包输入 → L0 逐请求
+   reference_columns()     → list[int] | None                L0 输出 → L1 输出（L1 收窄了列时）
+
+③ 激励与图接口契约（与 patch_specs 的 forward 签名同源）
+   build_inputs(model, **kw)    → tuple[Tensor]    激励：L0/L1/L2 三层共用同一份
+   mark_dynamic(inputs, **kw)   → tuple[Tensor]    默认原样返回
+   io_input_nodes(inputs, **kw) → list[IoNode]     logical 名须 == forward 入参名
 ```
 
 - **`__init__(**params)`**：基类收 `**params`，故**最小 adapter 不写构造函数也能被 `load_adapter` 实例化**（docs §13.8 零框架改动）。特殊键 `prune_token_file` 仅在 yaml 声明时才被配置层载入成 `prune_tokens` 列表传入；它的路径规则与 `script`/`path` 一致——**绝对路径或相对仓库根**（`setup_scripts.resolve_path`），找不到即硬失败，不回退 model_dir/CWD。
+- **`adapt` 是破坏性的**：返回的就是传入的那个对象（原地改），且**回不到 L0**——patch 是类级（进程全局），`setup` 的实例手术（lm_head 剪裁还改写了 `config.vocab_size`）不可逆。所以 L0 的 golden（`verify.reference`）必须在 `adapt` **之前**算完，这是硬约束不是风格选择（`pipeline.py` 据此排序）。框架也因此**不提供 `restore()`**：它只能回滚类属性、回滚不了实例手术，留着等于给出"L1 能退回 L0"的错误暗示。
 - **setup_kwargs 由 pipeline 提供**：`adapt(raw, max_seq_len=cfg.graph.dynamic.max_seq_len)` —— yaml 声明的 `graph.dynamic.max_seq_len` 是图常量长度（RoPE 表 / 因果 mask）的唯一事实源，不透传就会退回 adapter 默认值而与 yaml 脱节（长序列 Gather 越界）。基类 `setup(self, model, **kwargs)` 吞掉不认识的键。
 - **patch_specs**：声明 `[(target, 属性名, 新实现)]`，类级 monkey-patch，对所有实例生效。
 - **setup**：实例级——结构手术（如 lm_head 剪裁）、常量注入（mask/rope 表，长度同源于 max_seq_len）、模式标志。
-- **restore**：回滚全部 patch（备份表全局，patch 是进程级）。
+- **③ 三者同源**：`build_inputs` 的返回序、`io_input_nodes` 的 logical 名、`mark_dynamic` 标哪一维，全部由 patched forward 的签名决定——**改 forward 签名要同步这三处**。`io_input_nodes` 的 logical 名还须与 forward 入参名逐字一致，`graph.from_air` 靠图 Data 节点的 `_source_name` 配对（§5.3）。
 
 ### 8.2 设计原则（在 qwen2.5-0.5b 上验证过）
 
 1. **patch 决定行为，代码只描述结构**：被 patch 的函数之间经模块属性调用（如 `modeling_qwen2.apply_rotary_pos_emb`），实现由 patch 状态决定，不硬编码。
 2. **模式是创建时决策**：prefix 与否在 `Adapter(prefix=...)` 构造时定，`setup` 烙进实例（`_prefix_mode`），运行期不可变（翻标志会导致 eager 与已导出图行为分裂）。
-3. **状态决定行为**：`use_cache` 等能力走类属性声明（`USE_CACHE`），`load` 写入 `model.config`，patched forward 透传——单一事实源。
+3. **状态决定行为**：`use_cache` 这类能力写进 `model.config`（`adapt` 统一置 `False`——patched forward 不支持 KV cache，误开只会得到静默空 cache），patched forward 透传各层——单一事实源，不在算子调用处硬编码。
 4. **变量由 forward 路由，常量由 setup 注入**：`actual_seq_lengths` 是运行期变量，由 patched forward 每次以入参覆盖每层属性（成为图 Data 节点）；mask/rope 表是常量，由 setup 注入为 buffer（frozen_parameter 成图常量）。
 5. **模型手术归 model.py**：lm_head 剪裁等结构手术放模型文件（YAGNI：等出现第二个需要相同手术的具体模型，再上提 common）。
 
@@ -518,18 +532,21 @@ class Graph: path; io_spec
         # 解析 dynamo.pbtxt 的 Data 节点 (index/name/_source_name) → 按 _source_name 与
         # inputs 的 logical 名配对 → io_spec.inputs 按 index 序 (图喂入序) 落盘
 
-# adapter.py  (现有 GeModelAdapter)
+# adapter.py  (现有 GeModelAdapter) — 三组契约见 §8.1
 class GeModelAdapter:
-    def load(self, model_path, dtype, **setup_kwargs) -> model
-    def patch_specs(self); def setup(self, model, **kw)
-    def apply_patches(self); def restore(self)
-    def build_inputs(self, model, **kw); def mark_dynamic(self, inputs, **kw)
+    MODELING                                     # 子类指定 modeling 模块
+    # ① L0→L1 适配机制 (破坏性不可逆; L0 golden 必须在 adapt 之前算)
+    def adapt(self, model, **setup_kwargs) -> model      # 原地改, 返回同一对象
+    def patch_specs(self); def apply_patches(self); def setup(self, model, **kw)
+    # ② L0↔L1 边界翻译器 (**可选**: 默认 None → verify WARN 跳过门①, 见 §10)
+    def unpack_requests(self, inputs) -> list[(ids, positions)] | None   # L1 打包 → L0 逐请求
+    def reference_columns(self) -> list[int] | None      # L1 收窄了输出时取哪些列 (如 lm_head prune)
+    # ③ 激励与图接口契约 (与 patch_specs 的 forward 签名同源)
+    def build_inputs(self, model, **kw) -> tuple[Tensor]  # 激励: 三层共用; 在 adapt 之前调
+    def mark_dynamic(self, inputs, **kw)
     def io_input_nodes(self, inputs, **kw) -> list[IoNode]   # forward 序; logical 名须 == forward 入参名
-    # 原版参考比对的两个**可选**钩子 (默认 None → verify WARN 跳过, 见 §10)
-    def unpack_requests(self, inputs) -> list[(ids, positions)] | None   # 打包图输入 → 逐请求
-    def reference_columns(self) -> list[int] | None      # 输出被剪裁时取哪些列 (如 lm_head prune)
 
-# _torchair_source_name.py  (回移 torchair PR#3675)
+# _torchair_source_name.py  (给 Data 节点写 _source_name; 机制参考 torchair PR#3675)
 def native_support() -> bool      # 已装 torchair 是否原生支持 ge.Data(source_name=...)
 def enable() -> bool            # 未支持时打补丁 (幂等); 导出前由 GeExporter.trace 调用
 
@@ -598,7 +615,7 @@ ascend-ge-adapters/
 ├── core/                          # 通用框架 (Python)
 │   ├── source.py adapter.py exporter.py graph.py
 │   ├── setup_scripts.py backend.py verify.py config.py bench.py pipeline.py
-│   └── _torchair_source_name.py   # 回移 torchair PR#3675: Data 节点带 forward 入参名
+│   └── _torchair_source_name.py   # 给 Data 节点写 _source_name (= forward 入参名)
 ├── runtime/                       # 通用执行运行时 (C++)
 │   ├── main.cpp CMakeLists.txt build.sh
 │   ├── backends/{acl_backend, gesession_backend}.{h,cpp}   # 无 Backend 基类, main 按 manifest 分发
@@ -668,7 +685,7 @@ ascend-ge-adapters/
 
 - ~~**io_spec 的 node↔logical 配对**~~ **已实测定论（阶段二，OM 运行 + golden 比对验证）**：pbtxt 的 Data 节点带 `index` 属性，按 index 排序得到的是**图侧喂入序**，但它 **≠ dynamo_export 入参序**。Qwen2.5-0.5B 实测：`arg1_1(index0)=actual_seq_lengths, arg4_1(index1)=input_ids, arg7_1(index2)=position_ids`，而 forward 入参序是 `(input_ids, position_ids, actual_seq_lengths)`。
   - 证据：按 forward 序喂 OM → `ApplyRotaryPosEmb` tiling 崩（rope Gather 读到 asl，cos `[2,1,64]` vs q `[32,14,64]`，报 "all input dim1 must equal"；旧 `atb/acl_infer` 同样崩，排除运行时嫌疑）；按图序喂 → 执行通过且与 eager golden 比对 PASS（cosine 0.99996，om_acl 与 ge_session 输出逐字节一致）。
-  - **解法（已落地）**：torchair 上游 [PR#3675](https://gitcode.com/Ascend/torchair/pull/3675) 给 Data 节点加了 `_source_name` 属性（dynamo 的 `LocalSource/GlobalSource` → `local:<forward 入参名>`）。本机 torch_npu 2.9.0.post2 的内置 torchair 还没带，故 `core/_torchair_source_name.py` 按同一机制回移（patch `_npu_backend` 采集 `arg_pos_to_source` + `parse_input` 按 `data_index` 取名 + `ge.Data` 写属性；上游原生支持时自动 no-op，异常只 WARN）。`graph.from_air` 据此**按名字自动配对**并输出图序 io_spec —— 无需人工声明、无需探测。
+  - **解法（已落地）**：`core/_torchair_source_name.py` 给 Data 节点写 `_source_name` 属性（dynamo 的 `LocalSource/GlobalSource` → `local:<forward 入参名>`），机制参考 torchair 上游 [PR#3675](https://gitcode.com/Ascend/torchair/pull/3675)——但**截至 torchair master（gitcode/GitHub 双镜像核对）该能力尚未合入**，torch_npu 2.9.0.post2 / 2.10.0.post2 内置的 torchair 都没有，故本仓库自行实现：patch `_npu_backend` 用 `_try_get_metadata_from_dynamo` 采集 `arg_pos_to_source`，patch `GeConcreteGraph.parse_input` 按 `self.graph.num_inputs` 查表并写进 `data.node.attr`（`parse_input` 本身 `return data`，故无需再包 `ge.Data`）。上游哪天原生支持（`ge.Data` 带 `source_name` 形参）则自动 no-op，异常只 WARN → 节点无 `_source_name` → `graph.from_air` 硬失败兜底。torch 2.9/2.10 双兼容（2.10 给 `_try_get_metadata_from_dynamo` 加了必填的 `full_args_descs`，按签名探测）。`graph.from_air` 据此**按名字自动配对**并输出图序 io_spec —— 无需人工声明、无需探测。
   - 对齐关系（实测）：`parse_input` 的 `data_index = self.graph.num_inputs` 与 `_try_get_metadata_from_dynamo` 返回的 `arg_pos_to_source` 下标一一对应（参数/buffer/符号 shape 各占一位；它们后续被冻结成 Const 或在图里重新编号，但 parse_input 时刻是对齐的）。注意必须在 `_npu_backend(gm, ...)` 处采集——`_NpuFxCompiler.__call__` 拿到的 gm 已无 dynamo 元数据（`_try_get_metadata_from_dynamo` 返回 None）。
   - 注：pbtxt 格式是 `op:"Data"`（非 op_type），且因 frozen 权重内嵌可达 GB 级，用 grep 流式提取。旧 `atb` config 的 `arg1_1→act` 是**对的**（此前文档判其为 bug 有误）。
 - ~~**动态 shape 的 ATC 机制**~~ **已定论（阶段二实测）**：动态图**不需要** `--dynamic_batch_size`/`--dynamic_dims` 分档——`OmAclBackend.compile` 检测到 io_spec 有动态维就不传 `--input_shape`，GE 运行期自行特化，同一 OM 可跨 shape 复用（T=32 导出的 OM 跑 T=2080 成功，见 §6）。分档只作为**可选优化**（减少运行期特化开销），当前未实现。`graph.dynamic.max_seq_len` 与 ATC 无关，是图常量长度（§6）。

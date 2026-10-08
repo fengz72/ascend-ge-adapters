@@ -1,77 +1,74 @@
-"""
-GE 模型适配基类 — 统一加载流程 + patch/restore 机制
+"""GE 模型适配基类 — 三层结构中 L0→L1 的机制与 L1→L2 的契约。
 
-子类约定 (替换实现写在各模型的 model.py 里):
-    1. MODELING    — transformers 的 modeling 模块
-    2. patch_specs — [(target, 属性名, 新实现)] 映射表
+三层 (docs §10):
+    L0 原模型     source.load_source()          golden = verify.reference (逐请求原版 HF)
+    L1 patched    adapter.adapt(raw)            golden = verify.golden (NPU eager)
+    L2 图         exporter.trace + Graph.from_air  golden = C++ runtime 输出
+两道精度门就是两条层边界: compare_reference (L1 vs L0) / compare_bundle (L2 vs L1)。
 
-注意: 替换实现必须是模型文件里的模块级普通函数, 第一个参数是
-被替换的 transformers 实例 (RMSNorm/attention 层), 不能写成
-GeModelAdapter 的实例方法, 否则 self 错绑。
+本类声明三组契约:
+    ① L0→L1 适配机制    patch_specs / setup / adapt      有副作用, 进程级, **破坏性不可逆**
+    ② L0↔L1 边界翻译器  unpack_requests / reference_columns
+                        可选 — L0 的接口 ≠ L1 (L0 吃逐请求 HF 形态, L1 吃打包 varlen;
+                        L1 还可能收窄了输出), 只有要门① 时才需实现
+    ③ 激励与图接口      build_inputs / mark_dynamic / io_input_nodes
+                        三者与 patch_specs 的 forward 签名**同源**: 改 forward 签名要同步这三处
+                        (io_input_nodes 的 logical 名还须与 forward 入参名逐字一致 —
+                         graph.from_air 靠图 Data 节点的 _source_name 配对)
 
-monkey-patch 作用于 modeling 模块的类/函数, 是进程级全局的;
-不同 modeling 模块的模型可共存, 同一 modeling 模块的实例共享 patch。
+注意: 替换实现必须是模型文件里的模块级普通函数, 第一个参数是被替换的 transformers 实例
+(RMSNorm/attention 层), 不能写成 GeModelAdapter 的实例方法, 否则 self 错绑。
 
-torch/transformers 只在 load() 里延迟导入 — 基类本身 (patch/setup/adapt) 不依赖它们,
-故 `import core.adapter` 不需要 NPU 栈 (离线单测/CI 可直接实例化 adapter)。
+L0 与 L1 **不能在同进程共存**: patch 作用于 modeling 模块的类/函数, 是进程级全局的;
+setup 的实例手术 (如 lm_head 剪裁) 也不可逆。所以 L0 的 golden 必须在 adapt **之前**算完
+(pipeline 据此排序; 硬约束见 verify.reference 的 docstring)。
+
+torch/transformers 不在本模块导入 — 基类不依赖 NPU 栈, 故 `import core.adapter` 可在
+没装 torch_npu 的机器上做离线单测 (docs §14)。
 """
 
 
 class GeModelAdapter:
     """GE 适配基类。
 
-    用法:
-        class Qwen25Adapter(GeModelAdapter):
-            MODELING = modeling_qwen2
-            def patch_specs(self): ...
-
-        model = Qwen25Adapter().load(path, dtype=torch.float16)
+    用法 (= pipeline 的实际路径):
+        adapter = Qwen25Adapter(prefix=True)
+        raw     = load_source(cfg, model_dir, dtype, device)         # L0
+        inputs  = adapter.build_inputs(raw, **input_kwargs)          # 激励 (三层共用)
+        ref     = verify.reference(raw, adapter, inputs)             # L0 golden, 必须在 adapt 前
+        model   = adapter.adapt(raw, max_seq_len=...)                # L1
     """
 
     MODELING = None   # 子类指定: transformers.models.<arch>.modeling_<arch>
-    USE_CACHE = False  # 能力声明: load 写入 model.config.use_cache, patched forward 透传各层
-                       # (真正支持 KV cache 需结构不同的 forward, 非 翻标志 即得)
 
     def __init__(self, **params):
-        """params = model.yaml 的 adapt.params (子类按需显式取用; 基类只存不解释)。
+        """params = model.yaml 的 adapt.params, 由 load_adapter 直接作为构造 kwargs 传入。
 
         基类收 **params 是为了让 load_adapter 用同一套调用约定实例化任意 adapter —
         最小 adapter 不写 __init__ 也能被加载 (docs §13.8 "onboarding 零框架改动")。
+        子类应显式声明自己接受的键 (如 Qwen25Adapter(prefix=..., prune_tokens=...));
+        基类不解释、不保存。
         """
-        self.params = params
-        self.model = None
-        self._originals = {}
 
-    def load(self, model_path, dtype=None, **setup_kwargs):
-        """便捷入口: from_pretrained 加载 + adapt (form ① 模型名/权重目录)。
-
-        设备由调用方管理 (先 torch_npu.npu.set_device(n)), 模型加载到当前 NPU。
-        dtype 缺省 torch.float16; use_cache 是能力声明 (USE_CACHE 类属性), 不做参数 —
-        默认 patched attention 不支持 KV cache, 误开只会得到静默空 cache。
-        **setup_kwargs 透传给 setup (如 max_seq_len)。
-        """
-        import torch
-        from transformers import AutoModelForCausalLM
-
-        dtype = torch.float16 if dtype is None else dtype
-        model = AutoModelForCausalLM.from_pretrained(model_path, dtype=dtype).npu()
-        return self.adapt(model, **setup_kwargs)
+    # ---- ① L0→L1 适配机制 (有副作用: 类级 patch 进程全局, 实例手术不可逆) ----
 
     def adapt(self, model, **setup_kwargs):
-        """对已加载模型应用 patch + setup (source 加载后调用; 模型需已在 NPU)。
+        """L0 → L1: 应用 patch + setup, 返回适配后的模型 (**就是传入的那个对象**, 原地改)。
 
-        与 load 的区别: load 自带 from_pretrained (form ①); adapt 接收任意来源
-        已加载的模型 (form ② importlib 实例化等), 只做适配。
+        与 load_source 的分工: load_source 负责加载 (来路① from_pretrained + device),
+        adapt 接收任意来源已加载的模型 (来路② importlib 实例化等), 只做适配。
+        **破坏性**: 调用后 model 回不到 L0 (见模块 docstring)。
         """
         self.apply_patches()
-        self.model = model
-        self.model.eval()
-        self.model.config.use_cache = self.USE_CACHE
-        self.setup(self.model, **setup_kwargs)
-        return self.model
+        model.eval()
+        # patched forward 不支持 KV cache (真正支持需结构不同的 forward, 非翻标志即得);
+        # 误开只会得到静默空 cache, 故在此统一关掉
+        model.config.use_cache = False
+        self.setup(model, **setup_kwargs)
+        return model
 
     def setup(self, model, **kwargs):
-        """实例级适配钩子 (默认 no-op), 由 load/adapt 在权重加载后自动调用。
+        """实例级适配钩子 (默认 no-op), 由 adapt 在 patch 之后自动调用。
 
         做"加载后、可用/可 trace 前"需要的全部实例改造: 结构手术 (如 lm_head
         剪裁、量化)、常量注入 (mask/预计算表)、模式标志等。运行期变量
@@ -82,10 +79,36 @@ class GeModelAdapter:
         """返回 [(target, 属性名, 新实现)], 子类必须实现。"""
         raise NotImplementedError
 
-    # ---- 输入接口 (模型专属: 该模型适配后的图输入怎么构造) ----
+    def apply_patches(self):
+        """应用 patch_specs 全部替换 (幂等: 重复 setattr 同一个函数无副作用)。"""
+        for target, name, fn in self.patch_specs():
+            setattr(target, name, fn)
+
+    # ---- ② L0↔L1 边界翻译器 (可选: 只有要门① reference 时才实现) ----
+
+    def unpack_requests(self, inputs):
+        """L1 输入 (打包) → L0 输入 (逐请求): list[(input_ids 1D, position_ids 1D)],
+        顺序 = 输出的行序。
+
+        适配后的图接口通常是打包/变形过的 (varlen 拼接、prefix 内嵌、mask 省略…),
+        原版模型吃不进去; 只有 adapter 知道怎么还原成"一条请求一次前向"的形态。
+        返回 None (默认) = 该 adapter 不支持门①, verify 会 WARN 并跳过。
+        """
+        return None
+
+    def reference_columns(self):
+        """L0 输出 → L1 输出: L1 收窄了输出时 (如 lm_head 词表剪裁) 返回参考输出要取的
+        列下标 list[int]; None (默认) = 全词表逐列比对。"""
+        return None
+
+    # ---- ③ 激励与图接口契约 (与 patch_specs 的 forward 签名同源) ----
 
     def build_inputs(self, model, **input_kwargs):
-        """生成一组输入张量 (顺序 = patched forward 入参序), 子类实现。"""
+        """生成一组输入张量 (顺序 = patched forward 入参序), 子类实现。
+
+        产物是**激励**: L0 (reference)、L1 (golden)、L2 (trace/bundle) 三层共用同一份,
+        故必须在 adapt 之前用 L0 模型生成 (读的是未手术的权重形状)。
+        """
         raise NotImplementedError
 
     def mark_dynamic(self, inputs, **input_kwargs):
@@ -100,33 +123,3 @@ class GeModelAdapter:
         (= forward 入参名), graph.from_air 据此自动完成 node↔logical 配对与图序排列。
         """
         raise NotImplementedError
-
-    # ---- 原版参考比对 (可选能力: 证明"适配"本身正确, 不只是"编译"正确) ----
-
-    def unpack_requests(self, inputs):
-        """把图输入拆回**逐请求**的 (input_ids, position_ids) — 供原版 HF 参考前向。
-
-        适配后的图接口通常是打包/变形过的 (varlen 拼接、prefix 内嵌、mask 省略…),
-        原版模型吃不进去; 只有 adapter 知道怎么还原成"一条请求一次前向"的形态。
-        返回 None (默认) = 该 adapter 不支持参考比对, verify 会 WARN 并跳过。
-
-        返回: list[(input_ids 1D, position_ids 1D)], 顺序 = 输出的行序。
-        """
-        return None
-
-    def reference_columns(self):
-        """适配收窄了输出时 (如 lm_head 词表剪裁), 返回参考输出要取的列下标 list[int];
-        None (默认) = 全词表逐列比对。"""
-        return None
-
-    def apply_patches(self):
-        """应用 patch_specs 全部替换 (幂等, 重复调用不覆盖备份)。"""
-        for target, name, fn in self.patch_specs():
-            self._originals.setdefault((target, name), getattr(target, name))
-            setattr(target, name, fn)
-
-    def restore(self):
-        """回滚全部 patch 为 transformers 原始实现。"""
-        for (target, name), original in self._originals.items():
-            setattr(target, name, original)
-        self._originals.clear()

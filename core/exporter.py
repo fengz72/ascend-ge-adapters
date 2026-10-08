@@ -1,7 +1,7 @@
 """
 GE 导出基类 — PyTorch → AIR 的通用管线
 
-管线: adapter.load/adapt → build_inputs → golden → trace (mark_dynamic
+管线: adapter.adapt → build_inputs → golden → trace (mark_dynamic
     → dynamo_export, frozen_parameter + dynamic=True) → 校验
 图的边界由模型文件的 patched forward 决定 (适配后 model(...) 即图接口)。
 子类钩子 (模型相关):
@@ -41,7 +41,7 @@ class GeExporter:
         """adapter.mark_dynamic + dynamo_export → air_path (model/inputs 已就绪)。
 
         单独拆出以便 pipeline 在 trace 前插入 golden (eager) —— docs §10。
-        导出前启用 `_source_name` 回移补丁 (core/_torchair_source_name.py), 让图的 Data
+        导出前启用 `_source_name` 补丁 (core/_torchair_source_name.py), 让图的 Data
         节点带上 forward 入参名 — graph.from_air 据此自动完成 node↔logical 配对。
         """
         from core import _torchair_source_name
