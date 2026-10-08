@@ -29,7 +29,7 @@ platforms:
 
   a5:
     soc: Ascend950PR_9589
-    aicore_num: null                 # 待 A5 实测后填 (null = 不限核)
+    aicore_num: "16|32"                 # 待 A5 实测后填 (null = 不限核)
     custom_ops: []                   # A5 的 prefix 算子未就绪 → 阶段 1 只跑 baseline
                                      # (baseline 两平台同一个 FIA npu_fused_infer_attention_score);
                                      # 算子就绪后在此挂安装脚本, 并给 model.py 加 (A5, prefix) 分支
