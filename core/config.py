@@ -352,6 +352,84 @@ def export_name(cfg: ModelConfig) -> str:
     return name
 
 
+# ==================== 构建指纹 (复用磁盘产物前的一致性校验) ====================
+#
+# --skip export / --skip compile 会复用磁盘上的 AIR/io_spec/bundle/OM。产物名 (export_name)
+# 已编码 platform+prefix+prune, 故**换平台或换形态不会误复用** —— 但还有一批量不进名字,
+# 改了它们而复用旧产物就是静默错配:
+#     max_seq_len   图常量长度 (RoPE 表 / 因果 mask) → 改它等于换了张图
+#     inputs.*      bundle 的具体 shape 与 .bin 数据
+#     soc/aicore_num/backend.type   OM 的编译目标与限核
+# 指纹按**产物**存 (<air>/<name>.build.json, 与 AIR 同名同目录), 不是存进 io/manifest.json ——
+# manifest 是单份且每次运行覆盖, A/B 交替时会拿 B 的指纹去校验 A 的产物, 误拒。
+
+def build_fingerprint(cfg: ModelConfig, dtype=None) -> dict:
+    """决定磁盘产物能否复用的全部配置事实 (export_name 已编码的部分也一并记, 便于报错时对照)。"""
+    return {
+        "export_name": export_name(cfg),
+        "platform": cfg.platform,
+        "soc": cfg.model.soc,
+        "adapt_params": dict(cfg.adapt.params),
+        "max_seq_len": cfg.graph.dynamic.max_seq_len,
+        "inputs": {"batch_size": cfg.inputs.batch_size, "seq_len": cfg.inputs.seq_len,
+                   "prefix_len": cfg.inputs.prefix_len, "seed": cfg.inputs.seed},
+        "backend": {"type": cfg.backend.type, "aicore_num": cfg.backend.aicore_num},
+        "dtype": str(dtype) if dtype is not None else None,
+    }
+
+
+def build_record_path(air_path) -> str:
+    """<air>/<name>.air → <air>/<name>.build.json (与产物同名同目录, 故天然按产物隔离)。"""
+    return os.path.splitext(air_path)[0] + ".build.json"
+
+
+def write_build_record(air_path, cfg: ModelConfig, dtype=None) -> str:
+    """导出时落指纹 (+ git commit / 时间戳, 便于事后归因), 返回记录路径。"""
+    rec = build_fingerprint(cfg, dtype)
+    try:
+        import datetime
+        import subprocess
+        rec["git_commit"] = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()
+        rec["timestamp"] = datetime.datetime.now().isoformat(timespec="seconds")
+    except Exception:
+        pass                                        # 归因信息收集不到就跳过, 不影响校验
+    path = build_record_path(air_path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(rec, f, indent=2, ensure_ascii=False)
+    return path
+
+
+def check_build_record(air_path, cfg: ModelConfig, dtype=None, what="AIR/io_spec"):
+    """复用磁盘产物前校验指纹; 不一致 → **硬失败** (GE_ALLOW_STALE_ARTIFACT=1 放行并 WARN)。
+
+    为什么不 WARN 了事: 复用错产物表现为 tiling 崩或精度全错, 且**不指向真因** —— 与
+    graph.from_air 拒绝按位置硬配 io_spec 是同一类静默错误, 宁可当场失败。
+    记录缺失 (产物早于本机制) 只 WARN: 无从校验, 但不应堵死既有产物。
+    """
+    path = build_record_path(air_path)
+    if not os.path.exists(path):
+        print(f"[config][WARN] {what} 无构建指纹 ({os.path.basename(path)} 不存在) → 无从校验"
+              f"是否仍与当前配置一致 (产物早于指纹机制? 重跑导出即可补上)")
+        return
+    with open(path) as f:
+        old = json.load(f)
+    new = build_fingerprint(cfg, dtype)
+    diff = {k: (old.get(k), v) for k, v in new.items() if old.get(k) != v}
+    if not diff:
+        return
+
+    detail = "\n".join(f"    {k}: 盘上={a!r} → 当前={b!r}" for k, (a, b) in diff.items())
+    msg = (f"{what} 的构建指纹与当前配置不一致 — 复用它会静默错配:\n{detail}\n"
+           f"  产物: {air_path}\n"
+           f"  指纹: {path}\n"
+           f"→ 去掉相应的 --skip 重新构建; 确知无影响可 GE_ALLOW_STALE_ARTIFACT=1 放行")
+    if os.environ.get("GE_ALLOW_STALE_ARTIFACT") != "1":
+        raise RuntimeError(msg)
+    print(f"[config][WARN] GE_ALLOW_STALE_ARTIFACT=1 → 放行陈旧产物\n{msg}")
+
+
 def load_adapter(cfg: ModelConfig):
     """importlib 从 <model_dir>/model.py 加载 adapt.adapter_class 并按 params 实例化。
 
@@ -408,6 +486,10 @@ def write_manifest(cfg: ModelConfig, graph_path, om_path, io_spec_path,
         "io_spec": rel(io_spec_path),
         "device": device,
         "bundle": rel(bundle_path),
+        # 自证平台 (C++ 侧 Manifest::Load 逐键读, 忽略未知字段 → 加键不破坏运行时)。
+        # 权威指纹在 <air>/<name>.build.json (check_build_record), 这里只为报告/人工归因。
+        "platform": cfg.platform,
+        "soc": cfg.model.soc,
     }
     io_dir = os.path.join(base, "io")
     os.makedirs(io_dir, exist_ok=True)

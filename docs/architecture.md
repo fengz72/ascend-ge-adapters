@@ -67,7 +67,8 @@ Python 不碰执行，C++ 不碰适配——靠**图 + 配置 + 验证数据**�
 |---|---|---|---|---|
 | **io_spec** | `air/<name>.io_spec.json` | 图产物（与图同生命周期） | 图接口：node/logical/dtype/format + **动态维标记(-1)**；**不含 file、不含具体 shape** | ATC 编译、C++ 映射输入序 |
 | **bundle** | `io/bundle.json` | 验证产物（一组具体输入） | 该输入集的**具体 shape + file 路径** + golden 引用 + provenance(seed 等) | C++ 分配/喂 .bin、Python 比对 |
-| **manifest** | `io/manifest.json` | 部署/运行时契约 | backend、graph/om 路径、io_spec 引用、device、pass vendor | C++ 运行时入口 |
+| **manifest** | `io/manifest.json` | 部署/运行时契约 | backend、graph/om 路径、io_spec 引用、device、platform/soc | C++ 运行时入口 |
+| **构建指纹** | `air/<name>.build.json` | 图产物（与图同生命周期） | 产出该图时的全部配置事实（platform/soc/adapt_params/max_seq_len/inputs/backend/dtype + git/时间戳） | `--skip export` 复用前的一致性校验（§5.5.1） |
 
 - **Graph**：AIR。后端只认 io_spec，不关心图怎么来的。
 - **两层 shape**（关键，见 §6）：io_spec 记**动态维声明**，bundle 记**具体形状**——前者驱动编译，后者驱动 .bin 加载。
@@ -80,9 +81,10 @@ Python 不碰执行，C++ 不碰适配——靠**图 + 配置 + 验证数据**�
 models/qwen2.5-0.5b/
   model.py                       # 人工: Adapter (模型适配, 唯一模型专属代码)
   config/model.yaml              # 人工: 声明 (唯一手写配置)
-  air/qwen2.5-0.5b.air           # 生成: 图
-  air/qwen2.5-0.5b.io_spec.json  # 生成: 图接口契约 (动态维, 无 file/具体 shape)
-  om/qwen2.5-0.5b.om             # 生成: 编译产物 (om_acl 后端)
+  air/<name>.air                 # 生成: 图          (<name> = export_name: 模型+平台+形态)
+  air/<name>.io_spec.json        # 生成: 图接口契约 (动态维, 无 file/具体 shape)
+  air/<name>.build.json          # 生成: 构建指纹 (--skip export 复用前校验, 见 §5.5.1)
+  om/<name>.om                   # 生成: 编译产物 (om_acl 后端)
   io/manifest.json               # 生成: C++ 运行时契约 (运行期入口)
   io/                            # 生成: 一次运行的输入/输出数据 (跑完即弃, 可重跑再生)
     bundle.json                  #   具体 shape + file + golden 引用 + provenance
@@ -248,25 +250,50 @@ C++ 用 bundle 的**具体 shape** 分配内存、按 `file` 读 .bin；按 **lo
 ```json
 {
   "backend": "om_acl",
-  "graph_path": "air/qwen2.5-0.5b.air",
-  "om_path": "om/qwen2.5-0.5b.om",
-  "io_spec": "air/qwen2.5-0.5b.io_spec.json",
+  "graph_path": "air/qwen2.5-0.5b-ascend910_9382-prune.air",
+  "om_path": "om/qwen2.5-0.5b-ascend910_9382-prune.om",
+  "io_spec": "air/qwen2.5-0.5b-ascend910_9382-prune.io_spec.json",
   "device": 0,
-  "bundle": "io/bundle.json"
+  "bundle": "io/bundle.json",
+  "platform": "ascend910_9382",
+  "soc": "Ascend910_9382"
 }
 ```
 
 - `device` 来自**运行期的 `--device`**（必填），不来自 model.yaml——manifest 是每次生成的产物，把当次用哪张卡记进去正合适；C++ 侧 `--device` 仍可覆盖（换卡重跑不必重新生成 manifest）。
 - `bundle` 是 C++ 运行时**唯一**的输入来源：具体 shape + .bin 路径都在里面，dtype/format/node 取自 io_spec（不重复声明）。
+- `platform`/`soc` 只为**自证与人工归因**（C++ 侧 `Manifest::Load` 逐键读、忽略未知字段，故加键不破坏运行时）；权威的一致性校验在下面的构建指纹。
 - C++ 读取链：`manifest.json` → backend/路径/io_spec/device → 输入来自 `bundle.json` → 喂入、执行、取输出。
+
+### 5.5.1 构建指纹 `<air>/<name>.build.json`（生成，复用产物前的一致性校验）
+
+`--skip export` / `--skip compile` 会复用磁盘上的 AIR/io_spec/bundle/OM。产物名（`export_name`）已编码 **platform + prefix + prune**，故换平台或换形态不会误复用；但还有一批量不进名字，改了它们而复用旧产物就是**静默错配**：
+
+| 量 | 改了会怎样 |
+|---|---|
+| `graph.dynamic.max_seq_len` | 图常量长度（RoPE 表 / 因果 mask）变 → 等于换了张图 |
+| `inputs.*`（batch/seq/prefix_len/seed） | bundle 的具体 shape 与 `.bin` 数据变 |
+| `soc` / `aicore_num` / `backend.type` | OM 的编译目标与限核变 |
+
+所以 `config.write_build_record` 在导出时把这些（+ `adapt_params` / `dtype` / git commit / 时间戳）落成**与 AIR 同名同目录**的 `.build.json`，`config.check_build_record` 在 `--skip export` 复用前逐键比对：
+
+- 不一致 → **硬失败**并打印逐键 diff（`盘上=X → 当前=Y`）。不 WARN 了事是因为复用错产物表现为 tiling 崩或精度全错且**不指向真因**——与 `graph.from_air` 拒绝按位置硬配 io_spec 是同一类静默错误。
+- 逃生口 `GE_ALLOW_STALE_ARTIFACT=1` → 放行并 WARN（同 `GE_ALLOW_POSITIONAL_IO_SPEC` 的套路）。
+- 记录缺失（产物早于本机制）→ 只 WARN，不堵死既有产物。
+
+**为什么按产物存而不是写进 `io/manifest.json`**：manifest 是单份且每次运行覆盖，A/B 交替时会拿 B 的指纹去校验 A 的产物 → 误拒。sidecar 与 AIR 同名，天然按产物隔离。
+
+**OM 不另设指纹**：它的身份已由文件名覆盖——`_existing_om` 按 `<图名>+限核后缀` 匹配，图名含 platform+prefix+prune，后缀含 `aicore_num`，而 soc 与 platform 一一对应；剩下的 `max_seq_len`/`inputs.*` 由 AIR 侧的校验兜住（OM 是从 AIR 编的，`--skip export` 时那道校验先触发）。
 
 ### 5.6 派生关系
 
 ```
 exporter.to_graph()   → air/<name>.air
+config.write_build_record → 构建指纹 (platform/soc/adapt_params/max_seq_len/inputs/backend/dtype)
+                        → air/<name>.build.json   (--skip export 复用前由 check_build_record 校验)
 graph.from_air        → 解析图 I/O 节点 + exporter 声明的 logical 序 → air/<name>.io_spec.json
 verify.save_bundle()  → 具体 shape/file + golden + provenance → io/bundle.json
-pipeline 编排完        → 汇总 backend/路径/io_spec 引用/device/vendor → io/manifest.json
+pipeline 编排完        → 汇总 backend/路径/io_spec 引用/device/platform → io/manifest.json
 ```
 
 ## 6. 动态 shape 端到端策略（OM 路径最大技术风险）
@@ -553,8 +580,14 @@ def resolve_platform(cfg, device=None, platform=None) -> ModelConfig
         # 匹配不到 / 一个 soc 多个 profile / 既无 device 又无 platform → 硬失败
 def load_adapter(cfg) -> GeModelAdapter        # importlib 从 <model_dir>/model.py 取 adapter_class
 def export_name(cfg) -> str                    # 产物名 = 模型名 + 平台 + 形态后缀 (-<platform>/-prefix/-prune)
+def build_fingerprint(cfg, dtype=None) -> dict   # 决定产物能否复用的全部配置事实
+def build_record_path(air_path) -> str           # <air>/<name>.air → <air>/<name>.build.json
+def write_build_record(air_path, cfg, dtype=None) -> path   # 导出时落指纹 (+git/时间戳)
+def check_build_record(air_path, cfg, dtype=None, what="AIR/io_spec")
+                                                 # 复用前逐键比对; 不一致硬失败
+                                                 # (GE_ALLOW_STALE_ARTIFACT=1 放行; 记录缺失只 WARN)
 def write_manifest(cfg, graph, om, io_spec, bundle, base_dir, device) -> path
-                                                 # 写 io/manifest.json; device 必填
+                                                 # 写 io/manifest.json; device 必填; 含 platform/soc
 
 # source.py  (YAGNI: 只有 torch 一条加载路径; 第二种来路落地再抽 ABC)
 def load_source(cfg, model_dir, dtype, device) -> torch.nn.Module   # device 必填

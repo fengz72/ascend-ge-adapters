@@ -17,8 +17,8 @@ import os
 import torch
 import torch_npu
 
-from core.config import (export_name, load_config, load_adapter, resolve_platform,
-                         write_manifest)
+from core.config import (check_build_record, export_name, load_config, load_adapter,
+                         resolve_platform, write_build_record, write_manifest)
 from core.source import load_source
 from core.graph import Graph, IoNode, IoSpec
 from core.exporter import GeExporter
@@ -84,6 +84,9 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     ref_report = None
 
     if "export" in skip:
+        # 复用磁盘产物前先校验构建指纹: export_name 只编码 platform+prefix+prune,
+        # max_seq_len/inputs.*/soc/aicore_num 改了而复用旧 AIR 就是静默错配 (docs §5.2)
+        check_build_record(air_path, cfg, dtype)
         graph = Graph(path=air_path, io_spec=IoSpec.from_json(io_spec_path))
         bundle_path = os.path.join(bundle_dir, "bundle.json")
         bundle_path = bundle_path if os.path.exists(bundle_path) else None
@@ -105,6 +108,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
             ref_report = verify.compare_reference(
                 golden, reference, path=os.path.join(bundle_dir, "reference.json"))
         air_path = exporter.trace(model, inputs, **input_kwargs)
+        write_build_record(air_path, cfg, dtype)      # 与 AIR 同名的 .build.json (--skip export 时校验)
 
         in_nodes = adapter.io_input_nodes(inputs, **input_kwargs)
         out_nodes = [_output_node(golden)]
@@ -162,6 +166,11 @@ def _compile(cfg, graph, base_dir, skip):
 
     --skip compile 时**复用磁盘上已有的 OM** (否则 manifest.om_path 会是 null, run 阶段
     直接失败 — 而"复用 AIR/OM 只跑 runtime"正是 --skip compile 的用途)。
+
+    OM 不另设构建指纹: 它的身份已由**文件名**覆盖 —— _existing_om 按 <图名>+限核后缀匹配,
+    图名含 platform+prefix+prune (export_name), 后缀含 aicore_num; 而 soc 与 platform 一一
+    对应。剩下的 max_seq_len/inputs.* 由 AIR 侧的 check_build_record 兜住 (OM 是从 AIR 编的,
+    --skip export 时那道校验先触发)。
     """
     if "compile" in skip:
         if cfg.backend.type != "om_acl":
