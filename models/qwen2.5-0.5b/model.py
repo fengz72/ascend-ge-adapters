@@ -17,7 +17,7 @@ Qwen2.5-0.5b 模型适配 — 全部替换实现 + 运行期注入 + Qwen25Adapt
 运行期注入 (实例级, 由 adapt 自动调用 adapter.setup, 无需手工调用):
     模式标志 _prefix_mode → 模型与每层 self_attn (forward 的 last 索引、
     attention 的 FIA/PIA 算子选择)
-    图常量: atten_mask [max_seq_len, max_seq_len] bool + cos/sin 表 [1, max_seq_len, D] fp16
+    图常量: atten_mask [max_seq_len, max_seq_len] bool + cos/sin 表 [max_seq_len, D] fp16
             (max_seq_len 由 pipeline 从 cfg.graph.dynamic.max_seq_len 透传)
     lm_head vocab 剪裁 (prune_tokens 非空时) — 输出维度 vocab_size → len(tokens)
     actual_seq_lengths 不注入 — patched forward 每次调用以入参覆盖每层
@@ -83,8 +83,14 @@ def _apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
 
 
 def _rotary_emb_forward(self, x, position_ids):
-    """RoPE cos/sin: 从预注册图常量表按 position_ids Gather (图内仅 2 个 Gather)。"""
-    return self._cos_table[:, position_ids, :], self._sin_table[:, position_ids, :]
+    """RoPE cos/sin: 从预注册图常量表按 position_ids Gather (图内仅 2 个 Gather)。
+
+    用 index_select 而非高级索引 table[:, pos, :] — 后者下沉为 aclnnIndex
+    (A3 慢路径 ~493us/次), index_select 下沉为 GatherV2 (与 embed_tokens 同路径)。
+    """
+    cos = self._cos_table.index_select(0, position_ids).unsqueeze(0)
+    sin = self._sin_table.index_select(0, position_ids).unsqueeze(0)
+    return cos, sin
 
 
 def _attention_forward(self, hidden_states, position_embeddings, **kwargs):
@@ -211,8 +217,8 @@ def _precompute_rope_cos_sin(model, max_seq_len, device):
     cos = (emb.cos() * scaling).to(dtype=torch.float16)
     sin = (emb.sin() * scaling).to(dtype=torch.float16)
 
-    rotary_emb.register_buffer('_cos_table', cos, persistent=False)
-    rotary_emb.register_buffer('_sin_table', sin, persistent=False)
+    rotary_emb.register_buffer('_cos_table', cos.squeeze(0), persistent=False)
+    rotary_emb.register_buffer('_sin_table', sin.squeeze(0), persistent=False)
 
 
 # ==================== lm_head vocab 剪裁 (结构手术) ====================
