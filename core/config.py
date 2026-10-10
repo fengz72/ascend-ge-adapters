@@ -17,6 +17,8 @@ from typing import Optional
 
 import yaml
 
+from core.setup_scripts import has_flag, resolve_path, strip_flag
+
 
 @dataclass
 class ModelMeta:
@@ -49,9 +51,35 @@ class SourceCfg:
 
 
 @dataclass
+class FormSwitch:
+    """一个**形态开关** (`adapt.params` 里的一个键) 对框架可见的后果。
+
+    框架不硬编码任何具体开关名 —— 原来 `prefix` / `prune_token_file` 写死在四处
+    (export_name / load_adapter / bench._form_args / pipeline._inputs_args), 于是"适配新模型
+    框架零改动"是假的: 新 adapter 加一个影响图结构的开关, 除非有人记得改 core/, 否则产物名
+    不变 → 切形态时**静默覆盖**上一种的 AIR/OM/bundle。后果改在此声明:
+
+        tag    开关为真时追加进产物名 (export_name)。
+        load   值是文件路径时怎么载入 (yaml 表达不了"读 json 取数组"):
+               {kind: 载入方式 (见 _LOADERS), as: 传给 adapter 的 kwarg 名}
+               载入后**原路径键被移除** — adapter 收的是内容, 不是路径。
+        flags  受本开关管辖的脚本 flag, 按消费方分组 (见 _FORM_FLAG_STAGES):
+               {stage: {flag: 值来源}}; 值来源 = `path` (解析后的绝对路径) 或 `inputs.<字段>`。
+               开关为真 → 注入 (yaml args 里已显式写过的不覆盖); 为假 → 从 args 移除。
+               于是翻一个开关即无缝切形态, 不必同时手改 args。
+
+    三个字段全空 = "这个 param 对框架无可见后果" (仍须在 form 里出现, 见 _form 的全覆盖检查)。
+    """
+    tag: Optional[str] = None
+    load: Optional[dict] = None
+    flags: dict = field(default_factory=dict)      # {stage: {flag: 值来源}}
+
+
+@dataclass
 class AdaptCfg:
     adapter_class: str = ""         # 同目录 model.py 里的类名
-    params: dict = field(default_factory=dict)   # 仅适配行为开关 (prefix/prune)
+    params: dict = field(default_factory=dict)   # 适配行为开关, 直接作为 adapter 构造 kwargs
+    form: dict = field(default_factory=dict)     # params 键 → FormSwitch (强 schema, 全覆盖)
 
 
 @dataclass
@@ -65,8 +93,9 @@ class InputsCfg:
 
     batch_size/seq_len/prefix_len/seed 是**规范值**, 由框架注入给脚本 (pipeline._inputs_args),
     yaml 的 args 只放额外覆盖; --vocab 同样由框架注入 (从已加载模型的 embedding 行数读,
-    **不是** config.vocab_size —— lm_head 剪裁会改写它)。--prefix-len 的去留由
-    adapt.params.prefix 管辖, 故翻形态一个开关即无缝切换 (同 bench._form_args 的哲学)。
+    **不是** config.vocab_size —— lm_head 剪裁会改写它)。形态相关的 flag (如 --prefix-len)
+    不在此注入 —— 由 adapt.form 声明哪个开关管辖它、值取哪个字段, form_flags 统一增删,
+    故翻形态一个开关即无缝切换 (同 bench._form_args 的哲学)。
     """
     script: str = ""                # 必填: 输入生成脚本 (绝对路径或相对仓库根)
     args: list = field(default_factory=list)   # 额外覆盖 (规范值由框架注入, 已写过的不覆盖)
@@ -114,9 +143,17 @@ class VerifyCfg:
 
     四个门限默认 None = 用 core/verify.py 的规范默认 (门① reference 0.999/0.02 跨实现,
     门② compare 0.9999/0.01 同源); 填显式值即覆盖。换 dtype(bf16)/更大词表/更长序列时
-    噪声量级会变, 改这里即可, 不动框架 (docs §10/§13.8)。pipeline 构造 Verifier 时透传。
+    噪声量级会变, 改这里即可, 不动框架 (docs §10/§13.8)。
+
+    rtol/atol 是**逐元素**参考口径 (allclose 与"通过率"统计用), 不参与 PASS/FAIL 判定
+    (判定只看 cosine + rel_l2, 见 tools/compare.py); 同样 None = 用 Verifier 的默认。
+    以前这两项在 Verifier 与 compare_bundle 上都有参数、唯独 yaml 够不到, 等于永久锁死。
+
+    字段名须与 Verifier 的构造 kwarg 逐字一致 —— pipeline 用 asdict 直接透传, 不再手抄列表。
     """
     enabled: bool = True
+    rtol: Optional[float] = None
+    atol: Optional[float] = None
     ref_cosine_min: Optional[float] = None    # 门① 原版 HF vs 适配后 eager (跨实现)
     ref_rel_l2_max: Optional[float] = None
     cmp_cosine_min: Optional[float] = None    # 门② 运行时输出 vs golden (同源)
@@ -133,7 +170,8 @@ class BenchCfg:
         report_dir     ← <model_dir>/results
         请求池目录      ← <model_dir>/io/pool
         aicore_num     ← backend.aicore_num   (同上, 来自 profile; ge_session 的运行期限核)
-        --batch/--prune-tokens/--prefix ← inputs.batch_size / adapt.params (bench._form_args 注入)
+        --batch        ← inputs.batch_size      (恒注入, 非形态开关; bench._form_args)
+        形态相关 flag   ← adapt.form 的 flags.pool 声明 (config.form_flags 增删)
     负载分布 (长度分布/词表上界/套数) 属**模型专属脚本**的口径, 写死在 pool.script 的
     argparse 默认值里, 配置只在要覆盖时写 pool.args。
 
@@ -170,13 +208,24 @@ class ModelConfig:
 
 
 def _sub(cls, d: dict, **renames):
-    """从 dict 构造 dataclass, 缺失字段用默认值; renames 映射 yaml 键→字段名。"""
+    """从 dict 构造 dataclass, 缺失字段用默认值; renames 映射 yaml 键→字段名。
+
+    **强 schema**: 未知键硬失败, 不再静默丢弃。原来这里宽松而 `_platforms` 严格, 理由是
+    "平台段新引入没有历史包袱" —— 站不住: 每个段都一样新, 而静默丢弃的后果是同一类
+    (`bench.instnces` / `verify.cmp_cosine_min` 拼错 → 用默认值跑, 报告口径与声明不符却
+    查不出来)。`_platforms` 自己的 docstring 就把这叫"查不出来的静默错配"。
+    """
     d = dict(d or {})
     for yaml_key, field_name in renames.items():
         if yaml_key in d:
             d[field_name] = d.pop(yaml_key)
-    valid = {f for f in cls.__dataclass_fields__}
-    return cls(**{k: v for k, v in d.items() if k in valid})
+    valid = set(cls.__dataclass_fields__)
+    unknown = sorted(set(d) - valid)
+    if unknown:
+        raise ValueError(
+            f"{cls.__name__} 段有未知键 {unknown} — 只认 {sorted(valid)}。"
+            f"静默忽略会让拼错的键按默认值跑 (以为覆盖了其实没有)")
+    return cls(**d)
 
 
 def _setup_entries(raw) -> list:
@@ -205,9 +254,10 @@ def _setup_entries(raw) -> list:
 def _platforms(raw) -> dict:
     """yaml 的 platforms: 段 → {短名: PlatformProfile}。**强 schema**: 未知键硬失败。
 
-    为什么这里严格而 _sub 宽松: 平台 profile 是新引入的段, 没有历史包袱; 且它装的是
-    **编译目标**(soc)与**要装哪些算子/pass** —— 拼错键静默忽略的后果是"以为限了核其实
-    全核跑"、"以为装了 pass 其实没装", 都属于查不出来的静默错配。
+    这里手写解析而不用 _sub, 是因为 PlatformProfile 的 custom_ops/passes 要走 _setup_entries
+    (两种写法: 纯字符串 或 {path, script, args} 映射), 且 soc 必填要给出专门的报错。
+    严格程度与 _sub 一致 —— 它装的是**编译目标**(soc)与**要装哪些算子/pass**, 拼错键静默
+    忽略的后果是"以为限了核其实全核跑"、"以为装了 pass 其实没装", 都属于查不出来的静默错配。
     """
     valid = set(PlatformProfile.__dataclass_fields__)
     out = {}
@@ -257,6 +307,175 @@ def _reject_moved_keys(raw):
             raise ValueError(f"model.yaml 顶层的 {key}: 已移进 {dest} (平台相关)")
 
 
+# ==================== 形态开关 (adapt.form) ====================
+#
+# "形态" = 影响图结构/接口的那批 adapt.params 开关。框架需要知道它们的三件后果 (进产物名、
+# 怎么载入文件值、管辖哪些脚本 flag), 但**不该知道它们叫什么** —— 否则每适配一个新模型都要改
+# core/ (见 FormSwitch docstring)。后果由 model.yaml 的 adapt.form 声明, 下面只做通用解析。
+
+# flags 的消费方: 两个脚本接受的 flag 不同 (激励脚本不认 --prune-tokens), 故按 stage 分组
+_FORM_FLAG_STAGES = ("inputs", "pool")
+
+
+def load_target_tokens(json_path):
+    """加载 target token JSON ({"token_ids": [...]}), 返回 token_ids 列表。"""
+    with open(json_path) as f:
+        data = json.load(f)
+    token_ids = data["token_ids"]
+    assert len(token_ids) > 0, "token_ids 不能为空"
+    return token_ids
+
+
+# adapt.form.<key>.load.kind 的可选值 → 载入函数 (新增载入方式在此登记)
+_LOADERS = {"token_ids": load_target_tokens}
+
+
+def _flag_value_src(src, key):
+    """校验 flag 的值来源写法: `path` 或 `inputs.<InputsCfg 字段>`; 其它一律硬失败。
+
+    硬失败而非忽略: 写错来源 (如 `input.prefix_len`) 的后果是"以为注入了其实没有",
+    脚本按自己的 argparse 默认值跑 —— 与 _platforms 拒绝未知键同一个理由。
+    """
+    if src == "path":
+        return
+    if src.startswith("inputs."):
+        field_name = src[len("inputs."):]
+        if field_name in InputsCfg.__dataclass_fields__:
+            return
+        raise ValueError(
+            f"adapt.form.{key} 的 flag 值来源 {src!r} 指向不存在的 inputs 字段 "
+            f"{field_name!r} (可选: {sorted(InputsCfg.__dataclass_fields__)})")
+    raise ValueError(
+        f"adapt.form.{key} 的 flag 值来源 {src!r} 不认 — 只支持 `path` (该 param 解析后的"
+        f"绝对路径) 或 `inputs.<字段>` (如 inputs.prefix_len)")
+
+
+def _form(raw, params) -> dict:
+    """adapt.form → {param 键: FormSwitch}。**强 schema** + params **全覆盖**检查。
+
+    全覆盖是这条机制的关键: 每个 param 都必须显式声明它对框架的后果 (哪怕后果是"无", 写空
+    条目 `foo: {}`)。不强制的话, 新增一个影响图结构的开关而忘了声明 tag, 产物名就不变 →
+    切形态时静默覆盖上一种的 AIR/OM/bundle, 你以为在做 A/B 其实基线已被冲掉。
+    """
+    out = {}
+    for key, body in (raw or {}).items():
+        body = dict(body or {})
+        unknown = set(body) - {"tag", "load", "flags"}
+        if unknown:
+            raise ValueError(
+                f"adapt.form.{key} 有未知键 {sorted(unknown)} — 只认 tag / load / flags "
+                f"(见 core/config.py 的 FormSwitch)")
+        load = body.get("load")
+        if load is not None:
+            load = dict(load)
+            unknown = set(load) - {"kind", "as"}
+            if unknown:
+                raise ValueError(
+                    f"adapt.form.{key}.load 有未知键 {sorted(unknown)} — 只认 kind / as")
+            if load.get("kind") not in _LOADERS:
+                raise ValueError(
+                    f"adapt.form.{key}.load.kind={load.get('kind')!r} 不认 "
+                    f"(可选: {sorted(_LOADERS)})")
+            if not load.get("as"):
+                raise ValueError(
+                    f"adapt.form.{key}.load 缺 as — 载入后的内容以哪个 kwarg 名传给 adapter "
+                    f"(如 as: prune_tokens)")
+        flags = {}
+        for stage, mapping in (body.get("flags") or {}).items():
+            if stage not in _FORM_FLAG_STAGES:
+                raise ValueError(
+                    f"adapt.form.{key}.flags 的 stage {stage!r} 不认 "
+                    f"(可选: {list(_FORM_FLAG_STAGES)} — inputs=激励脚本, pool=请求池脚本)")
+            for flag, src in dict(mapping or {}).items():
+                src = str(src)
+                _flag_value_src(src, key)
+                flags.setdefault(stage, {})[str(flag)] = src
+        tag = body.get("tag")
+        out[str(key)] = FormSwitch(tag=None if tag is None else str(tag),
+                                   load=load, flags=flags)
+
+    unclassified = sorted(set(params) - set(out))
+    if unclassified:
+        raise ValueError(
+            f"adapt.params 的 {unclassified} 没在 adapt.form 里分类 — 每个形态开关都要显式"
+            f"声明它对框架的后果 (tag=进产物名 / load=文件值怎么载入 / flags=管辖哪些脚本"
+            f" flag); 确实全不影响就写空条目 `{unclassified[0]}: {{}}`。\n"
+            f"不强制的后果: 新增一个影响图结构的开关而忘了声明 tag → 产物名不变 → 切形态时"
+            f"**静默覆盖**上一种的 AIR/OM/bundle (见 export_name docstring)")
+    return out
+
+
+def _adapt(raw) -> AdaptCfg:
+    """adapt 段 → AdaptCfg (form 走强 schema 解析, 不走宽松的 _sub)。"""
+    raw = dict(raw or {})
+    params = dict(raw.get("params") or {})
+    return AdaptCfg(adapter_class=str(raw.get("adapter_class") or ""),
+                    params=params, form=_form(raw.get("form"), params))
+
+
+def form_flags(cfg: ModelConfig, args, stage: str) -> list:
+    """按 adapt.form 增删受形态开关管辖的脚本 flag, 返回新 argv (纯函数, 不改入参)。
+
+    stage: "inputs" (激励脚本, pipeline._inputs_args) | "pool" (请求池脚本, bench._form_args)。
+    开关为真 → 注入 flag+值 (yaml args 里已显式写过的**不覆盖** — `--flag X` 与 `--flag=X`
+    两种写法都认, 便于临时实验);
+    开关为假 → 从 args 移除该 flag 及其值 (strip_flag) —— 于是翻 adapt.params 一个开关
+    即无缝切形态, 不必同时手改 args (否则非 prefix 形态会生成 prefix-packed 的池,
+    与基线图接口对不上)。
+    """
+    out = list(args)
+    for key, sw in cfg.adapt.form.items():
+        stage_flags = sw.flags.get(stage) or {}
+        if not stage_flags:
+            continue
+        value = cfg.adapt.params.get(key)
+        if not value:
+            for flag in stage_flags:
+                out = strip_flag(out, flag)
+                assert not has_flag(out, flag), \
+                    f"strip_flag 未彻底移除 {flag}: {out}"
+            continue
+        for flag, src in stage_flags.items():
+            if has_flag(out, flag):
+                continue                      # yaml 已显式写过 → 不覆盖 (两种写法都认)
+            v = _flag_value(cfg, key, value, src)
+            if v is not None:
+                out += [flag, str(v)]
+    return out
+
+
+def _flag_value(cfg, key, value, src):
+    """flag 的值; 取不到 (文件不存在 / 值为 0 或空) 返回 None = 不注入。
+
+    `path`        → 该 param 解析后的**绝对路径** (免依赖 CWD); 找不到即硬失败
+    `inputs.<f>`  → cfg.inputs 的该字段; 0/空视为"没给"不注入 (与原来
+                    `add("--prefix-len", cfg.inputs.prefix_len or None)` 的语义一致)
+    """
+    if src == "path":
+        resolved = resolve_path(value, is_file=True)
+        if resolved is None:
+            raise FileNotFoundError(
+                f"adapt.params.{key} 找不到: {value!r} — 只认**绝对路径**或**相对仓库根**"
+                f"的写法, 如 models/{cfg.model.name}/config/target_tokens.json")
+        return resolved
+    return getattr(cfg.inputs, src[len("inputs."):]) or None
+
+
+# yaml 认得的顶层段。多余的一律硬失败 —— 原来"多余的 `runtime:` 段会被忽略"是 ee9dfce
+# (device 移出 yaml) 之后的遗留容忍, 现存配置无人用; 留着等于给"段名拼错 → 整段按默认值跑"
+# 开后门 (写 `verifi:` 不会报错, 门限静默回到框架默认)。
+_KNOWN_SECTIONS = {"model", "source", "adapt", "inputs", "graph", "backend", "verify",
+                   "bench", "platforms"}
+
+
+def _reject_unknown_sections(raw):
+    unknown = sorted(set(raw) - _KNOWN_SECTIONS - set(_MOVED_TOP_LEVEL))
+    if unknown:
+        raise ValueError(
+            f"model.yaml 有无法识别的顶层段 {unknown} — 只认 {sorted(_KNOWN_SECTIONS)}。"
+            f"静默忽略会让整段配置按默认值生效 (段名拼错是最难查的一类)")
+
+
 def load_config(path) -> ModelConfig:
     """解析 model.yaml → ModelConfig。model_dir = config/ 的父目录。
 
@@ -264,14 +483,21 @@ def load_config(path) -> ModelConfig:
     必填传入 (pipeline → load_source/write_manifest → manifest.device → C++ 运行时)。
     **不含平台选择**: platforms 表在此解析, 但选哪个由 resolve_platform 在拿到 device 后定
     (cfg.passes/custom_ops/model.soc/backend.aicore_num 在那之前是空的)。
-    yaml 里多余的 `runtime:` 段会被忽略; 已移进 platforms 的顶层键则硬失败。
+
+    **全 yaml 强 schema**: 未知顶层段、段内未知键、已移进 platforms 的顶层键都硬失败
+    (静默忽略 = 以为生效其实没有)。
     """
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
     _reject_moved_keys(raw)
+    _reject_unknown_sections(raw)
 
     model_dir = os.path.dirname(os.path.dirname(os.path.abspath(path)))
-    dynamic = _sub(DynamicCfg, (raw.get("graph") or {}).get("dynamic", {}))
+    graph_raw = dict(raw.get("graph") or {})
+    graph_unknown = sorted(set(graph_raw) - {"dynamic"})
+    if graph_unknown:
+        raise ValueError(f"model.yaml 的 graph 段有未知键 {graph_unknown} — 只认 ['dynamic']")
+    dynamic = _sub(DynamicCfg, graph_raw.get("dynamic", {}))
     bench_d = dict(raw.get("bench") or {})
     pool = _setup_entries([bench_d.pop("pool")] if bench_d.get("pool") else [])
     bench = _sub(BenchCfg, bench_d)
@@ -280,7 +506,7 @@ def load_config(path) -> ModelConfig:
     return ModelConfig(
         model=_sub(ModelMeta, raw.get("model")),
         source=_sub(SourceCfg, raw.get("source")),
-        adapt=_sub(AdaptCfg, raw.get("adapt")),
+        adapt=_adapt(raw.get("adapt")),
         inputs=_inputs(raw.get("inputs")),
         graph=GraphCfg(dynamic=dynamic),
         backend=_sub(BackendCfg, raw.get("backend")),
@@ -349,20 +575,16 @@ def resolve_platform(cfg: ModelConfig, device=None, platform=None) -> ModelConfi
                    graph=graph)
 
 
-def load_target_tokens(json_path):
-    """加载 target token JSON ({"token_ids": [...]}), 返回 token_ids 列表。"""
-    with open(json_path) as f:
-        data = json.load(f)
-    token_ids = data["token_ids"]
-    assert len(token_ids) > 0, "token_ids 不能为空"
-    return token_ids
-
-
 def export_name(cfg: ModelConfig) -> str:
     """产物名 = 模型名 + **平台** + **形态后缀** (AIR/OM/bundle/manifest 都以此命名)。
 
     凡是影响图结构或编译目标的开关都要编进名字, 否则切换时会**静默覆盖**上一种的产物
-    (你以为在做 A/B, 其实基线已经被冲掉)。新增开关时记得在这里加后缀。
+    (你以为在做 A/B, 其实基线已经被冲掉)。
+
+    后缀来自 `adapt.form` 里各开关声明的 `tag` (**按 yaml 声明序**追加), 框架不认具体开关名 ——
+    新增开关只需在 model.yaml 的 adapt.form 里给它一个 tag, 不动 core/。漏声明 tag 由
+    _form 的全覆盖检查堵不住 (空条目是合法的"不影响产物名"), 故新增**影响图结构**的开关时
+    务必给 tag; 忘了给的表现就是两种形态的产物同名互相覆盖。
 
     平台后缀 = resolve_platform 选中的 profile 短名。平台长期并存 (910_9382 与 A5 都进
     回归), 故两平台产物必须互不覆盖; 未解析 (cfg.platform 为空) 则不加 —— 那意味着 cfg
@@ -371,10 +593,9 @@ def export_name(cfg: ModelConfig) -> str:
     name = cfg.model.name
     if cfg.platform:
         name += f"-{cfg.platform}"
-    if cfg.adapt.params.get("prefix"):
-        name += "-prefix"
-    if cfg.adapt.params.get("prune_token_file"):
-        name += "-prune"
+    for key, sw in cfg.adapt.form.items():
+        if sw.tag and cfg.adapt.params.get(key):
+            name += f"-{sw.tag}"
     return name
 
 
@@ -460,29 +681,45 @@ def load_adapter(cfg: ModelConfig):
     """importlib 从 <model_dir>/model.py 加载 adapt.adapter_class 并按 params 实例化。
 
     params 直接作为 adapter 构造 kwargs (基类 __init__ 收 **params, 故最小 adapter
-    无需自定义构造); 特殊键 prune_token_file **仅在声明时**才被载入成 prune_tokens 列表传入
-    (文件 I/O 在配置层, adapter 只收 list)。它的路径规则与 script/path 一致 ——
-    绝对 或 相对**仓库根** (core/setup_scripts.resolve_path), 找不到即硬失败。
+    无需自定义构造)。声明了 `adapt.form.<key>.load` 的键是**文件路径**: 在此载入内容, 以
+    load.as 为名传给 adapter, 并**移除原路径键** (文件 I/O 在配置层, adapter 只收内容)。
+    路径规则与 script/path 一致 —— 绝对 或 相对**仓库根** (core/setup_scripts.resolve_path),
+    找不到即硬失败。框架不认具体键名, 载入方式见 _LOADERS。
     """
     import importlib.util
-
-    from core.setup_scripts import resolve_path
+    import sys
 
     model_py = os.path.join(cfg.model_dir, "model.py")
     spec = importlib.util.spec_from_file_location(f"_ge_adapter_{cfg.model.name}", model_py)
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    # **必须**注册进 sys.modules: model.py 里定义的替换实现 (patch_specs 返回的那些函数) 的
+    # __module__ 就是这个合成名, 而 torch dynamo 内联它们时会按 __module__ 回头
+    # importlib.import_module() 取 globals 的 source —— 没注册就 ModuleNotFoundError
+    # (表现为导出期 InternalTorchDynamoError, 完全不指向真因)。注册也是 importlib
+    # 官方文档给的标准写法 (module_from_spec 之后、exec_module 之前)。
+    sys.modules[spec.name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except BaseException:
+        sys.modules.pop(spec.name, None)      # exec 失败别把半初始化模块留在 sys.modules
+        raise
     cls = getattr(mod, cfg.adapt.adapter_class)
 
     params = dict(cfg.adapt.params)
-    ptf = params.pop("prune_token_file", None)
-    if ptf:
-        resolved = resolve_path(ptf, is_file=True)
+    for key, sw in cfg.adapt.form.items():
+        if not sw.load:
+            continue
+        # 声明了 load 的键**一律** pop — 值为 null (文档的"关"写法) 时也不把路径键漏进
+        # adapter 构造 kwargs: adapter 只收内容, 收到 prune_token_file=None 只会 TypeError
+        declared = params.pop(key, None)
+        if not declared:
+            continue
+        resolved = resolve_path(declared, is_file=True)
         if resolved is None:
             raise FileNotFoundError(
-                f"adapt.params.prune_token_file 找不到: {ptf!r} — 只认**绝对路径**或"
+                f"adapt.params.{key} 找不到: {declared!r} — 只认**绝对路径**或"
                 f"**相对仓库根**的写法, 如 models/{cfg.model.name}/config/target_tokens.json")
-        params["prune_tokens"] = load_target_tokens(resolved)
+        params[sw.load["as"]] = _LOADERS[sw.load["kind"]](resolved)
     return cls(**params)
 
 

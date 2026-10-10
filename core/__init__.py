@@ -2,7 +2,7 @@
 
 契约层: config (ModelConfig) / graph (IoSpec, Graph)。
 适配层: adapter (GeModelAdapter) / exporter (GeExporter)。
-管线层: source / passes / backend / verify / pipeline。
+管线层: source / setup_scripts / backend / verify / bench / pipeline。
 
 __init__ 只 re-export **契约层** (无 torch/torch_npu/torchair 依赖) — 这样
 `import core.backend` / `core.verify` 不会把 NPU 栈拖进来, 离线单测与 CI 才能在

@@ -14,12 +14,12 @@ opp/vendors 后由 CANN 自动扫描加载, 不需要 env 注入 (core/setup_scr
 import os
 import subprocess
 
+from core.setup_scripts import REPO_ROOT
 from tools.atc_utils import run_atc
 from tools.parse_profiling import cmd_parse_and_export, cmd_summary, find_msprof
 
 # C++ 运行时二进制 (§9/§14): runtime/ 构建产物 (bash runtime/build.sh)。
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RUNTIME_BIN = os.path.join(_REPO_ROOT, "runtime", "build", "ge_runtime")
+RUNTIME_BIN = os.path.join(REPO_ROOT, "runtime", "build", "ge_runtime")
 
 
 def _input_shape_arg(io_spec):

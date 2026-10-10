@@ -191,6 +191,22 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     if (!opt.benchPlan.empty()) {
+        // --bench-plan 是**自包含**的: 负载/后端选项/profiling 全在 plan.json 里 (core.bench
+        // 生成)。同时给的其它 flag 一律不生效 —— 不 WARN 的话 `--bench-plan x --device 3`
+        // 会静默按 plan 里的 device 跑, 让人以为覆盖成功了。
+        // 排除项须含 `--bench-plan=` 前缀写法: Tokenize 认它, 只排除字面 `--bench-plan`
+        // 会把实际生效的 flag 误报成"被忽略"。
+        std::string ignored;
+        for (int i = 1; i < argc; i++) {
+            std::string a = argv[i];
+            if (a.rfind("--", 0) == 0 && a != "--bench-plan" && a.rfind("--bench-plan=", 0) != 0) {
+                ignored += (ignored.empty() ? "" : " ") + a;
+            }
+        }
+        if (!ignored.empty()) {
+            fprintf(stderr, "[WARN] --bench-plan 自包含 (device/负载/后端选项都在 plan.json 里), "
+                            "以下 flag 被忽略: %s\n", ignored.c_str());
+        }
         return ge_runtime::RunBenchPlan(opt.benchPlan);
     }
 

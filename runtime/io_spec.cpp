@@ -188,6 +188,22 @@ size_t TensorPlan::Bytes() const {
     return static_cast<size_t>(NumElements(shape)) * DtypeSize(dtype);
 }
 
+namespace {
+
+// 报错时把两侧的 logical 名列出来 — 错配一眼可见, 不用再去翻两个 json 对
+std::string JoinLogical(const std::vector<std::string> &names) {
+    std::string s;
+    for (const auto &n : names) {
+        if (!s.empty()) {
+            s += ", ";
+        }
+        s += n.empty() ? "<空>" : n;
+    }
+    return s.empty() ? "<无>" : s;
+}
+
+}  // namespace
+
 std::vector<TensorPlan> BuildInputPlans(const IoSpec &spec, const Bundle &bundle,
                                        const std::string &bundle_dir) {
     std::vector<TensorPlan> plans;
@@ -201,11 +217,22 @@ std::vector<TensorPlan> BuildInputPlans(const IoSpec &spec, const Bundle &bundle
             }
         }
         if (entry == nullptr) {
-            if (i >= bundle.inputs.size()) {
-                throw std::runtime_error("bundle lacks input #" + std::to_string(i) +
-                                         " (logical=" + node.logical + ")");
+            // 与 core/graph.py 的 from_air 同一标准: 名字配不上就硬失败, **不**退回按位置取
+            // bundle.inputs[i] —— 图 Data 序 ≠ forward 序 (qwen2.5-0.5b 实测), 按位置硬配会
+            // 静默喂错张量, 表现为 tiling 崩或精度全错且不指向真因。
+            std::vector<std::string> specNames, bundleNames;
+            for (const auto &n : spec.inputs) {
+                specNames.push_back(n.logical);
             }
-            entry = &bundle.inputs[i];
+            for (const auto &e : bundle.inputs) {
+                bundleNames.push_back(e.logical);
+            }
+            throw std::runtime_error(
+                "io_spec 输入 #" + std::to_string(i) + " (logical=" + node.logical +
+                ") 在 bundle 里找不到同名项 — 拒绝按位置硬配 (会静默喂错张量)。\n"
+                "  io_spec logical: " + JoinLogical(specNames) + "\n"
+                "  bundle  logical: " + JoinLogical(bundleNames) + "\n"
+                "→ bundle 与 io_spec 不是同一次导出的产物? 去掉 --skip export 重新生成");
         }
 
         TensorPlan p;

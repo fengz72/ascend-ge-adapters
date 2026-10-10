@@ -21,8 +21,7 @@ struct Request {
 // 请求池: 所有实例**共享**, 各实例用 seed+instance_id 独立随机抽样
 struct RequestPool {
     std::vector<Request> requests;
-    std::vector<std::vector<int64_t>> maxShape;   // 逐输入: 各维最大 (预分配 device 缓冲用)
-    std::vector<size_t> maxBytes;                 // 逐输入: 最大字节数
+    std::vector<size_t> maxBytes;                 // 逐输入: 最大字节数 (预分配 device 缓冲用)
     size_t maxOutputBytes = 0;                    // 输出缓冲: pool 内 golden 的最大字节数 (0=未知)
     size_t distinctShapes = 0;
 

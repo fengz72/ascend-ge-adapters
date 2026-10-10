@@ -37,11 +37,31 @@ platforms:
     # max_seq_len: 2048              # 需要时覆盖 graph.dynamic.max_seq_len (UB/L2 尺寸随平台变)
 
 adapt:                           # torch 源适用
-  adapter_class: Qwen25Adapter   # 同目录 model.py 里的类
+  adapter_class: Qwen25Adapter   # 同目录 model.py 里的类名
   params:                        # 直接作为 adapter 构造 kwargs (= 形态开关)
     prefix: false                # true → PIA (prefix-in-Q, npu_prefix_infer_attention_score)
                                  # 注: A5 上 prefix 需要该平台的新算子; 未装时 adapter 构造即硬失败
     prune_token_file: models/qwen2.5-0.5b/config/target_tokens.json   # 声明即启用 lm_head 词表剪裁
+  # 每个 param 对**框架**的后果在此声明 —— 框架不认具体开关名 (认了就意味着适配新模型要改 core/)。
+  # params 的每个键都**必须**在这里出现 (漏了硬失败): 新增一个影响图结构的开关而忘了给 tag,
+  # 产物名就不变 → 切形态时静默覆盖上一种的 AIR/OM/bundle (你以为在做 A/B, 其实基线已被冲掉)。
+  #   tag    开关为真时追加进产物名 (core.config.export_name)
+  #   load   值是文件路径 → 载入内容, 以 as 为名传给 adapter (原路径键移除; kind 见 _LOADERS)
+  #   flags  受本开关管辖的脚本 flag, 按消费方分组 (inputs=激励脚本 / pool=请求池脚本);
+  #          值来源 = `path` (解析后的绝对路径) 或 `inputs.<字段>`。
+  #          开关为真 → 注入 (args 里已写过的不覆盖); 为假 → 从 args **移除**。
+  #          故翻上面的 params 开关即无缝切形态, 不必同时手改 inputs.args / bench.pool.args。
+  form:
+    prefix:
+      tag: prefix
+      flags:
+        inputs: {"--prefix-len": inputs.prefix_len}   # gen_inputs.py 的 packed prefix 长度 P
+        pool:   {"--prefix": inputs.prefix_len}       # gen_requests.py 的 P (args 里的 "20-25" 优先)
+    prune_token_file:
+      tag: prune
+      load: {kind: token_ids, as: prune_tokens}
+      flags:
+        pool: {"--prune-tokens": path}                # 输出宽 = len(token_ids); 激励脚本不认此 flag
 
 inputs:                          # 激励生成 (L0 reference / L1 golden / L2 trace+bundle 三层共用)
   # 输入由**用户脚本**生成并落盘 (<base>/io/{inputs.json, inputs/*.bin}) — 框架不生成模型
@@ -69,12 +89,14 @@ backend:
 
 verify:
   enabled: true
-  # 四个门限不写 = 用 core/verify.py 的规范默认 (门① reference 0.999/0.02 跨实现,
+  # 门限不写 = 用 core/verify.py 的规范默认 (门① reference 0.999/0.02 跨实现,
   # 门② compare 0.9999/0.01 同源); 换 dtype(bf16)/更大词表/更长序列时噪声量级会变, 按需覆盖:
   # ref_cosine_min: 0.999
   # ref_rel_l2_max: 0.02
   # cmp_cosine_min: 0.9999
   # cmp_rel_l2_max: 0.01
+  # rtol: 1e-3                   # 逐元素**参考**口径 (allclose/通过率), 不参与 PASS/FAIL 判定
+  # atol: 1e-5
 
 bench:
   instances: 3                       # = 并发 worker (1:1 绑实例, 无锁)

@@ -16,14 +16,10 @@
 #include <string>
 #include <vector>
 
+#include "backend_common.h"
+
 namespace ge_runtime {
 namespace {
-
-using Clock = std::chrono::steady_clock;
-
-double ElapsedMs(Clock::time_point begin, Clock::time_point end) {
-    return std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000.0;
-}
 
 bool ToGeDtype(const std::string &s, ge::DataType &dt) {
     if (s == "float16") { dt = ge::DT_FLOAT16; return true; }
@@ -59,15 +55,6 @@ std::string FromGeDtype(ge::DataType dt) {
         case ge::DT_BOOL: return "bool";
         default: return "unknown";
     }
-}
-
-// 整机 HBM 占用 (MB); 取不到返回 -1
-double HbmUsedMb() {
-    size_t freeBytes = 0, totalBytes = 0;
-    if (aclrtGetMemInfo(ACL_HBM_MEM, &freeBytes, &totalBytes) != ACL_SUCCESS) {
-        return -1.0;
-    }
-    return static_cast<double>(totalBytes - freeBytes) / (1024.0 * 1024.0);
 }
 
 std::string AicoreSpec(const std::string &raw) {
@@ -208,34 +195,19 @@ public:
 
     bool LoadInputs(const std::vector<TensorPlan> &plans) {
         plans_ = plans;
-        hostInputs_.clear();
-        hostInputs_.reserve(plans.size());
+        // dtype 转 GE 枚举是本后端专属 (见 backend_common.h 文件头), 先整体判一遍并留下
+        // dtypes_ (建 gert::Tensor 时要用); 读盘/校验/日志与后端无关 → 共用 LoadHostInputs
         dtypes_.clear();
-        for (size_t i = 0; i < plans.size(); i++) {
-            const TensorPlan &p = plans[i];
+        for (const auto &p : plans) {
             ge::DataType dtype;
             if (!ToGeDtype(p.dtype, dtype)) {
                 fprintf(stderr, "[ERROR] 不支持的 dtype '%s' (输入 '%s')\n",
                         p.dtype.c_str(), p.logical.c_str());
                 return false;
             }
-            std::vector<char> host;
-            if (!ReadBinFile(p.file, host)) {
-                fprintf(stderr, "[ERROR] 读不到输入文件: %s\n", p.file.c_str());
-                return false;
-            }
-            if (host.size() != p.Bytes()) {
-                fprintf(stderr, "[ERROR] 输入 '%s' 文件字节数 %zu != %zu\n",
-                        p.logical.c_str(), host.size(), p.Bytes());
-                return false;
-            }
             dtypes_.push_back(dtype);
-            hostInputs_.push_back(std::move(host));
-            std::cout << "[INFO] Input[" << i << "] '" << p.logical << "' node=" << p.node
-                      << " shape=" << ShapeToString(p.shape) << " dtype=" << p.dtype
-                      << " bytes=" << p.Bytes() << std::endl;
         }
-        return true;
+        return LoadHostInputs(plans, hostInputs_);
     }
 
     bool CreateContext(int tid) {
@@ -278,6 +250,8 @@ public:
                 ReleaseContext(*ctx);
                 return false;
             }
+            // push_back 起 dev 的所有权归 ctx->inPtrs — 失败路径只调 ReleaseContext,
+            // 再手动 aclrtFree(dev) 就是二次释放
             ctx->inPtrs.push_back(dev);
             ctx->inSizes.push_back(bytes);
 
@@ -285,7 +259,6 @@ public:
                 ret = aclrtMemcpy(dev, bytes, hostInputs_[i].data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE);
                 if (ret != ACL_SUCCESS) {
                     fprintf(stderr, "[ERROR] H2D failed (tid=%d, input %zu), ret=%d\n", tid, i, ret);
-                    aclrtFree(dev);
                     ReleaseContext(*ctx);
                     return false;
                 }
@@ -343,16 +316,22 @@ public:
         return it == ctxs_.end() ? 0.0 : it->second->loadMs;
     }
 
-    void UsePool(const RequestPool *pool) {
+    bool UsePool(const RequestPool *pool) {
         pool_ = pool;
         // 池模式不走 LoadInputs, dtype 从池里首个请求的 plan 取 (各请求 dtype 一致)
         if (dtypes_.empty() && !pool->requests.empty()) {
             for (const auto &plan : pool->requests[0].plans) {
-                ge::DataType dt = ge::DT_FLOAT;
-                ToGeDtype(plan.dtype, dt);
+                ge::DataType dt;
+                if (!ToGeDtype(plan.dtype, dt)) {
+                    // 不检查就静默退成 DT_FLOAT: 字节宽错了, H2D 数据被按 float 解释
+                    fprintf(stderr, "[ERROR] 不支持的 dtype '%s' (请求池输入 '%s')\n",
+                            plan.dtype.c_str(), plan.logical.c_str());
+                    return false;
+                }
                 dtypes_.push_back(dt);
             }
         }
+        return true;
     }
 
     bool Execute(int tid) {
@@ -524,7 +503,9 @@ bool RunGeSessionBackend(const Manifest &manifest, const IoSpec &spec,
 
     if (opt.pool != nullptr) {
         // ---- 变长负载: 请求池回放 (单 Session 多图, 每实例一份 graphId+stream) ----
-        runner.UsePool(opt.pool);
+        if (!runner.UsePool(opt.pool)) {
+            return false;
+        }
         PoolResources pres;
         pres.setup = [&runner](int tid) { return runner.CreateContext(tid); };
         pres.setInputs = [&runner](int tid, const Request &req, PhaseTime &ph) {

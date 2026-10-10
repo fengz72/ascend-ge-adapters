@@ -14,20 +14,26 @@
 import argparse
 import glob
 import os
-from dataclasses import replace
+from dataclasses import asdict, replace
 
 import torch
 import torch_npu
 
-from core.config import (check_build_record, export_name, load_config, load_adapter,
-                         resolve_platform, write_build_record, write_manifest)
+from core.config import (check_build_record, export_name, form_flags, load_config,
+                         load_adapter, resolve_platform, write_build_record, write_manifest)
 from core.source import load_source
-from core.graph import Graph, IoNode, IoSpec
+from core.graph import Graph, IoSpec
 from core.exporter import GeExporter
-from core.setup_scripts import run_scripts, strip_flag
+from core.setup_scripts import has_flag, run_scripts
 from core.backend import (backend_extra, compile_graph, default_output_dir,
                           parse_profiling, run_runtime)
 from core.verify import Verifier, bundle_has_golden, collect_provenance
+
+# --skip 的合法取值。**校验**而非静默忽略: 拼错 (`--skip compar`) 的后果是"以为跳过了其实
+# 整段重跑"或"以为在跑其实被跳过", 与 config 拒绝已移走的顶层键同一个理由。
+# 注意 `verify` 也是有效值 (关掉 golden 生成, 连带 reference/compare 都无从比起),
+# 它曾经只在代码里被认、文档与 --help 都没列。
+SKIP_STAGES = ("ops", "export", "verify", "reference", "passes", "compile", "run", "compare")
 
 
 def run(config_path, skip=(), dtype=torch.float16, device=None,
@@ -35,7 +41,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
         warmup=0, bench=1, runtime_extra=(), platform=None,
         profiling=False, profiling_output=None, profiling_aic_metrics=None,
         profiling_parse=False):
-    """跑管线, 返回产物路径 dict。skip ⊂ {ops,export,passes,compile,run,compare,reference}。
+    """跑管线, 返回产物路径 dict。skip ⊂ SKIP_STAGES (拼错即硬失败, 不静默忽略)。
 
     run/compare 为阶段二闭环: run 调 C++ runtime (manifest 驱动, OM/ACL 或 GeSession),
     compare 用 bundle golden 比对运行时输出 (docs §10)。
@@ -54,6 +60,11 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     """
     cfg = load_config(config_path)
     skip = set(skip)
+    bad = sorted(skip - set(SKIP_STAGES))
+    if bad:
+        raise ValueError(
+            f"--skip 有无法识别的阶段 {bad} — 合法取值: {list(SKIP_STAGES)}。"
+            f"不静默忽略: 拼错会让你以为跳过了某段其实整段重跑 (或反之)")
     md = cfg.model_dir
     if device is None:
         raise ValueError("必须指定 device (CLI --device): 用哪张卡是运行期事实, 不进 model.yaml")
@@ -64,8 +75,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     name = export_name(cfg)
     base = work_dir or md
     air_dir = os.path.join(base, "air")
-    om_dir = os.path.join(base, "om")
-    bundle_dir = os.path.join(base, "io")
+    bundle_dir = os.path.join(base, "io")     # om 目录由 backend.compile_graph 自己按 base 派生
     air_path = os.path.join(air_dir, f"{name}.air")
     io_spec_path = os.path.join(air_dir, f"{name}.io_spec.json")
 
@@ -87,14 +97,12 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
     # ---- torch 源: source 加载 + adapter 适配 ----
     adapter = load_adapter(cfg)
     exporter = GeExporter(adapter, air_dir, name)
-    # verify 段的门限覆盖透传给 Verifier; None (未覆盖) 的项过滤掉, 让框架默认生效
-    # (直接传 None 会覆盖掉 Verifier 的常量默认 → 比对门限变成 None 而崩)
-    verify = Verifier(**{k: v for k, v in (
-        ("ref_cosine_min", cfg.verify.ref_cosine_min),
-        ("ref_rel_l2_max", cfg.verify.ref_rel_l2_max),
-        ("cmp_cosine_min", cfg.verify.cmp_cosine_min),
-        ("cmp_rel_l2_max", cfg.verify.cmp_rel_l2_max),
-    ) if v is not None})
+    # verify 段的覆盖项透传给 Verifier。用 asdict 派生而不是手抄 ("ref_cosine_min", ...) 列表:
+    # 手抄的列表加字段就会漏 (rtol/atol 曾经就是这样在 yaml 里够不到)。None (未覆盖) 的项要
+    # 过滤掉, 否则会把 Verifier 的常量默认覆盖成 None → 比对时崩。
+    overrides = {k: v for k, v in asdict(cfg.verify).items() if v is not None}
+    overrides.pop("enabled", None)      # enabled 是 pipeline 的开关, 不是 Verifier 的参数
+    verify = Verifier(**overrides)
     ref_report = None
 
     if "export" in skip:
@@ -133,7 +141,7 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
                 f"输入脚本的 logical 序 {in_logical} ≠ adapter.io_input_nodes 声明的 "
                 f"{[n.logical for n in in_nodes]} — 两者都须 == patched forward 入参序 "
                 f"(脚本侧见其 FORWARD_ORDER, adapter 侧见 io_input_nodes)")
-        out_nodes = [_output_node(golden)]
+        out_nodes = adapter.io_output_nodes(golden)
         graph = Graph.from_air(air_path, in_nodes, out_nodes)
         graph.io_spec.to_json(io_spec_path)
 
@@ -194,15 +202,16 @@ def run(config_path, skip=(), dtype=torch.float16, device=None,
 def _inputs_args(cfg, vocab, out_dir):
     """输入脚本的 argv: 框架注入规范值, yaml 的 inputs.args 只放额外覆盖 (已写过的不覆盖)。
 
-    注入 --out/--vocab/--batch-size/--seq-len/--seed; --prefix-len 的**存在与否**由
-    adapt.params.prefix 管辖 (与 core.bench._form_args 同一套哲学: 形态事实源只有一处,
-    yaml 里那行常驻, 翻开关即无缝切形态)。--vocab 必须是**已加载模型**的 embedding 行数,
-    不是 config.vocab_size —— lm_head 剪裁会改写后者 (见 gen_inputs.py docstring)。
+    注入 --out/--vocab/--batch-size/--seq-len/--seed (都是 inputs.* 的通用事实);
+    **形态相关**的 flag (如 --prefix-len) 由 adapt.form 声明、form_flags 统一增删 ——
+    本函数不认具体开关名 (与 core.bench._form_args 共用同一套声明, 见 config.form_flags)。
+    --vocab 必须是**已加载模型**的 embedding 行数, 不是 config.vocab_size —— lm_head 剪裁
+    会改写后者 (见 gen_inputs.py docstring)。
     """
     args = list(cfg.inputs.args)
 
     def add(flag, value):
-        if value is not None and flag not in args:
+        if value is not None and not has_flag(args, flag):
             args.extend([flag, str(value)])      # extend 而非 +=: 闭包里 += 会让 args 变局部名
 
     add("--out", out_dir)
@@ -210,13 +219,7 @@ def _inputs_args(cfg, vocab, out_dir):
     add("--batch-size", cfg.inputs.batch_size)
     add("--seq-len", cfg.inputs.seq_len)
     add("--seed", cfg.inputs.seed)
-    if cfg.adapt.params.get("prefix"):
-        add("--prefix-len", cfg.inputs.prefix_len or None)
-    else:
-        args = strip_flag(args, "--prefix-len")
-        assert not any(a == "--prefix-len" or a.startswith("--prefix-len=") for a in args), \
-            f"strip_flag 未彻底移除 --prefix-len: {args}"
-    return args
+    return form_flags(cfg, args, "inputs")
 
 
 def _generate_inputs(cfg, model, out_dir, device):
@@ -238,14 +241,6 @@ def _generate_inputs(cfg, model, out_dir, device):
     return inputs, logical
 
 
-def _output_node(golden):
-    """从 golden 张量派生输出 IoNode (dim0=N 动态)。"""
-    if golden is None:
-        return IoNode(logical="logits", dtype="float16", shape=[-1], dynamic_dims=[0])
-    return IoNode(logical="logits", dtype=str(golden.dtype).replace("torch.", ""),
-                  shape=[-1] + list(golden.shape[1:]), dynamic_dims=[0])
-
-
 def _compile(cfg, graph, base_dir, skip):
     """om_acl → ATC 编译出 om_path; ge_session → None (但仍校验 图形态×后端 组合)。
 
@@ -253,9 +248,9 @@ def _compile(cfg, graph, base_dir, skip):
     直接失败 — 而"复用 AIR/OM 只跑 runtime"正是 --skip compile 的用途)。
 
     OM 不另设构建指纹: 它的身份已由**文件名**覆盖 —— _existing_om 按 <图名>+限核后缀匹配,
-    图名含 platform+prefix+prune (export_name), 后缀含 aicore_num; 而 soc 与 platform 一一
-    对应。剩下的 max_seq_len/inputs.* 由 AIR 侧的 check_build_record 兜住 (OM 是从 AIR 编的,
-    --skip export 时那道校验先触发)。
+    图名含 platform + 各形态开关的 tag (export_name), 后缀含 aicore_num; 而 soc 与 platform
+    一一对应。剩下的 max_seq_len/inputs.* 由 AIR 侧的 check_build_record 兜住 (OM 是从 AIR
+    编的, --skip export 时那道校验先触发)。
     """
     if "compile" in skip:
         if cfg.backend.type != "om_acl":
@@ -285,7 +280,7 @@ def main():
     p = argparse.ArgumentParser(description="GE 适配管线 (配置驱动)")
     p.add_argument("--config", required=True, help="model.yaml 路径")
     p.add_argument("--skip", default="",
-                   help="逗号分隔: ops,export,passes,compile,run,compare,reference")
+                   help=f"逗号分隔, 取值 ⊂ {{{','.join(SKIP_STAGES)}}} (拼错即硬失败)")
     p.add_argument("--device", type=int, required=True,
                    help="NPU 设备号 (必填; 运行期事实, 不进 model.yaml)")
     p.add_argument("--platform", default=None,

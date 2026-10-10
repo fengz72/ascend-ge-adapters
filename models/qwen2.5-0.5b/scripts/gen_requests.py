@@ -35,13 +35,14 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))))
-from core.config import load_target_tokens                              # noqa: E402
-from tools.varlen import generate_prefix_varlen_from_lens, generate_varlen_from_lens  # noqa: E402
-
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, _REPO_ROOT)
+from core.config import load_target_tokens                              # noqa: E402
+from core.setup_scripts import resolve_path                             # noqa: E402
+from tools.varlen import (check_varlen, generate_prefix_varlen_from_lens,  # noqa: E402
+                          generate_varlen_from_lens)
+
 FORWARD_ORDER = ["input_ids", "position_ids", "actual_seq_lengths"]
 
 
@@ -53,9 +54,12 @@ def out_width(args):
     """
     if not args.prune_tokens:
         return args.vocab
-    path = args.prune_tokens
-    if not os.path.isabs(path) and not os.path.exists(path):
-        path = os.path.join(_REPO_ROOT, path)
+    # 路径解析走框架那一条规则 (绝对 / 相对仓库根), 不自己再拼一套 —— 框架经 adapt.form 的
+    # `path` 值来源传进来的已经是绝对路径, 这里只兜单独手跑的情形
+    path = resolve_path(args.prune_tokens, is_file=True)
+    if path is None:
+        raise SystemExit(f"[gen_requests] --prune-tokens 找不到: {args.prune_tokens!r} — "
+                         f"只认绝对路径或相对仓库根 ({_REPO_ROOT}) 的写法")
     return len(load_target_tokens(path))
 
 
@@ -150,6 +154,16 @@ def main():
         tensors = {"input_ids": ids.numpy().astype(np.int64),
                    "position_ids": pos.numpy().astype(np.int64),
                    "actual_seq_lengths": np.array(cum, dtype=np.int64)}
+
+        # 落盘前自检结构不变量 (与 gen_inputs.py 同一道) — 池是全部性能数据的来源, 且长度服从
+        # 分布抽样、比固定 shape 更容易踩到边界 (min_len/max_len 截断后 own<=0、prefix 抬下界
+        # 失败等)。不自检的话写错只会表现为运行时 tiling 崩或延迟异常, 不指向真因。
+        segments = check_varlen(ids, pos, cum, prefix_len=prefix_len)
+        expect = batch + 1 if prefix_len else batch
+        if segments != expect:
+            raise SystemExit(f"[gen_requests] req_{k:04d} 段数 {segments} ≠ 期望 {expect} "
+                             f"(prefix 形态 act 有 batch+1 个元素, 基线 batch 个)")
+
         entries = []
         for logical in FORWARD_ORDER:                     # bundle 按 forward 序
             arr = tensors[logical]
@@ -163,8 +177,12 @@ def main():
             prov["prefix_len"] = prefix_len               # 总长 = P + own; act 有 batch+1 个元素
             prov["own_lens"] = own
         json.dump({"inputs": entries,
-                   "golden": {"logical": "logits", "shape": [batch, out_vocab],
-                              "file": "golden_logits.bin"},   # 只有 shape, 无文件 (性能测试不比对)
+                   # golden 只用来带 **shape** (运行时据此精确推导输出缓冲), 文件从不落盘 →
+                   # file 必须是 null。写一个不存在的文件名会让 core/verify.bundle_has_golden()
+                   # 误判为"有 golden", 于是"无 golden → 跳过 compare"的守卫失效, 真去比对时
+                   # 死于文件缺失而不是那句清晰的"bundle 无 golden 项"。C++ 侧只读 shape
+                   # (runtime/io_spec.cpp ExpectedOutputBytes), Str() 把 null 解析成空串。
+                   "golden": {"logical": "logits", "shape": [batch, out_vocab], "file": None},
                    "provenance": prov},
                   open(os.path.join(req_dir, "bundle.json"), "w"), indent=2)
         totals.append(int(tensors["input_ids"].size))

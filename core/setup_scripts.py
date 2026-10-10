@@ -37,7 +37,9 @@ import subprocess
 import sys
 import tempfile
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 仓库根 = 本文件 (core/setup_scripts.py) 的上上级目录。**唯一定义处** —— backend/bench
+# 都从这里 import, 各自再算一遍只会哪天改了目录结构漏掉一处。
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def resolve_path(entry, is_file=False):
@@ -49,13 +51,16 @@ def resolve_path(entry, is_file=False):
     "这条相对谁"), 且 CWD 相对意味着"换个目录跑就找不到"。写错就硬失败, 不猜。
 
     is_file=True 时要求是普通文件 (脚本), 否则目录/文件皆可 (三方源)。
+
+    **只适用于配置里声明的路径**。命令行临时给的路径走另一套规则 (CWD 相对是 Unix 惯例),
+    见 core/bench.py 的 _resolve_cli_path —— 两者规则不同是刻意的, 别混用。
     """
     if not entry:
         return None
     entry = str(entry).strip()
     if not entry:
         return None
-    path = entry if os.path.isabs(entry) else os.path.join(_REPO_ROOT, entry)
+    path = entry if os.path.isabs(entry) else os.path.join(REPO_ROOT, entry)
     found = os.path.isfile(path) if is_file else os.path.exists(path)
     return os.path.normpath(path) if found else None
 
@@ -68,10 +73,10 @@ def resolve_script(entry):
 def strip_flag(args, flag):
     """从 argv 列表移除一个 flag 及其值 (兼容 `--flag X` 与 `--flag=X` 两种写法), 返回新列表。
 
-    纯函数。用于按**形态事实源** (adapt.params.prefix) 增删 yaml 里手写的形态相关 flag —
-    范围/长度值属**负载口径**(留在 args), 但 flag 的**存在与否**由形态开关管辖, 这样翻
-    一个开关即无缝切形态, 不必同时手改 yaml (core.bench._form_args 与 core.pipeline
-    ._inputs_args 共用本函数)。
+    纯函数。用于按**形态开关** (adapt.params 里被 adapt.form 声明的那些键) 增删 yaml 里手写的
+    形态相关 flag — 范围/长度值属**负载口径**(留在 args), 但 flag 的**存在与否**由开关管辖,
+    这样翻一个开关即无缝切形态, 不必同时手改 yaml。唯一调用方是 core.config.form_flags
+    (pipeline._inputs_args 与 bench._form_args 都经它)。
     `--flag=` 前缀匹配不会误伤 `--flag-other` (后者不以 `--flag=` 开头, 也不 == `--flag`)。
     """
     out, skip = [], False
@@ -88,6 +93,16 @@ def strip_flag(args, flag):
     return out
 
 
+def has_flag(args, flag):
+    """argv 里是否已出现该 flag (兼容 `--flag X` 与 `--flag=X`, 与 strip_flag 同一套匹配)。
+
+    "yaml args 里已显式写过的**不覆盖**" 的判定用它 — 只查 `flag in args` 会漏掉 `=` 写法,
+    于是框架再注入一份, argparse 取后者 → 显式值被静默覆盖。前缀匹配规则同 strip_flag,
+    不会误认 `--flag-other`。
+    """
+    return any(a == flag or a.startswith(flag + "=") for a in args)
+
+
 def run_scripts(entries, stage):
     """按序执行脚本, 返回实际执行过的脚本路径列表。
 
@@ -102,7 +117,7 @@ def run_scripts(entries, stage):
         if script is None:
             raise FileNotFoundError(
                 f"[{stage}] 找不到脚本: {script_spec!r} — 只认**绝对路径**或**相对仓库根** "
-                f"({_REPO_ROOT}) 的写法, 如 models/<m>/scripts/x.sh; "
+                f"({REPO_ROOT}) 的写法, 如 models/<m>/scripts/x.sh; "
                 f"不支持相对 model_dir / CWD")
 
         env = os.environ.copy()

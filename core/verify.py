@@ -158,7 +158,8 @@ class Verifier:
     def save_bundle(self, dir, inputs, golden, io_spec, provenance, logical_order=None):
         """落盘 inputs/golden .bin + bundle.json (schema 见 docs §5.4), 返回 bundle.json 路径。
 
-        每个输入张量 → <dir>/inputs/<logical>.bin; golden → <dir>/golden_logits.bin。
+        每个输入张量 → <dir>/inputs/<logical>.bin; golden → <dir>/golden_<logical>.bin
+        (输出 logical 取自 io_spec.outputs[0], 默认即 golden_logits.bin)。
         logical 名取自 logical_order (**forward 入参序**, 与 inputs 一一对应); 缺省时退回
         io_spec.inputs 的位置序 — 但 io_spec 按**图 Data 序**排列 (docs §5.3), 两序不同时
         (如 qwen2.5-0.5b) 必须传 logical_order, 否则 .bin 会贴错 logical 标签。
@@ -181,10 +182,12 @@ class Verifier:
 
         g_entry = None
         if golden is not None:
-            g_rel = "golden_logits.bin"
+            logical = _logical(io_spec.outputs, 0, "logits")
+            # 文件名跟随输出 logical (不写死 golden_logits.bin) — 输出改名/多输出的模型
+            # 不会都撞到同一个文件名。默认单 logits 输出的名字不变, 既有 bundle 不受影响。
+            g_rel = f"golden_{logical}.bin"
             _dump(golden, os.path.join(dir, g_rel))
-            g_entry = {"logical": _logical(io_spec.outputs, 0, "logits"),
-                       "shape": _shape(golden), "file": g_rel}
+            g_entry = {"logical": logical, "shape": _shape(golden), "file": g_rel}
 
         bundle = {
             "inputs": in_entries,
@@ -254,9 +257,22 @@ class Verifier:
 
 # ---- 内部工具 ----
 
+def _is_bf16(t) -> bool:
+    """是否 torch.bfloat16 (按名字判, 免得本模块为了一个判断去 import torch)。"""
+    return hasattr(t, "dtype") and str(t.dtype) == "torch.bfloat16"
+
+
 def _to_numpy(t):
-    """张量 → numpy (比对统一在 CPU float 上做; 已是 ndarray 则原样)。"""
-    return t.detach().cpu().numpy() if hasattr(t, "detach") else np.asarray(t)
+    """张量 → numpy (比对统一在 CPU float 上做; 已是 ndarray 则原样)。
+
+    bfloat16 没有对应的 numpy dtype (`Tensor.numpy()` 直接抛 TypeError) → 先升 float32:
+    比对要的是**数值**, 而 bf16 本就是 f32 的截断, 升位无损。
+    落盘不走这里 (见 _dump: 磁盘上必须保留 bf16 的原始位模式与字节宽)。
+    """
+    if not hasattr(t, "detach"):
+        return np.asarray(t)
+    t = t.detach().cpu()
+    return t.float().numpy() if _is_bf16(t) else t.numpy()
 
 
 def _json_default(obj):
@@ -284,7 +300,15 @@ def _shape(t):
 
 
 def _dump(t, path):
-    """张量 → .cpu().numpy().tofile(path) (原始字节, 保留 dtype)。"""
+    """张量 → .tofile(path) (原始字节, 保留 dtype)。
+
+    bfloat16 按 uint16 **位模式**落盘: 磁盘上的字节宽必须与 io_spec 声明的 dtype 一致
+    (tools/compare.load_file 读回时按同一条规则还原成 float32), 不能因为 numpy 没有 bf16
+    就偷写成 4 字节 —— 那会让 .bin 与声明的 dtype 对不上, 读回来全是垃圾。
+    """
+    if hasattr(t, "detach") and _is_bf16(t):
+        import torch                 # 延迟导入: 同 golden(), 本模块其余部分不依赖 torch
+        t = t.detach().cpu().contiguous().view(torch.uint16)
     _to_numpy(t).tofile(path)
 
 

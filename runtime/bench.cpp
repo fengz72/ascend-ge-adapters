@@ -15,12 +15,6 @@
 namespace ge_runtime {
 namespace {
 
-using Clock = std::chrono::steady_clock;
-
-double ElapsedMs(Clock::time_point begin, Clock::time_point end) {
-    return std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000.0;
-}
-
 struct Percentiles {
     double avg = 0, min = 0, p50 = 0, p99 = 0, max = 0;
 };
@@ -140,9 +134,6 @@ bool BenchThroughput(const BenchOptions &opt, const ThreadResources &res, Throug
                     break;
                 }
                 times.push_back(ElapsedMs(begin, Clock::now()));
-            }
-            if (res.threadExit) {
-                res.threadExit(t);
             }
         });
     }
@@ -495,6 +486,7 @@ nlohmann::json PerfToJson(const PerfResult &p) {
                              {"distinct_shapes", ip.distinctShapes},
                              {"specialize_ms", ip.specializeMs}});
     }
+    // "ge-bench/1" = core/bench.py 的 PERF_SCHEMA, 读回时校验 (load_perf)。改字段要两侧同步。
     return Json{{"schema", "ge-bench/1"},
                 {"requests", p.requests},
                 {"errors", p.errors},

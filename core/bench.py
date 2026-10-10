@@ -33,14 +33,21 @@ import datetime
 import json
 import os
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Optional
 
 from core.backend import RUNTIME_BIN, parse_profiling
-from core.config import _setup_entries, export_name, load_config, resolve_platform
-from core.setup_scripts import resolve_path, run_scripts, strip_flag
+from core.config import (SetupEntry, export_name, form_flags, load_config,
+                         resolve_platform)
+from core.setup_scripts import REPO_ROOT, has_flag, run_scripts
 from core.verify import collect_provenance
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 跨语言的契约版本串。**两侧都校验** (否则写了等于没写, 改字段时无人发现):
+#   PLAN_SCHEMA  Python 写进 plan.json  → C++ runtime/bench_plan.cpp 读时校验
+#   PERF_SCHEMA  C++ runtime/bench.cpp 写进 perf.json → Python 读回时校验 (run / sweep.collect)
+# 主版本号变了 = 字段不兼容, 必须两侧同步改。
+PLAN_SCHEMA = "ge-bench-plan/1"
+PERF_SCHEMA = "ge-bench/1"
 
 
 @dataclass
@@ -52,9 +59,9 @@ class Scenario:
     instances: int = 1
     requests: int = 100
     warmup: int = 10
-    seed: int = 0
-    inputs: dict = field(default_factory=dict)          # {mode: pool, dir: ...}
-    generate: list = field(default_factory=list)        # list[SetupEntry] 生成请求池的脚本
+    seed: int = 0                                          # 请求池**抽样**种子 (≠ inputs.seed)
+    pool_dir: str = ""                                     # 请求池目录 (<model_dir>/io/pool)
+    pool_gen: Optional[SetupEntry] = None                   # 生成请求池的脚本 (bench.pool)
     report_dir: str = ""
     backend_options: dict = field(default_factory=dict)
     profiling: dict = field(default_factory=dict)        # {enabled, output, aic_metrics} — CLI 开关, 不进 yaml
@@ -64,59 +71,52 @@ class Scenario:
     raw: dict = field(default_factory=dict)             # model.yaml 全文 (run.json 快照)
 
 
-def _resolve(path, base_dir=None):
-    """绝对路径原样; 否则依次试 仓库根 / scenario 所在目录 / CWD。"""
+def _resolve_cli_path(path, base_dir=None):
+    """**CLI 传入**的路径 → 绝对路径 (绝对原样; 否则依次试 CWD / 仓库根 / base_dir)。
+
+    与 `setup_scripts.resolve_path` 是**两类不同的东西**, 规则故意不同:
+        resolve_path      yaml 里**声明**的路径 — 只认绝对或相对仓库根, 多基准会让同一份配置
+                          混两种写法, 故写错即硬失败
+        _resolve_cli_path 命令行**临时**给的路径 — CWD 相对是 Unix 惯例 (用户在哪个目录敲命令
+                          就相对哪个目录), 硬要仓库根相对反而反直觉
+    顺序把 CWD 放第一: 同名文件同时存在于 CWD 与仓库根时, 以用户眼前的为准。
+    """
     if not path or os.path.isabs(path):
         return path
-    for root in (_REPO_ROOT, base_dir, os.getcwd()):
+    for root in (os.getcwd(), REPO_ROOT, base_dir):
         if not root:
             continue
         cand = os.path.join(root, path)
         if os.path.exists(cand):
             return os.path.normpath(cand)
-    return os.path.normpath(os.path.join(_REPO_ROOT, path))
+    return os.path.normpath(os.path.join(os.getcwd(), path))
 
 
 def _form_args(cfg, args):
     """把**形态事实**拼进请求池生成脚本的 args (负载口径留在 yaml / 脚本默认值里)。
 
-    这三个量若在 yaml 里再抄一遍就会静默错配 (池与图接口对不上, 或报告口径与声明不符),
-    所以由框架从 model.yaml 注入:
-      --batch         prefix 形态下 act 是**静态** [batch+1] (io_spec 无动态维), 池里每套
-                      请求的条数被图烙死, 必须 = inputs.batch_size
-      --prune-tokens  lm_head 剪裁宽 = 图输出宽; 抄漏会让 golden shape 与图输出对不上
-      --prefix        prefix 形态必须是 packed 布局; **范围**属负载口径 (yaml 可写 "20-25"),
-                      没写就用 inputs.prefix_len 保底
-    yaml 的 args 里已显式写过的不覆盖 (便于临时实验)。
+    这些量若在 yaml 里再抄一遍就会静默错配 (池与图接口对不上, 或报告口径与声明不符),
+    所以由框架从 model.yaml 注入。分两类:
 
-    --prefix 的**存在与否**由 prefix 标志管辖 (范围值仍留在 args): prefix=true 注入/保留,
-    prefix=false 则**移除** yaml 里手写的 --prefix —— 这样翻 adapt.params.prefix 一个开关
-    即可无缝切形态, 不必同时手改 bench.pool.args (否则非 prefix 形态会生成 prefix-packed 池,
-    与基线图接口对不上)。
+      --batch   恒注入, **不是**形态开关 —— prefix 形态下 act 是静态 [batch+1] (io_spec 无
+                动态维), 池里每套请求的条数被图烙死, 必须 = inputs.batch_size
+      其余      受形态开关管辖的 flag (如 --prefix / --prune-tokens), 由 `adapt.form` 声明、
+                config.form_flags 统一增删 —— 本函数不认具体开关名 (与 pipeline._inputs_args
+                共用同一套声明)。开关为真注入/保留, 为假则**移除** yaml 里手写的 flag,
+                于是翻 adapt.params 一个开关即无缝切形态, 不必同时手改 bench.pool.args
+                (否则非 prefix 形态会生成 prefix-packed 池, 与基线图接口对不上)。
+
+    yaml 的 args 里已显式写过的不覆盖 (便于临时实验); 值来源 (inputs.<字段> / path) 也在
+    adapt.form 里声明。
     """
     out = list(args)
 
     def add(flag, value):
-        if value is not None and flag not in out:
+        if value is not None and not has_flag(out, flag):
             out.extend([flag, str(value)])      # extend 而非 +=: 闭包里 += 会让 out 变成局部名
 
     add("--batch", cfg.inputs.batch_size)
-    prune = cfg.adapt.params.get("prune_token_file")
-    if prune:
-        # 路径规则与 load_adapter 一致 (绝对 / 相对仓库根); 传给脚本的是绝对路径, 免依赖 CWD
-        resolved = resolve_path(prune, is_file=True)
-        if resolved is None:
-            raise FileNotFoundError(
-                f"adapt.params.prune_token_file 找不到: {prune!r} — 只认**绝对路径**或"
-                f"**相对仓库根**的写法, 如 models/{cfg.model.name}/config/target_tokens.json")
-        add("--prune-tokens", resolved)
-    if cfg.adapt.params.get("prefix"):
-        add("--prefix", cfg.inputs.prefix_len or None)
-    else:
-        out = strip_flag(out, "--prefix")
-        assert not any(a == "--prefix" or a.startswith("--prefix=") for a in out), \
-            f"strip_flag 未彻底移除 --prefix: {out}"
-    return out
+    return form_flags(cfg, out, "pool")
 
 
 def load_bench(config_path, device=None, instances=None, requests=None, warmup=None,
@@ -140,10 +140,9 @@ def load_bench(config_path, device=None, instances=None, requests=None, warmup=N
     with open(config_path) as f:
         raw = yaml.safe_load(f) or {}
 
-    generate = []
-    if b.pool:
-        generate = [_setup_entries([{"script": b.pool.script, "path": b.pool.path,
-                                     "args": _form_args(cfg, b.pool.args)}])[0]]
+    # bench.pool 是 Optional[SetupEntry] (一个模型一个池生成脚本) → 只替换 args, 用 replace
+    # 即可; 原来绕道 _setup_entries([{dict}])[0] 把 dataclass 拆成 dict 再拼回来, 纯属噪音
+    pool_gen = replace(b.pool, args=_form_args(cfg, b.pool.args)) if b.pool else None
 
     # 限核的单一事实源是 backend.aicore_num: om_acl 在 ATC 编译期 (已烙进 OM), ge_session
     # 在运行期 → 经 plan.json 的 backend_options 传给 C++ (与 pipeline 的 backend_extra 同源)。
@@ -163,8 +162,8 @@ def load_bench(config_path, device=None, instances=None, requests=None, warmup=N
         requests=b.requests,
         warmup=b.warmup,
         seed=b.sample_seed,
-        inputs={"mode": "pool", "dir": os.path.join(md, "io", "pool")},
-        generate=generate,
+        pool_dir=os.path.join(md, "io", "pool"),
+        pool_gen=pool_gen,
         report_dir=os.path.join(md, "results"),
         backend_options=backend_options,
         device=device,
@@ -179,7 +178,7 @@ def load_bench(config_path, device=None, instances=None, requests=None, warmup=N
     if warmup is not None:
         sc.warmup = warmup
     if manifest:
-        sc.manifest = _resolve(manifest, md)
+        sc.manifest = _resolve_cli_path(manifest, md)
 
     if not os.path.exists(sc.manifest):
         raise ValueError(f"manifest 不存在: {sc.manifest} — 先跑管线产出 "
@@ -191,7 +190,7 @@ def make_run_id(scenario) -> str:
     """run_id = 时间戳-git短sha-scenario名 (归档目录名, 可按时间排序)。"""
     ts = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
     try:
-        sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=_REPO_ROOT,
+        sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT,
                                       stderr=subprocess.DEVNULL).decode().strip()
     except Exception:
         sha = "nogit"
@@ -201,14 +200,17 @@ def make_run_id(scenario) -> str:
 def build_plan(scenario, run_dir, run_id) -> str:
     """生成 C++ 的 bench plan (JSON) — C++ 不读 yaml, 只吃这个 plan。"""
     plan = {
-        "schema": "ge-bench-plan/1",
+        "schema": PLAN_SCHEMA,
         "manifest": scenario.manifest,
         "device": scenario.device,
         "instances": scenario.instances,
         "requests": scenario.requests,
         "warmup": scenario.warmup,
         "seed": scenario.seed,
-        "inputs": {"mode": "pool", "dir": scenario.inputs["dir"]},
+        # mode 只有 "pool" 一种合法值 (C++ 侧 bench_plan.cpp 对其它值硬失败, 固定输入直接用
+        # `ge_runtime <manifest> --bench N`)。仍然写出来: plan.json 会归档进 run 目录, 读的人
+        # 不该要靠"没写就是默认"去猜负载形态。
+        "inputs": {"mode": "pool", "dir": scenario.pool_dir},
         "backend_options": scenario.backend_options,
         "report": {
             "perf_json": os.path.join(run_dir, "perf.json"),
@@ -231,14 +233,40 @@ def build_plan(scenario, run_dir, run_id) -> str:
     return plan_path
 
 
+def load_perf(run_dir) -> dict:
+    """读回 C++ 出的 perf.json 并校验契约版本 (run 与 sweep.collect 共用)。
+
+    版本不匹配 → 硬失败: perf.json 的字段名是 C++ 写、Python 读, 两侧靠手抄对齐
+    (render_perf_md / perf_summary / index 三处共约 30 个键), 主版本变了还按旧键读只会
+    静默渲染出一堆 0/None。
+    """
+    path = os.path.join(run_dir, "perf.json")
+    with open(path) as f:
+        perf = json.load(f)
+    got = perf.get("schema")
+    if got != PERF_SCHEMA:
+        raise ValueError(
+            f"{path} 的 schema={got!r} ≠ 本版本期望的 {PERF_SCHEMA!r} — C++ 运行时与 Python "
+            f"侧的 perf 字段不兼容 (runtime/build/ge_runtime 是旧构建? 重跑 bash runtime/build.sh)")
+    return perf
+
+
+# provenance 键 → 报告里的显示名 (只在两者含义会被混淆时才改名)
+_FORM_DISPLAY = {"seed": "inputs.seed"}
+
+
 def _form_str(form) -> str:
-    """形态 dict → 一行可读串 (adapt_params 展开, 其余 key=value)。"""
+    """形态 dict → 一行可读串 (adapt_params 展开, 其余 key=value)。
+
+    provenance 里的 `seed` 是 **inputs.seed** (激励生成种子), 与报告"负载"行的 sample_seed
+    (请求池**抽样**种子) 是两回事 —— 显示时改名, 否则同一份 perf.md 里出现两个 `seed=`。
+    """
     if not form:
         return "未知 (bundle 无 provenance)"
     parts = []
     for key, value in (form.get("adapt_params") or {}).items():
         parts.append(f"{key}={value}")
-    parts += [f"{k}={v}" for k, v in form.items() if k != "adapt_params"]
+    parts += [f"{_FORM_DISPLAY.get(k, k)}={v}" for k, v in form.items() if k != "adapt_params"]
     return " · ".join(parts)
 
 
@@ -259,7 +287,7 @@ def render_perf_md(perf, scenario, run_id, provenance) -> str:
         f"soc: {scenario.soc or '-'}",
         f"- manifest: `{perf.get('manifest')}`",
         f"- 负载: instances={load.get('instances')} · requests={load.get('requests')} · "
-        f"warmup={load.get('warmup')} · seed={load.get('seed')}",
+        f"warmup={load.get('warmup')} · sample_seed={load.get('seed')}",
         f"- 请求池: `{pool.get('dir')}` — {pool.get('size')} 套 / "
         f"{pool.get('distinct_shapes')} 种 shape",
         f"- 模型形态: {_form_str(provenance.get('model_form'))}",
@@ -316,8 +344,11 @@ def render_perf_md(perf, scenario, run_id, provenance) -> str:
         "（说明延迟被特化污染）。",
         "- `load ms` = 该实例的加载耗时；**GeSession 口径含全部图实例的 `CompileGraph`**"
         "（串行、一次性，~10s/份），ACL 口径是该实例的 `aclmdlLoadFromFile`+缓冲分配。",
-        "- 请求池由模型侧脚本按分布生成（语义自洽由模型侧保证），各实例用 `seed + instance_id` "
-        "独立随机抽样，可复现。",
+        "- 请求池由模型侧脚本按分布生成（语义自洽由模型侧保证），各实例用 "
+        "`sample_seed + instance_id` 独立随机抽样，可复现。",
+        "- **两个 seed 不是一回事**：`sample_seed`（上面「负载」行，= `bench.sample_seed`）决定"
+        "从池里**抽哪些**请求；`inputs.seed`（「模型形态」行，来自 bundle provenance）是当初"
+        "**生成激励/请求池 token** 的随机种子。改前者只换抽样，改后者换的是负载数据本身。",
         "- 精度不在本报告内：性能跑不落盘输出（避免 D2H 污染延迟），精度由 `run.sh` 的两道门"
         "负责（`io/reference.json` + 门② compare，docs §10）。",
         "",
@@ -325,6 +356,8 @@ def render_perf_md(perf, scenario, run_id, provenance) -> str:
     return "\n".join(lines)
 
 
+# bundle.provenance 里算"**形态**"的键 (报告自证用)。其中的 seed 是 inputs.seed (激励生成),
+# 不是 bench.sample_seed (池抽样) — 显示时由 _FORM_DISPLAY 改名以免与「负载」行混淆。
 FORM_KEYS = ("adapt_params", "seed", "batch_size", "seq_len", "prefix_len", "dtype")
 
 
@@ -377,18 +410,14 @@ def run(config_path, device=None, instances=None, requests=None, warmup=None,
         raise FileNotFoundError(f"C++ 运行时未构建: {RUNTIME_BIN} (先执行 bash runtime/build.sh)")
 
     # 1. 请求池 (可选: 先跑生成脚本; 与 pass/算子同一套 {path, script, args} 接口)
-    if sc.generate:
-        pool_dir = sc.inputs["dir"]
-        os.makedirs(pool_dir, exist_ok=True)
-        entries = []
-        for g in sc.generate:
-            args = list(g.args)
-            if "--out" not in args:
-                args += ["--out", pool_dir]
-            entries.append(type(g)(script=g.script, path=g.path, args=args))
-        run_scripts(entries, "generate")
-    if not os.path.isdir(sc.inputs["dir"]):
-        raise FileNotFoundError(f"请求池目录不存在: {sc.inputs['dir']} (配 bench.pool 或手动生成)")
+    if sc.pool_gen:
+        os.makedirs(sc.pool_dir, exist_ok=True)
+        args = list(sc.pool_gen.args)
+        if "--out" not in args:
+            args += ["--out", sc.pool_dir]
+        run_scripts([replace(sc.pool_gen, args=args)], "generate")
+    if not os.path.isdir(sc.pool_dir):
+        raise FileNotFoundError(f"请求池目录不存在: {sc.pool_dir} (配 bench.pool 或手动生成)")
 
     # 2. plan → ge_runtime (C++ 只测量并出数据)
     run_id = make_run_id(sc)
@@ -408,7 +437,7 @@ def run(config_path, device=None, instances=None, requests=None, warmup=None,
                   f"  解析: python3 tools/parse_profiling.py parse-and-export "
                   f"--profiling_dir {sc.profiling['output']}  (或加 --profiling-parse 自动跑)")
 
-    perf = json.load(open(os.path.join(run_dir, "perf.json")))
+    perf = load_perf(run_dir)
 
     # 3. provenance + 报告
     provenance = collect_provenance(model=sc.name, soc=sc.soc or None)

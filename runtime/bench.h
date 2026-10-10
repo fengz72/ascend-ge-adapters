@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -11,6 +12,17 @@
 #include "pool.h"
 
 namespace ge_runtime {
+
+// ---- 计时原语 (bench.cpp 与两个 backend 共用) ----
+//
+// 原来三处各抄一份 `using Clock` + `ElapsedMs` (逐字节相同)。放这里而不是新建头:
+// 它们就是"测量"的原语, 与本头文件的职责同类, 且三个使用方都已经 include 本文件。
+// 不依赖 ACL —— HBM 查询那类要 acl.h 的共享件在 backends/backend_common.h。
+using Clock = std::chrono::steady_clock;
+
+inline double ElapsedMs(Clock::time_point begin, Clock::time_point end) {
+    return std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000.0;
+}
 
 struct BenchOptions {
     int warmup = 0;
@@ -47,7 +59,6 @@ struct ThreadResources {
     std::function<bool(int tid)> step;          // 工作线程调用: 执行一次请求
     std::function<void(int tid)> release;       // 主线程串行调用: 销毁第 tid 份资源
     std::function<void(int tid)> threadEnter;   // 工作线程启动时 (如 aclrtSetCurrentContext)
-    std::function<void(int tid)> threadExit;    // 工作线程退出前
 };
 
 bool BenchRun(const BenchOptions &opt, const std::function<bool()> &step, BenchStats &stats);
@@ -113,8 +124,8 @@ nlohmann::json PerfToJson(const PerfResult &perf);            // 调用方合并
 bool WriteRequestsCsv(const std::string &path, const PerfResult &perf);
 
 // 吞吐: opt.threads 个 worker 闭环跑 (1 worker ↔ 1 份资源, 无锁); setup→warmup→并发→release。
-// **不做档位扫描** — 扫描是"同一件事跑多遍", 归脚本 (tools/sweep.py 逐档起进程),
-// C++ 只负责测准一档。
+// **不做档位扫描** — 扫描是"同一件事跑多遍", 归脚本 (tools/sweep.py: 逐档调 core.bench,
+// 每档一个全新的 ge_runtime 进程), C++ 只负责测准一档。
 bool BenchThroughput(const BenchOptions &opt, const ThreadResources &res, ThroughputStats &stats);
 
 bool IsThroughputMode(const BenchOptions &opt);

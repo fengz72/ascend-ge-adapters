@@ -88,17 +88,13 @@ RequestPool LoadPool(const IoSpec &spec, const std::string &dir) {
         pool.requests.push_back(std::move(req));
     }
 
-    pool.maxShape.assign(spec.inputs.size(), {});
+    // 逐输入取池内最大字节数 → 后端按它预分配 device 缓冲 (每请求只 H2D 实际字节)。
+    // 只算**字节数**不算逐维最大 shape: 缓冲分配要的是字节数, 而各维最大值拼出来的
+    // "最大 shape" 未必是池里真实存在的一套 (T 最大与 N 最大可能来自不同请求), 拿它分配
+    // 既偏大又语义不清。原来这里还算了一份 maxShape, 从来没人读 → 已删。
     pool.maxBytes.assign(spec.inputs.size(), 0);
     for (const auto &req : pool.requests) {
-        for (size_t i = 0; i < req.plans.size() && i < pool.maxShape.size(); i++) {
-            const std::vector<int64_t> &shape = req.plans[i].shape;
-            if (pool.maxShape[i].size() < shape.size()) {
-                pool.maxShape[i].resize(shape.size(), 0);
-            }
-            for (size_t d = 0; d < shape.size(); d++) {
-                pool.maxShape[i][d] = std::max(pool.maxShape[i][d], shape[d]);
-            }
+        for (size_t i = 0; i < req.plans.size() && i < pool.maxBytes.size(); i++) {
             pool.maxBytes[i] = std::max(pool.maxBytes[i], req.plans[i].Bytes());
         }
     }

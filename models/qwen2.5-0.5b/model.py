@@ -17,7 +17,8 @@ Qwen2.5-0.5b 模型适配 — 全部替换实现 + 运行期注入 + Qwen25Adapt
 运行期注入 (实例级, 由 adapt 自动调用 adapter.setup, 无需手工调用):
     模式标志 _prefix_mode → 模型与每层 self_attn (forward 的 last 索引、
     attention 的 FIA/PIA 算子选择)
-    图常量: atten_mask [max_seq_len, max_seq_len] bool + cos/sin 表 [max_seq_len, D] fp16
+    图常量: atten_mask [max_seq_len, max_seq_len] bool + cos/sin 表 [max_seq_len, D]
+            (表 dtype 跟随模型权重, 不写死 fp16)
             (max_seq_len 由 pipeline 从 cfg.graph.dynamic.max_seq_len 透传)
     lm_head vocab 剪裁 (prune_tokens 非空时) — 输出维度 vocab_size → len(tokens)
     actual_seq_lengths 不注入 — patched forward 每次调用以入参覆盖每层
@@ -203,7 +204,11 @@ def _build_causal_mask(max_seq_len, device):
 
 
 def _precompute_rope_cos_sin(model, max_seq_len, device):
-    """预计算 RoPE cos/sin 表注册为 buffer, 配合 frozen_parameter 成为图常量。"""
+    """预计算 RoPE cos/sin 表注册为 buffer, 配合 frozen_parameter 成为图常量。
+
+    表的 dtype 跟随模型权重 (不写死 float16) — cos/sin 要与 q/k 同 dtype 才能进同一个
+    npu_apply_rotary_pos_emb, 写死会让 --dtype bfloat16 的跑法在图里撞 dtype。
+    """
     rotary_emb = model.model.rotary_emb
     position_ids = torch.arange(max_seq_len, dtype=torch.long, device=device).unsqueeze(0)
 
@@ -214,8 +219,9 @@ def _precompute_rope_cos_sin(model, max_seq_len, device):
     position_ids_expanded = position_ids[:, None, :].float()
     freqs = (inv_freq_expanded @ position_ids_expanded).transpose(1, 2)
     emb = torch.cat((freqs, freqs), dim=-1)
-    cos = (emb.cos() * scaling).to(dtype=torch.float16)
-    sin = (emb.sin() * scaling).to(dtype=torch.float16)
+    dtype = model.model.embed_tokens.weight.dtype
+    cos = (emb.cos() * scaling).to(dtype=dtype)
+    sin = (emb.sin() * scaling).to(dtype=dtype)
 
     rotary_emb.register_buffer('_cos_table', cos.squeeze(0), persistent=False)
     rotary_emb.register_buffer('_sin_table', sin.squeeze(0), persistent=False)
@@ -242,7 +248,9 @@ def prune_lm_head(model, token_ids):
     hidden_size = model.config.hidden_size
     new_lm_head = nn.Linear(hidden_size, len(token_ids), bias=False)
     new_lm_head.weight = nn.Parameter(pruned_weight)
-    model.lm_head = new_lm_head.to(device).half()
+    # 不再 .half(): pruned_weight 已带原权重的 dtype, 硬转 fp16 会让 --dtype bfloat16 跑法
+    # 的 lm_head 与 hidden 撞 dtype
+    model.lm_head = new_lm_head.to(device)
     model.config.vocab_size = len(token_ids)
 
     print(f"[prune] lm_head: [{len(token_ids)}, {hidden_size}]")
@@ -276,7 +284,7 @@ class Qwen25Adapter(GeModelAdapter):
            attention 的 FIA/PIA 算子选择); 创建时烙定, 之后不可变:
            运行期翻标志会导致 eager 与已导出图行为分裂
         3. 图常量: atten_mask [max_seq_len, max_seq_len] bool + RoPE cos/sin 表
-           [1, max_seq_len, D] — 两者同源于 max_seq_len (pipeline 从
+           [max_seq_len, D] (注册前 squeeze 掉 batch 维) — 两者同源于 max_seq_len (pipeline 从
            cfg.graph.dynamic.max_seq_len 透传; 表长决定 position_ids 可用上限)
         actual_seq_lengths 不注入: patched forward 每次调用都会以入参
         覆盖每层 self_attn 的属性 (eager 与图导出同一路径); 若有人绕过

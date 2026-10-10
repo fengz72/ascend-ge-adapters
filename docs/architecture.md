@@ -140,9 +140,20 @@ platforms:                       # 平台表 (长期并存: 每个平台都进�
 
 adapt:                           # torch 源适用
   adapter_class: Qwen25Adapter   # 约定: 同目录 model.py 里的类
-  params:                        # 仅适配行为开关 (= **形态**轴)
+  params:                        # 仅适配行为开关 (= **形态**轴), 直接作为 adapter 构造 kwargs
     prefix: false
     prune_token_file: null       # 填路径 → lm_head 词表剪裁 (如 models/<m>/config/target_tokens.json)
+  form:                          # 每个 param 对**框架**的后果 — 框架不认具体开关名 (见下方说明)
+    prefix:
+      tag: prefix                # 开关为真 → 产物名追加 "-prefix"
+      flags:
+        inputs: {"--prefix-len": inputs.prefix_len}   # 激励脚本: 值取 inputs.prefix_len
+        pool:   {"--prefix": inputs.prefix_len}       # 请求池脚本: 同上 (args 里写过的不覆盖)
+    prune_token_file:
+      tag: prune
+      load: {kind: token_ids, as: prune_tokens}       # 值是文件 → 载入内容传给 adapter
+      flags:
+        pool: {"--prune-tokens": path}                # 值 = 解析后的绝对路径
 
 inputs:                          # 激励生成 (L0 reference / L1 golden / L2 trace+bundle 三层共用)
   script: models/qwen2.5-0.5b/scripts/gen_inputs.py   # **必填**: 用户脚本 (§7 同一套接口)
@@ -172,6 +183,8 @@ verify:
   #   ref_rel_l2_max: 0.02
   #   cmp_cosine_min: 0.9999     # 门② compare (同源: 运行时输出 vs golden)
   #   cmp_rel_l2_max: 0.01
+  #   rtol: 1e-3                 # 逐元素**参考**口径 (allclose / 通过率统计), 不参与 PASS/FAIL
+  #   atol: 1e-5
 
 bench:                           # 性能测试口径 (core.bench / tools.sweep); 一个模型一个场景
   instances: 4                   # = 并发 worker (1:1 绑实例, 无锁)
@@ -192,19 +205,26 @@ bench:                           # 性能测试口径 (core.bench / tools.sweep)
 
 > `adapt.params` 只放**适配行为**（prefix/prune）；`inputs` 放**输入形状/分布**（batch/seq/seed）——换输入分布不动 adapt。
 
+> **`adapt.form` 声明每个 param 对框架的后果——框架不认具体开关名。** 曾经 `prefix` / `prune_token_file` 写死在 core/ 四处（`export_name` / `load_adapter` / `bench._form_args` / `pipeline._inputs_args`），于是"适配新模型框架零改动"是假的：新 adapter 加一个影响图结构的开关，除非有人记得改 core/，否则产物名不变 → 切形态时**静默覆盖**上一种的 AIR/OM/bundle。现在后果由 yaml 声明，core/ 只做通用解析（`config.FormSwitch` / `_form` / `form_flags`）：
+>
+> - **`tag`**：开关为真时追加进产物名（`export_name` 按 yaml 声明序遍历 `form`）。
+> - **`load`**：值是文件路径时怎么载入（yaml 表达不了"读 json 取数组"）——`{kind: token_ids, as: prune_tokens}`，`kind` 见 `config._LOADERS`，载入后**原路径键被移除**，adapter 只收内容。
+> - **`flags`**：受本开关管辖的脚本 flag，按消费方分组（`inputs`=激励脚本 / `pool`=请求池脚本，两个脚本接受的 flag 不同）。值来源只有两种：`path`（该 param 解析后的绝对路径）或 `inputs.<字段>`。开关为真 → 注入（args 里已显式写过的**不覆盖**）；为假 → 用 `strip_flag` 从 args **移除**。于是翻 `adapt.params` 一个开关即无缝切形态，不必同时手改 `inputs.args` / `bench.pool.args`。
+> - **强 schema + 全覆盖**：`form` 条目写未知键、`load.kind` 不认、`flags` 的 stage 不认、值来源写法不认（如把 `inputs.` 拼成 `input.`）——一律硬失败，理由同 `platforms`（静默忽略 = 以为注入了其实没有）。且 `adapt.params` 的**每个键都必须在 `form` 里出现**；确实对框架无后果就写空条目 `foo: {}`。这条强制是整个机制的关键：它把"忘了给新开关声明 tag"从静默的产物覆盖变成配置解析期的硬失败。
+
 > **激励由用户脚本生成并落盘**（`inputs.script`，与 `passes`/`custom_ops`/`bench.pool` 同一套 `{script, args}` 接口，`core/setup_scripts.py` 执行）。框架**不生成**模型专属负载——语义自洽（`asl` 必须 cumsum、`position` 每段从起点递增、`asl[-1]==T`）只有模型侧能保证；但框架**验**它：`tools/varlen.check_varlen` 就是这几条等式，脚本落盘前自检，把"脚本写错 → 图静默算错"变成当场失败。
 >
 > - **产物**：`<base>/io/{inputs.json, inputs/*.bin}`。`inputs.json` 的 inputs 段与 `bundle.json` 同形（`{logical, shape, file}`），只多一个 `dtype`——bundle 不记 dtype 是因为 C++ 从 io_spec 取，而输入脚本在 io_spec **之前**跑，Python 侧读回 `.bin` 必须自己知道 dtype。`tools/varlen.write_inputs`/`load_inputs` 是这份 schema 的唯一定义处，脚本与框架共用。
 > - **框架注入的 args**（`pipeline._inputs_args`）：`--out`、`--vocab`、`--batch-size`、`--seq-len`、`--seed`；yaml 的 `inputs.args` 里已显式写过的不覆盖（便于临时实验）。`--vocab` 必须是**已加载模型**的 `get_input_embeddings().weight.shape[0]`，**不是** `config.vocab_size`——lm_head 剪裁会把后者改成剪裁宽度（如 8），用它生成 token 就只覆盖 embedding 的前 8 行。这也是激励必须在 `adapt` **之前**生成的原因。
-> - **`--prefix-len` 的去留由 `adapt.params.prefix` 管辖**（`setup_scripts.strip_flag`，与 `bench._form_args` 共用同一函数）：yaml 里那行常驻，翻 prefix 一个开关即无缝切形态。
+> - **形态相关的 flag（如 `--prefix-len`）由 `adapt.form` 声明、`config.form_flags` 统一增删**（内部用 `setup_scripts.strip_flag`；`bench._form_args` 走同一函数、同一份声明，只是 stage 换成 `pool`）：yaml 里那行常驻，翻开关即无缝切形态。`_inputs_args` / `_form_args` 都不认具体开关名。
 > - **读回时校验字节数** == `prod(shape) × dtype`：产物被截断或与声明不一致时当场失败，而不是喂进图后表现为 tiling 崩（`tools/varlen.load_inputs`）。
 > - **logical 序对账**：脚本落盘的序 ≠ `adapter.io_input_nodes` 声明的序 → `pipeline` 硬失败（否则 `save_bundle` 会把 `.bin` 贴错 logical 标签，C++ 按名配对 → 静默喂错张量）。
 
-> **`bench` 段只放"这次压测怎么压"，模型侧事实一律不重复**（否则两处会静默分叉）：`soc`←`model.soc`、manifest←`<model_dir>/io/manifest.json`、报告←`<model_dir>/results`、池←`<model_dir>/io/pool`、`aicore_num`←`backend.aicore_num`（前两者与 `aicore_num` 都由 `resolve_platform` 从选中的 `platforms` profile 摊平而来，故 bench 的限核口径与 pipeline 编译时**必然一致**——这也是 `load_bench` 先要求 `--device` 再解析平台的原因）。归档名 = `export_name(cfg) + "-bench"`（含平台与形态后缀），两平台两形态互不撞名。**没有精度开关**——精度只由 `verify.enabled` 驱动的两道门度量（§10），bench 只出性能数字。请求池生成脚本的**形态参数**由 `bench._form_args` 从配置注入而不是写在 args 里：`--batch`←`inputs.batch_size`（prefix 形态下 act 是静态 `[batch+1]`，池里每套的条数被图烙死）、`--prune-tokens`←`adapt.params.prune_token_file`（决定 golden 宽）、`--prefix`←`inputs.prefix_len` 保底（**范围**属负载口径，args 里写 `"20-25"` 优先）。负载分布（μ/σ/长度截断/词表上界）是模型专属脚本的口径，写死在脚本默认值里，配置只在要覆盖时写 `pool.args`。
+> **`bench` 段只放"这次压测怎么压"，模型侧事实一律不重复**（否则两处会静默分叉）：`soc`←`model.soc`、manifest←`<model_dir>/io/manifest.json`、报告←`<model_dir>/results`、池←`<model_dir>/io/pool`、`aicore_num`←`backend.aicore_num`（前两者与 `aicore_num` 都由 `resolve_platform` 从选中的 `platforms` profile 摊平而来，故 bench 的限核口径与 pipeline 编译时**必然一致**——这也是 `load_bench` 先要求 `--device` 再解析平台的原因）。归档名 = `export_name(cfg) + "-bench"`（含平台与形态后缀），两平台两形态互不撞名。**没有精度开关**——精度只由 `verify.enabled` 驱动的两道门度量（§10），bench 只出性能数字。请求池生成脚本的**形态参数**由 `bench._form_args` 从配置注入而不是写在 args 里：`--batch`←`inputs.batch_size`（恒注入，**不是**形态开关——prefix 形态下 act 是静态 `[batch+1]`，池里每套的条数被图烙死）；其余形态 flag 由 `adapt.form` 的 `flags.pool` 声明、`config.form_flags` 增删（qwen2.5-0.5b：`--prune-tokens`←`path` 决定 golden 宽、`--prefix`←`inputs.prefix_len` 保底，**范围**属负载口径故 args 里写 `"20-25"` 优先）。负载分布（μ/σ/长度截断/词表上界）是模型专属脚本的口径，写死在脚本默认值里，配置只在要覆盖时写 `pool.args`。
 >
 > **刻意不做"多份 scenario 文件"**（原来是 `bench/varlen.yaml`，已合并）：一个模型当前只需要一个负载场景，独立文件只会把 `soc`/`manifest`/限核/形态参数抄成第二份。**重新引入的触发条件**：同一形态要长期并存多份负载报告（随机 varlen + 固定 shape + 长序列压测）——届时把 `bench` 段抽回独立 yaml、`core.bench` 加回 `--scenario` 即可（形状可从 git 历史的 `bench/varlen.yaml` 取）。
 
-> **一份 yaml 只描述"当前形态"，形态演进靠 git**：模型是不断向下演进的（qwen2.5-0.5b 的 prefix/PIA 就是在 FIA 基线上演化的，且最终会收敛到 prefix），任一时刻只有一个当前形态值得被配置描述。切形态 = 改 `adapt.params` 那几行（`prefix` / `prune_token_file` + `inputs.prefix_len`），产物名由 `config.export_name` 自动带后缀（`-<平台>` / `-prefix` / `-prune`），**不会静默覆盖**另一种形态的 AIR/OM/bundle。历史形态要复现就 `git checkout <commit> -- models/<m>/config/model.yaml`。
+> **一份 yaml 只描述"当前形态"，形态演进靠 git**：模型是不断向下演进的（qwen2.5-0.5b 的 prefix/PIA 就是在 FIA 基线上演化的，且最终会收敛到 prefix），任一时刻只有一个当前形态值得被配置描述。切形态 = 改 `adapt.params` 那几行（`prefix` / `prune_token_file` + `inputs.prefix_len`），产物名由 `config.export_name` 自动带后缀（`-<平台>` + 各形态开关在 `adapt.form` 里声明的 `tag`，如 `-prefix` / `-prune`），**不会静默覆盖**另一种形态的 AIR/OM/bundle。历史形态要复现就 `git checkout <commit> -- models/<m>/config/model.yaml`。
 >
 > 刻意**不做**"通用变体覆盖表 / 多份 yaml 并存"：那是为"多形态长期并存的矩阵"设计的机制，用在串行演进上只是多一层要理解的抽象（读者得先问"这次生效的是哪份配置"）。**触发条件已部分命中**：平台轴（910_9382 / A5）确实需要长期并存且都进回归，但它已用**专用的强 schema `platforms:` 段**落地（见上），而不是通用的点路径覆盖表——通用覆盖表能覆盖任意键（包括形态），那是过度能力，且会重新引入"这次生效的是哪份配置"的歧义。**形态轴**若哪天也需要长期并存（例如客户同时部署共享 prefix 与普通 varlen 两套），届时覆盖表的实现可从 commit `3db0189` 取回（约 20 分钟）。
 >
@@ -405,6 +425,7 @@ adapter 声明三层结构（§10）里的三组契约：
 ③ 图接口契约（与 patch_specs 的 forward 签名同源）
    mark_dynamic(inputs, **kw)   → tuple[Tensor]    默认原样返回
    io_input_nodes(inputs, **kw) → list[IoNode]     logical 名/序须 == forward 入参名/序
+   io_output_nodes(golden)      → list[IoNode]     默认单输出 "logits"（dim0 动态）
 ```
 
 **激励不在 adapter**：输入由 `model.yaml` 的 `inputs.script` 声明的**用户脚本**生成并落盘
@@ -412,12 +433,14 @@ adapter 声明三层结构（§10）里的三组契约：
 喂给三层（§5.2 `inputs` 段）。落盘而非进程内造，激励才是三层真正共用的**独立产物**——
 L0/L1 的 golden 可脱离 L2（export）重跑，生成阶段不占卡（脚本产 CPU `.bin`，上卡是框架的事）。
 
-- **`__init__(**params)`**：基类收 `**params`，故**最小 adapter 不写构造函数也能被 `load_adapter` 实例化**（docs §13.8 零框架改动）。特殊键 `prune_token_file` 仅在 yaml 声明时才被配置层载入成 `prune_tokens` 列表传入；它的路径规则与 `script`/`path` 一致——**绝对路径或相对仓库根**（`setup_scripts.resolve_path`），找不到即硬失败，不回退 model_dir/CWD。
+- **`__init__(**params)`**：基类收 `**params`，故**最小 adapter 不写构造函数也能被 `load_adapter` 实例化**（docs §13.8 零框架改动）。值是文件路径的键（如 `prune_token_file`）由 `adapt.form.<key>.load` 声明怎么载入（`{kind, as}`，见 §5.2），配置层载入内容后以 `as` 为名传入并**移除原路径键**——adapter 只收内容不做文件 I/O；路径规则与 `script`/`path` 一致（**绝对路径或相对仓库根**，`setup_scripts.resolve_path`），找不到即硬失败，不回退 model_dir/CWD。框架不认具体键名。
 - **`adapt` 是破坏性的**：返回的就是传入的那个对象（原地改），且**回不到 L0**——patch 是类级（进程全局），`setup` 的实例手术（lm_head 剪裁还改写了 `config.vocab_size`）不可逆。所以 L0 的 golden（`verify.reference`）必须在 `adapt` **之前**算完，这是硬约束不是风格选择（`pipeline.py` 据此排序）。框架也因此**不提供 `restore()`**：它只能回滚类属性、回滚不了实例手术，留着等于给出"L1 能退回 L0"的错误暗示。
 - **setup_kwargs 由 pipeline 提供**：`adapt(raw, max_seq_len=cfg.graph.dynamic.max_seq_len)` —— yaml 声明的 `graph.dynamic.max_seq_len` 是图常量长度（RoPE 表 / 因果 mask）的唯一事实源，不透传就会退回 adapter 默认值而与 yaml 脱节（长序列 Gather 越界）。基类 `setup(self, model, **kwargs)` 吞掉不认识的键。
 - **patch_specs**：声明 `[(target, 属性名, 新实现)]`，类级 monkey-patch，对所有实例生效。
 - **setup**：实例级——结构手术（如 lm_head 剪裁）、常量注入（mask/rope 表，长度同源于 max_seq_len）、模式标志。
 - **③ 同源约束（现在跨进程）**：输入脚本落盘的 logical 序、`io_input_nodes` 的 logical 名与序、`mark_dynamic` 标哪一维，全部由 patched forward 的签名决定——**改 forward 签名要同步这三处**。激励移出 adapter 后，脚本与 adapter 不再共享一个函数，故 `pipeline` 在两者都拿到后**对账**（脚本的 logical 序 ≠ `io_input_nodes` 声明的序 → 硬失败），否则 `save_bundle` 会把 `.bin` 贴错 logical 标签（C++ 按名配对 → 静默喂错张量）。`io_input_nodes` 的 logical 名还须与 forward 入参名逐字一致，`graph.from_air` 靠图 Data 节点的 `_source_name` 配对（§5.3）。
+
+- **`io_output_nodes`（输出侧契约，与 `io_input_nodes` 对称）**：输出的 logical/dtype/shape/动态维同样是模型专属知识，不该写死在框架里——写死（原来 `pipeline._output_node` 固定 `logical="logits"`、`verify.save_bundle` 固定文件名 `golden_logits.bin`）正是"单 logits 输出"这条复用边界的由来。基类默认实现覆盖 decoder-only CausalLM 的单 logits 输出，多输出 / 输出别名的模型覆盖本方法即可，框架零改动；golden 文件名随之派生成 `golden_<logical>.bin`（默认情形名字不变，既有 bundle 不受影响）。**注意多输出仍未完全打通**：C++ 只在单输出时精确推导缓冲（`main.cpp` 的 `ExpectedOutputBytes`）、`compare_bundle` 只比 `outputs[0]`——见 §10 已知限制。
 
 ### 8.2 设计原则（在 qwen2.5-0.5b 上验证过）
 
@@ -590,9 +613,16 @@ results/README.md # 人工 curate 的**性能基线** (数字 + provenance + 复
                         backend; verify; bench; platforms; platform
                         # 无 device (运行期 --device); passes/custom_ops/model.soc/
                         # backend.aicore_num/platform 由 resolve_platform 摊平填入
-@dataclass SetupEntry: script; path       # passes/custom_ops/bench.pool 的条目 (脚本 + 三方源)
-@dataclass VerifyCfg: enabled; ref_cosine_min; ref_rel_l2_max; cmp_cosine_min; cmp_rel_l2_max
+@dataclass SetupEntry: script; path; args   # passes/custom_ops/bench.pool 的条目 (脚本 + 三方源 + 额外参数)
+@dataclass AdaptCfg: adapter_class; params; form
+                                                 # params 直接作为 adapter 构造 kwargs
+@dataclass FormSwitch: tag; load; flags      # 一个形态开关对框架的后果 (§5.2 adapt.form)
+                                                 # tag=进产物名, load={kind,as} 文件值怎么载入,
+                                                 # flags={stage:{flag:值来源}} 管辖哪些脚本 flag
+@dataclass VerifyCfg: enabled; rtol; atol; ref_cosine_min; ref_rel_l2_max;
+                      cmp_cosine_min; cmp_rel_l2_max
                         # 门限默认 None = 用 core/verify.py 的 REF_*/CMP_*; 显式值即覆盖 (§10)
+                        # 字段名须与 Verifier 的 kwarg 逐字一致 — pipeline 用 asdict 自动透传
 @dataclass BenchCfg: instances; requests; warmup; sample_seed; pool
                                                  # 只放压测口径, 模型侧事实从其它段取 (§5.2)
 def load_config(path) -> ModelConfig            # 解析 platforms 表, 但**不选**平台 (需 device)
@@ -603,7 +633,13 @@ def resolve_platform(cfg, device=None, platform=None) -> ModelConfig
 @dataclass InputsCfg: script; args; batch_size; seq_len; prefix_len; seed
                                                  # script 必填 (激励 = 用户脚本, 落盘 io/)
 def load_adapter(cfg) -> GeModelAdapter        # importlib 从 <model_dir>/model.py 取 adapter_class
-def export_name(cfg) -> str                    # 产物名 = 模型名 + 平台 + 形态后缀 (-<platform>/-prefix/-prune)
+                                                 # (模块**注册进 sys.modules** — 否则 torch dynamo
+                                                 #  内联被 patch 的函数时按 __module__ 回头 import 会崩)
+                                                 # adapt.form.load 声明的键在此载入文件内容
+def export_name(cfg) -> str                    # 产物名 = 模型名 + 平台 + 各 form.tag (按 yaml 声明序)
+def form_flags(cfg, args, stage) -> list       # 按 adapt.form 增删受形态开关管辖的脚本 flag
+                                                 # stage: "inputs" | "pool"; 真→注入, 假→strip_flag 移除
+                                                 # (pipeline._inputs_args 与 bench._form_args 共用)
 def build_fingerprint(cfg, dtype=None) -> dict   # 决定产物能否复用的全部配置事实
 def build_record_path(air_path) -> str           # <air>/<name>.air → <air>/<name>.build.json
 def write_build_record(air_path, cfg, dtype=None) -> path   # 导出时落指纹 (+git/时间戳)
@@ -637,19 +673,26 @@ class GeModelAdapter:
     # ③ 图接口契约 (与 patch_specs 的 forward 签名同源; 激励走 inputs.script, 不在此)
     def mark_dynamic(self, inputs, **kw)
     def io_input_nodes(self, inputs, **kw) -> list[IoNode]   # forward 序; logical 名须 == forward 入参名
+    def io_output_nodes(self, golden) -> list[IoNode]        # 默认单输出 "logits" (dim0 动态);
+                                                             # 多输出/别名模型覆盖它, 框架零改动 (§8.1)
 
 # _torchair_source_name.py  (给 Data 节点写 _source_name; 机制参考 torchair PR#3675)
 def native_support() -> bool      # 已装 torchair 是否原生支持 ge.Data(source_name=...)
 def enable() -> bool            # 未支持时打补丁 (幂等); 导出前由 GeExporter.trace 调用
 
-# exporter.py  (现有 GeExporter)
+# exporter.py  (现有 GeExporter — 无模型专属逻辑, 动态标记/节点声明全委托 adapter)
 class GeExporter:
-    def export(self, model_path, dtype, **build_kwargs) -> air_path
-    def mark_dynamic(self, inputs, **kw)
-    def logical_inputs(self) -> list[str]          # forward 签名的逻辑输入序, 供 graph.from_air
+    def __init__(self, adapter, export_dir, export_name, frozen_parameter=1)
+    def trace(self, model, inputs, **input_kwargs) -> air_path
+        # 启用 _source_name 补丁 → adapter.mark_dynamic → dynamo_export(dynamic=True,
+        # frozen_parameter) → 校验 AIR 产出。单独拆出 trace 是为了让 pipeline 能在导出**前**
+        # 插入 golden (eager) —— docs §10
 
 # setup_scripts.py  (pass / 自定义算子 / **激励**的生成安装 = 用户脚本, 框架只按序执行)
-def resolve_script(entry) -> path | None       # **只认**绝对路径 / 相对仓库根; 其余硬失败
+REPO_ROOT                                      # 仓库根的**唯一定义处** (backend/bench 都 import 它)
+def resolve_path(entry, is_file=False) -> path | None
+                                               # **配置里声明的**路径: 只认绝对 / 相对仓库根
+def resolve_script(entry) -> path | None       # 同上, is_file=True 的便捷封装
 def run_scripts(entries, stage) -> list                # entries: SetupEntry|dict|str;
                                                            # 按序执行, 传 $GE_SRC_DIR, 非 0 即抛,
                                                            # 回收脚本写进 $GE_ENV_FILE 的 env
@@ -666,22 +709,27 @@ def parse_profiling(prof_dir)                            # --profiling-parse: ms
                                                          # + 打印算子摘要 (pipeline/bench 共用)
 
 # bench.py  (性能测试编排: model.yaml 的 bench 段 → plan.json → ge_runtime → 报告归档)
-@dataclass Scenario: name; manifest; model_dir; instances; requests; warmup; seed; inputs;
-                     generate; report_dir; backend_options; profiling; device; soc
+PLAN_SCHEMA; PERF_SCHEMA                         # 跨语言契约版本串 (C++ 侧同名常量, 两侧都校验)
+@dataclass Scenario: name; manifest; model_dir; instances; requests; warmup; seed; pool_dir;
+                     pool_gen; report_dir; backend_options; profiling; device; soc; path; raw
+                                                 # seed = 池**抽样**种子 (≠ inputs.seed)
 def load_bench(config_path, device, instances, requests, warmup, manifest) -> Scenario
                                                  # bench 段 + 派生约定 (io/manifest·io/pool·results)
-def _form_args(cfg, args) -> list                # 形态事实 (--batch/--prune-tokens/--prefix) 注入
+def _resolve_cli_path(path, base_dir) -> path    # **CLI** 路径 (CWD 相对); 与 resolve_path 分属两类
+def _form_args(cfg, args) -> list                # --batch 恒注入 + config.form_flags(stage="pool")
 def build_plan(scenario, run_dir, run_id) -> plan_path      # C++ 只吃 json, 不读 yaml
+def load_perf(run_dir) -> dict                   # 读回 perf.json 并校验 PERF_SCHEMA (sweep 共用)
 def run(config_path, ...) -> run_dir                        # 生成池 → 跑 → 写报告 → 更新 index
 def render_perf_md(perf, scenario, run_id, provenance)      # 只出性能 (精度归 §10 两道门)
 def form_from_manifest(manifest_path) -> dict            # 顺着 manifest→bundle 取形态, 报告自证
 def update_index(report_dir, entry) -> index_path
 
 # verify.py
-class Verifier:                                  # 门限规范默认 (可被 model.yaml verify 段覆盖):
-    def __init__(self, rtol, atol,               #   门① reference=跨实现 REF_*(0.999/0.02),
-                 ref_cosine_min, ref_rel_l2_max,  #   门② compare=同源 CMP_*(0.9999/0.01)
-                 cmp_cosine_min, cmp_rel_l2_max)
+class Verifier:                                  # 门限规范默认 (可被 model.yaml verify 段逐项覆盖,
+    def __init__(self, rtol, atol,               #   pipeline 用 asdict(VerifyCfg) 自动透传):
+                 ref_cosine_min, ref_rel_l2_max,  #   门① reference=跨实现 REF_*(0.999/0.02),
+                 cmp_cosine_min, cmp_rel_l2_max)  #   门② compare=同源 CMP_*(0.9999/0.01)
+                                                 #   rtol/atol 是逐元素**参考**口径, 不参与判定
     def reference(self, model, adapter, inputs) -> Tensor | None
                                                  # **原版未 patch** 模型逐请求末 token logits;
                                                  # 必须在 adapt 之前调 (patch 是进程级类属性)
@@ -695,11 +743,13 @@ def bundle_has_golden(bundle_path) -> bool               # pipeline 据此决定
 def collect_provenance(..., adapt_params, **extra)       # 形态 (prefix/prune) 进 provenance
 
 # pipeline.py  (YAGNI: 全量 + --skip, 不做 6 阶段枚举)
+SKIP_STAGES                                      # --skip 的合法取值; 拼错即硬失败 (不静默忽略)
 def run(config_path, skip=(), dtype, device, batch_size, seq_len, work_dir,
-        warmup, bench, runtime_extra, profiling, profiling_output, profiling_aic_metrics,
-        profiling_parse)
-                                                 # device 必填
-                                                 # skip ⊂ {ops,export,passes,compile,run,compare,reference}
+        warmup, bench, runtime_extra, platform, profiling, profiling_output,
+        profiling_aic_metrics, profiling_parse)
+                                                 # device 必填; platform 仅交叉编译时需要
+                                                 # skip ⊂ SKIP_STAGES = {ops, export, verify,
+                                                 #   reference, passes, compile, run, compare}
                                                  # 顺序: load_source → 生成激励 → reference
                                                  #       → adapt → golden → trace → …
 ```
@@ -772,12 +822,16 @@ ascend-ge-adapters/
 
 | 测试 | 需要 | 覆盖 |
 |---|---|---|
-| `tests/tiny_e2e.py` | NPU（~几百 MB 显存）+ ATC | 极小模型全链路：export（含 `_source_name` 断言）→io_spec/bundle/manifest→ATC→**om_acl** run+compare→**ge_session** run+compare。验**运行时链路**（图序配对、契约解析、两后端执行），不验模型语义 |
+| `tests/tiny_e2e.py` | NPU（~几百 MB 显存）+ ATC | 极小模型全链路：export（含 `_source_name` 断言）→io_spec/bundle/manifest→ATC→**om_acl** run+compare→**ge_session** run+compare。验**契约层与运行时**（图序配对、契约解析、两后端执行），不验模型语义 |
+| `tests/pipeline_e2e.py` | NPU（~几百 MB 显存）+ ATC | 调 `core.pipeline.run()` 走**编排层与配置层**——即 tiny_e2e 手写绕过的那些：`load_config` + `platforms` 强 schema + `resolve_platform`（按真机 soc 探测）、`adapt.form`（tag 进产物名 / load 把文件载成 list / flags 增删脚本参数）、`load_adapter`（importlib + sys.modules 注册）、`run_scripts`（三类用户脚本 + `$GE_ENV_FILE` 回传）、`_generate_inputs`（子进程产激励 + logical 序对账）、`GeExporter.trace`、构建指纹（改配置后拒绝复用 + `GE_ALLOW_STALE_ARTIFACT` 放行）、adapter 三组契约、**两道精度门**、两后端。模型是极小的 HF 形态假模型（`load_source` 被替换，不加载真实权重） |
 | `models/<m>/run.sh --device N` | NPU + 真实权重 | 真实模型全链路 + **两道精度门**（§10）：`reference`（原版 HF vs 适配后 eager，验适配）与 `compare`（运行时输出 vs golden，验编译）；任一 FAIL 非 0 退出 |
 | `python3 -m core.bench --config …` | NPU + 请求池 | 多实例并发性能（变长负载回放），报告归档 `models/<m>/results/`；**不含精度**（精度归上一行的两道门） |
 
 约定：`tests/*.py` 都是**需 NPU 的脚本**（手动跑，不进 CI）；仓库不维护纯 CPU 单测——
-静默失败点（图序配对/硬失败、契约解析、门禁）由 `tiny_e2e` 端到端兜底，模型语义由两道精度门兜底。
+静默失败点（图序配对/硬失败、契约解析、门禁、配置强 schema）由 `tiny_e2e` + `pipeline_e2e`
+端到端兜底，模型语义由两道精度门兜底。两道门**分工不重叠**：`tiny_e2e` 直接调
+Graph/Verifier/run_atc/ge_runtime 验契约与运行时，`pipeline_e2e` 调 `pipeline.run()` 验编排与配置
+（后者曾长期缺失，故 `platforms`/`resolve_platform`/构建指纹/`GeExporter`/`setup_scripts` 全无覆盖）。
 
 ## 15. 待定/依赖项
 

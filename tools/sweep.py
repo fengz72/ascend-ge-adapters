@@ -1,9 +1,13 @@
-"""并发档位扫描 — 同一负载逐档**起进程**, 汇总成一张 scaling 表。
+"""并发档位扫描 — 同一负载逐档跑, 汇总成一张 scaling 表。
 
 为什么不在 C++ 里做: 扫描 = "同一件事跑 N 遍", 而每档都要独立建/销资源 (ACL 每实例
-`aclmdlLoadFromFile`; GeSession 每实例 `AddGraph`+`CompileGraph` ~10s)。进程级隔离最干净 ——
-一档一个进程, 崩了不连累其它档, HBM 也彻底归还。C++ 只负责**测准一档**
+`aclmdlLoadFromFile`; GeSession 每实例 `AddGraph`+`CompileGraph` ~10s)。C++ 只负责**测准一档**
 (`BenchPool` / `BenchThroughput`), 档位循环归这里。
+
+隔离粒度: 每档的**测量**都跑在 `core.bench` 起的一个全新 `ge_runtime` 子进程里 —— NPU 资源
+逐档建/销, HBM 彻底归还; 一档崩了 (段错误 / OOM) 也只损失那一档 (下面按 Exception 兜住,
+跑完剩余档位再汇总)。本脚本自身是进程内循环: Python 侧只解析配置与排版报告, 不持有 NPU
+资源, 没必要再套一层进程。
 
 每档就是一次完整的 `core.bench` run (各自归档 `results/<run_id>/`), 本脚本只多做两件事:
 逐档换 `--instances`, 以及把各档的 perf.json 汇成一张表 (`<model_dir>/results/sweep-<ts>.md`)。
@@ -20,7 +24,6 @@
 
 import argparse
 import datetime
-import json
 import os
 import sys
 
@@ -36,11 +39,12 @@ def parse_levels(spec):
 
 
 def collect(run_dir):
-    """读一档的 perf.json → 表格要用的字段 (读不到返回 None)。"""
-    try:
-        perf = json.load(open(os.path.join(run_dir, "perf.json")))
-    except (OSError, ValueError):
-        return None
+    """读一档的 perf.json → 表格要用的字段。
+
+    读不到/版本不匹配就**让它抛** —— 调用方的 except 会把这一档记成失败并打出原因;
+    在这里吞成 None 会让"perf.json 损坏"与"这档压根没跑起来"在汇总表里长得一样。
+    """
+    perf = bench.load_perf(run_dir)
     e2e = perf.get("e2e_ms") or {}
     hbm = perf.get("hbm_mb") or {}
     execs = [ip.get("exec_ms") or {} for ip in (perf.get("instances") or [])]
@@ -58,13 +62,17 @@ def collect(run_dir):
 
 
 def render_md(rows, failed, scenario, levels, device):
-    base = next((r["qps"] for r in rows if r), 0.0)
+    # 基准取**实例数最少**的成功档, 不是 rows 里的第一个 —— --levels 可以乱序给 (8,4,2,1),
+    # 取第一个会让表尾那行"加速比以最低成功档为基准"变成假话
+    ok = [r for r in rows if r]
+    base = min(ok, key=lambda r: r["instances"])["qps"] if ok else 0.0
     lines = [
         f"# 并发档位扫描 — {scenario}",
         "",
         f"- device: {device} · 档位: {', '.join(str(n) for n in levels)}",
         f"- 时间: {datetime.datetime.now().isoformat(timespec='seconds')}",
-        "- 每档 = 一次独立的 `core.bench` run (独立进程, 明细见各自 run 目录)",
+        "- 每档 = 一次独立的 `core.bench` run (测量各在一个全新 `ge_runtime` 子进程里, "
+        "明细见各自 run 目录)",
         "",
         "| instances | requests | QPS | 加速比 | 并行效率 | e2e avg | e2e p99 | exec avg "
         "| HBM peak | err | run |",
@@ -105,28 +113,34 @@ def main():
     args = p.parse_args()
 
     levels = parse_levels(args.levels)
+
+    # 先解析一次配置: ① manifest 缺失/平台探测失败就**当场**报错, 不必等跑完几档才发现
+    # ② 汇总要用的 name/report_dir/device 从这里取 —— 原来在循环后又调一次 load_bench,
+    #    白白多做一遍 resolve_platform (import torch_npu + 查设备)
+    sc = bench.load_bench(args.config, device=args.device, manifest=args.manifest)
+
     rows, failed = [], []
-    report_dir = None
     for level in levels:
         print(f"\n{'=' * 70}\n=== 档位 {level}/{levels[-1]} (instances={level}) ===\n{'=' * 70}")
         try:
-            run_dir = bench.run(args.config, device=args.device, instances=level,
-                                requests=args.requests, warmup=args.warmup,
-                                manifest=args.manifest)
-            rows.append(collect(run_dir))
-            report_dir = report_dir or os.path.dirname(run_dir)
-        except (SystemExit, RuntimeError, OSError) as e:
-            print(f"[sweep] 档位 {level} 失败: {e}", file=sys.stderr)
+            rows.append(collect(bench.run(args.config, device=args.device, instances=level,
+                                          requests=args.requests, warmup=args.warmup,
+                                          manifest=args.manifest)))
+        except (Exception, SystemExit) as e:
+            # 一档失败不连累其它档。**必须**兜住 Exception 而不只是 RuntimeError/OSError:
+            # ge_runtime 段错误/OOM 时 subprocess.run(check=True) 抛的是 CalledProcessError,
+            # bench 检出错误请求数抛 SystemExit, perf.json 损坏/版本不符抛 ValueError ——
+            # 漏掉任何一个都会让剩余档位白跑 (连汇总表都出不来)。
+            # KeyboardInterrupt 不在内: Ctrl-C 要能真的中断整个扫描。
+            print(f"[sweep] 档位 {level} 失败: {type(e).__name__}: {e}", file=sys.stderr)
             rows.append(None)
             failed.append(level)
 
     if rows and all(r is None for r in rows):
         raise SystemExit("[sweep] 全部档位失败, 无汇总可出")
 
-    sc = bench.load_bench(args.config, device=args.device, manifest=args.manifest)
-    report_dir = report_dir or sc.report_dir
     out = args.out or os.path.join(
-        report_dir, f"sweep-{datetime.datetime.now().strftime('%Y%m%dT%H%M%S')}.md")
+        sc.report_dir, f"sweep-{datetime.datetime.now().strftime('%Y%m%dT%H%M%S')}.md")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     md = render_md(rows, failed, sc.name, levels, sc.device)
     with open(out, "w") as f:

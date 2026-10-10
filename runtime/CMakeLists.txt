@@ -47,7 +47,8 @@ target_link_libraries(ge_runtime
     graph
     graph_base
     ascendcl
-    acl_op_compiler
     stdc++
     pthread
 )
+# 注: 不链 acl_op_compiler —— 本运行时不调任何算子编译/aclnn API (图编译走 ATC 子进程或
+# ge::Session::CompileGraph)。曾经链着它但无一处引用, 白增一条对 CANN 组件的依赖。

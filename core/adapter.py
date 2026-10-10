@@ -11,10 +11,11 @@
     ② L0↔L1 边界翻译器  unpack_requests / reference_columns
                         可选 — L0 的接口 ≠ L1 (L0 吃逐请求 HF 形态, L1 吃打包 varlen;
                         L1 还可能收窄了输出), 只有要门① 时才需实现
-    ③ 图接口契约          mark_dynamic / io_input_nodes
-                        两者与 patch_specs 的 forward 签名**同源**: 改 forward 签名要同步这两处
-                        (io_input_nodes 的 logical 名还须与 forward 入参名逐字一致 —
-                         graph.from_air 靠图 Data 节点的 _source_name 配对)
+    ③ 图接口契约          mark_dynamic / io_input_nodes / io_output_nodes
+                         前两者与 patch_specs 的 forward 签名**同源**: 改 forward 签名要同步
+                         (io_input_nodes 的 logical 名还须与 forward 入参名逐字一致 —
+                          graph.from_air 靠图 Data 节点的 _source_name 配对);
+                         io_output_nodes 声明输出侧 (默认单 logits, 多输出/别名模型覆盖它)
 
 **激励不在本类**: 输入由 model.yaml 的 `inputs.script` 声明的用户脚本生成并落盘
 (<base>/io/{inputs.json, inputs/*.bin}), pipeline 读回后喂给三层 —— 落盘而非进程内造,
@@ -29,8 +30,11 @@ setup 的实例手术 (如 lm_head 剪裁) 也不可逆。所以 L0 的 golden �
 (pipeline 据此排序; 硬约束见 verify.reference 的 docstring)。
 
 torch/transformers 不在本模块导入 — 基类不依赖 NPU 栈, 故 `import core.adapter` 可在
-没装 torch_npu 的机器上做离线单测 (docs §14)。
+没装 torch_npu 的机器上做离线单测 (docs §14)。core.graph 同理是纯数据契约 (json/dataclass),
+导入它不破坏这一性质。
 """
+
+from core.graph import IoNode
 
 
 class GeModelAdapter:
@@ -115,6 +119,7 @@ class GeModelAdapter:
     #   io_input_nodes  logical 名须 == forward 入参名 (graph.from_air 靠图 Data 节点的
     #                   _source_name 配对), 且**顺序**须 == 脚本落盘的 logical 序
     #                   (pipeline 对账, 不一致硬失败 — 否则 .bin 会贴错 logical 标签)
+    #   io_output_nodes 输出侧的 logical/dtype/shape (默认单 logits; 多输出模型覆盖它)
 
     def mark_dynamic(self, inputs, **input_kwargs):
         """标记动态维度 (默认原样返回), 子类按需实现。"""
@@ -128,3 +133,19 @@ class GeModelAdapter:
         (= forward 入参名), graph.from_air 据此自动完成 node↔logical 配对与图序排列。
         """
         raise NotImplementedError
+
+    def io_output_nodes(self, golden):
+        """返回 io_spec 输出节点 list[IoNode] — 与 io_input_nodes 对称。
+
+        输出的 logical/dtype/shape/动态维同样是**模型专属知识** (多输出、输出不叫 logits、
+        动态维不在 dim0 的模型都在这儿声明), 不该写死在框架里 —— 写死就是 README「当前复用
+        边界: 单 logits 输出」的由来。默认实现覆盖 decoder-only CausalLM 的单 logits 输出
+        (dim0=N 动态), 其它形态的模型覆盖本方法即可, 框架零改动。
+
+        golden 为 None (verify.enabled=false, 无从推断 dtype/shape) → 退回 float16 + [-1]。
+        """
+        if golden is None:
+            return [IoNode(logical="logits", dtype="float16", shape=[-1], dynamic_dims=[0])]
+        return [IoNode(logical="logits",
+                       dtype=str(golden.dtype).replace("torch.", ""),
+                       shape=[-1] + list(golden.shape[1:]), dynamic_dims=[0])]

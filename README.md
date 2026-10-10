@@ -11,7 +11,7 @@ Source ──[Adapt]──> Graph(AIR) ──[Passes]──> Backend ──> out
 - **设计文档**：[`docs/architecture.md`](docs/architecture.md)（契约、动态 shape 策略、pass 子系统、适配协议、实测结论）
 - **逐模型文档**：`models/<model>/results/README.md`（curate 的**性能基线** + 复现口径；run 目录是本地过程产物，不入库）
 - **适配新模型**：照 `models/qwen2.5-0.5b/model.py` 复制修改 + 写 `config/model.yaml`，框架零改动
-- **当前复用边界**：**decoder-only CausalLM、单 logits 输出**（`source` 只走 `AutoModelForCausalLM`、`pipeline` 固定 `logical="logits"`、bundle 单 golden、C++ 仅在单输出时精确推导缓冲）。ViT / encoder / seq2seq / 多输出模型能复用适配协议与运行时，但需先扩这几处——见 [`docs/architecture.md`](docs/architecture.md) §10「已知限制」。
+- **当前复用边界**：**decoder-only CausalLM、单 logits 输出**（`source` 只走 `AutoModelForCausalLM`、`verify.reference` 写死 HF 调用约定 `model(input_ids=…, position_ids=…, use_cache=False).logits[:, -1]`、bundle 单 golden、C++ 仅在单输出时精确推导缓冲）。输出侧的 `logical="logits"` 已不是硬编码——它是 `adapter.io_output_nodes` 的**默认实现**，覆盖即可（多输出仍需先扩上面几处）。ViT / encoder / seq2seq / 多输出模型能复用适配协议与运行时，但需先扩这几处——见 [`docs/architecture.md`](docs/architecture.md) §10「已知限制」。
 
 ## 目录
 
@@ -21,7 +21,7 @@ Source ──[Adapt]──> Graph(AIR) ──[Passes]──> Backend ──> out
 | `runtime/` | 通用执行运行时（C++）：单入口 + manifest 分发 + `acl_backend`(OM) / `gesession_backend`(AIR) + bench |
 | `models/<name>/` | 逐模型：`model.py`(Adapter) + `config/model.yaml`(声明) + 产物 + `results/README.md`(性能基线) |
 | `tools/` | varlen 输入生成 / ATC 封装 / 精度比对 / dump·profiling 解析（见 `tools/README.md`） |
-| `tests/` | 回归门：`tiny_e2e`（需 NPU 的脚本，极小模型跑通两后端闭环） |
+| `tests/` | 回归门：`tiny_e2e`（契约层与运行时）+ `pipeline_e2e`（编排层与配置层），都是需 NPU 的脚本 |
 | `third_party/` | 三方源，一律**只读**：`custom_development_code`(submodule, fusion pass) + `ascend-ops`(submodule, PIA 自定义算子) + `nlohmann/json.hpp` |
 | `docs/` | 架构设计 |
 
@@ -58,7 +58,7 @@ python3 -m core.bench --config models/qwen2.5-0.5b/config/model.yaml --device 6
 #   → models/qwen2.5-0.5b/results/<run_id>/{run,perf}.json + perf.md (只出性能; 精度归 run.sh 两道门)
 #   覆盖: --instances 8 --requests 4000
 
-# 5b) 并发档位扫描 (逐档起进程, 汇总 scaling 表; 档位循环不进 C++)
+# 5b) 并发档位扫描 (每档一个 ge_runtime 子进程, 汇总 scaling 表; 档位循环不进 C++)
 python3 tools/sweep.py --config models/qwen2.5-0.5b/config/model.yaml --device 6 --levels 1,2,4,8
 #   → models/qwen2.5-0.5b/results/sweep-<ts>.md (QPS/加速比/并行效率/p99/HBM 一张表)
 
@@ -86,8 +86,13 @@ python3 tools/parse_profiling.py parse-and-export --profiling_dir ./prof   # →
 
 ```bash
 python3 tests/tiny_e2e.py --device 6        # 极小模型全链路, 两后端 (几百 MB 显存, 分钟级)
+python3 tests/pipeline_e2e.py --device 6    # 同上规模, 但走 core.pipeline 编排 + 配置层
 ./models/qwen2.5-0.5b/run.sh --device 6     # 真实模型全链路 (含下面两道精度门)
 ```
+
+两道 e2e 门**分工不重叠**：`tiny_e2e` 直接调 Graph/Verifier/run_atc/ge_runtime，验**契约层与
+运行时**；`pipeline_e2e` 调 `core.pipeline.run()`，验**编排层与配置层**（platforms 探测与摊平、
+`adapt.form`、构建指纹、用户脚本接口、adapter 三组契约）。详见 `docs/architecture.md` §14。
 
 **两道精度门**（都在 `run.sh` 里，各隔离一个变量，FAIL 即非 0 退出）：
 

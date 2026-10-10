@@ -9,23 +9,10 @@
 #include <string>
 #include <vector>
 
+#include "backend_common.h"
+
 namespace ge_runtime {
 namespace {
-
-using Clock = std::chrono::steady_clock;
-
-double ElapsedMs(Clock::time_point begin, Clock::time_point end) {
-    return std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000.0;
-}
-
-// 整机 HBM 占用 (MB); 取不到返回 -1
-double HbmUsedMb() {
-    size_t freeBytes = 0, totalBytes = 0;
-    if (aclrtGetMemInfo(ACL_HBM_MEM, &freeBytes, &totalBytes) != ACL_SUCCESS) {
-        return -1.0;
-    }
-    return static_cast<double>(totalBytes - freeBytes) / (1024.0 * 1024.0);
-}
 
 aclDataType ToAclDtype(const std::string &s) {
     if (s == "float16") return ACL_FLOAT16;
@@ -138,31 +125,16 @@ public:
     bool LoadInputs(const std::vector<TensorPlan> &plans, bool dynamic) {
         plans_ = plans;
         dynamic_ = dynamic;
-        hostInputs_.clear();
-        hostInputs_.reserve(plans.size());
-        for (size_t i = 0; i < plans.size(); i++) {
-            const TensorPlan &p = plans[i];
+        // dtype 支持性先整体判一遍 (枚举表是本后端专属, 见 backend_common.h 文件头),
+        // 读盘/校验/日志那部分与后端无关 → 共用 LoadHostInputs
+        for (const auto &p : plans) {
             if (ToAclDtype(p.dtype) == ACL_DT_UNDEFINED) {
                 fprintf(stderr, "[ERROR] 不支持的 dtype '%s' (输入 '%s')\n",
                         p.dtype.c_str(), p.logical.c_str());
                 return false;
             }
-            std::vector<char> host;
-            if (!ReadBinFile(p.file, host)) {
-                fprintf(stderr, "[ERROR] 读不到输入文件: %s\n", p.file.c_str());
-                return false;
-            }
-            if (host.size() != p.Bytes()) {
-                fprintf(stderr, "[ERROR] 输入 '%s' 文件字节数 %zu != %zu\n",
-                        p.logical.c_str(), host.size(), p.Bytes());
-                return false;
-            }
-            hostInputs_.push_back(std::move(host));
-            std::cout << "[INFO] Input[" << i << "] '" << p.logical << "' node=" << p.node
-                      << " shape=" << ShapeToString(p.shape) << " dtype=" << p.dtype
-                      << " bytes=" << p.Bytes() << std::endl;
         }
-        return true;
+        return LoadHostInputs(plans, hostInputs_);
     }
 
     bool CreateContext(int tid) {
@@ -208,6 +180,7 @@ public:
         ret = aclrtCreateStream(&ctx.stream);
         if (ret != ACL_SUCCESS) {
             fprintf(stderr, "[ERROR] aclrtCreateStream failed (tid=%d), ret=%d\n", tid, ret);
+            ReleaseContext(ctx);          // 此时 model/desc 已建, 不释放就泄漏整份 OM
             return false;
         }
         ctx.in = aclmdlCreateDataset();
@@ -218,17 +191,14 @@ public:
             return false;
         }
 
-        // 池模式: 输入缓冲按 pool 内**最大** shape 预分配 (每请求只 H2D 实际字节 + 重设 desc);
+        // 池模式: 输入缓冲按 pool 内**最大字节数**预分配 (每请求只 H2D 实际字节 + 重设 desc);
         // fixed 模式: 按该套输入精确分配
         size_t nInputs = pool_ != nullptr ? pool_->maxBytes.size() : plans_.size();
         for (size_t i = 0; i < nInputs; i++) {
             size_t bytes = pool_ != nullptr ? pool_->maxBytes[i] : plans_[i].Bytes();
-            const TensorPlan *p = nullptr;
-            if (pool_ == nullptr) {
-                p = &plans_[i];
-            } else if (!pool_->requests.empty()) {
-                p = &pool_->requests[0].plans[i];      // dtype/format 各请求一致, 取首个即可
-            }
+            // p 只在 fixed 模式下用得到 (H2D 的报错名 + 动态图的 desc); 池模式的 dtype/shape
+            // 每请求由 SetInputs 重设, 这里不需要 plan
+            const TensorPlan *p = (pool_ == nullptr) ? &plans_[i] : nullptr;
             void *dev = nullptr;
             ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
             if (ret != ACL_SUCCESS || dev == nullptr) {
@@ -237,6 +207,8 @@ public:
                 ReleaseContext(ctx);
                 return false;
             }
+            // push_back 起 dev 的所有权归 ctx.inBufs — 下面各失败路径只调 ReleaseContext,
+            // 再手动 aclrtFree(dev) 就是二次释放 (DestroyDataset 会遍历 inBufs 逐个 free)
             ctx.inBufs.push_back(dev);
             ctx.inSizes.push_back(bytes);
 
@@ -246,7 +218,6 @@ public:
                 if (ret != ACL_SUCCESS) {
                     fprintf(stderr, "[ERROR] H2D failed for input '%s' (tid=%d), ret=%d\n",
                             p->logical.c_str(), tid, ret);
-                    aclrtFree(dev);
                     ReleaseContext(ctx);
                     return false;
                 }
@@ -258,7 +229,6 @@ public:
                 if (buf != nullptr) {
                     aclDestroyDataBuffer(buf);
                 }
-                aclrtFree(dev);
                 ReleaseContext(ctx);
                 return false;
             }

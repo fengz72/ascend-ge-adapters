@@ -46,6 +46,19 @@ bool WriteJson(const std::string &path, const Json &j) {
 int RunBenchPlan(const std::string &planPath) {
     try {
         Json plan = ParseJsonFile(planPath);
+
+        // 契约版本校验 —— 与 core/bench.py 的 PLAN_SCHEMA 是同一个串 (跨语言, 只能靠两边
+        // 各写一份常量 + 注释互指)。不校验的话这个字段纯属装饰: 改了 plan 字段而忘了改
+        // 读取侧, 只会静默按默认值跑 (instances=1/requests=0), 报告口径与声明不符。
+        const std::string wantSchema = "ge-bench-plan/1";
+        std::string gotSchema = plan.value("schema", "");
+        if (gotSchema != wantSchema) {
+            fprintf(stderr, "[ERROR] bench plan 的 schema=%s ≠ 本运行时期望的 %s — "
+                            "core/bench.py 与 runtime/ 版本不匹配 (重跑 bash runtime/build.sh?)\n",
+                    gotSchema.c_str(), wantSchema.c_str());
+            return 1;
+        }
+
         std::string manifestPath = plan.at("manifest").get<std::string>();
         Manifest manifest = Manifest::Load(manifestPath);
 
