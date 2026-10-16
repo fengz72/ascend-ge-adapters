@@ -12,11 +12,12 @@ Qwen2.5-0.5b 模型适配 — 全部替换实现 + 运行期注入 + Qwen25Adapt
     Qwen2RMSNorm.forward           → npu_rms_norm
     apply_rotary_pos_emb           → npu_apply_rotary_pos_emb (TND)
     Qwen2RotaryEmbedding.forward   → cos/sin 表 Gather
-    Qwen2Attention.forward         → 2D varlen (FIA 基线 / PIA prefix, 由 _prefix_mode 区分)
+    Qwen2Attention.forward         → 2D varlen (FIA 基线 / prefix 算子按平台二选一:
+                                     910 PIA · A5 cannbot-dsl PrefixAttention)
 
-运行期注入 (实例级, 由 adapt 自动调用 adapter.setup, 无需手工调用):
-    模式标志 _prefix_mode → 模型与每层 self_attn (forward 的 last 索引、
-    attention 的 FIA/PIA 算子选择)
+    运行期注入 (实例级, 由 adapt 自动调用 adapter.setup, 无需手工调用):
+    模式标志 _prefix_mode / _prefix_a5 → 模型与每层 self_attn (forward 的 last 索引、
+    attention 的 FIA / PIA·PrefixAttention 算子选择)
     图常量: atten_mask [max_seq_len, max_seq_len] bool + cos/sin 表 [max_seq_len, D]
             (表 dtype 跟随模型权重, 不写死 fp16)
             (max_seq_len 由 pipeline 从 cfg.graph.dynamic.max_seq_len 透传)
@@ -34,7 +35,7 @@ adapt 两阶段: apply_patches (类级行为替换) → setup (实例级适配: 
     raw = AutoModelForCausalLM.from_pretrained(path, dtype=torch.float16).npu()
 
     adapter = Qwen25Adapter()                    # FIA 基线
-    # adapter = Qwen25Adapter(prefix=True)       # PIA prefix
+    # adapter = Qwen25Adapter(prefix=True)       # prefix (910: PIA / A5: PrefixAttention)
     # adapter = Qwen25Adapter(prune_tokens=ids)  # + lm_head 剪裁
 
     # 激励: 由 scripts/gen_inputs.py 落盘 (model.yaml 的 inputs.script), 框架读回;
@@ -61,6 +62,28 @@ try:
     _PREFIX_IA_OP = torch.ops.npu_ops_transformer.npu_prefix_infer_attention_score
 except ImportError:
     _PREFIX_IA_OP = None
+
+# A5 (Ascend950PR) 的 prefix 算子: cannbot-dsl GE 交付件的 torch 绑定 (安装:
+# scripts/install_prefix_attn_a5.sh)。除 ImportError 外还要接住 RuntimeError —
+# 绑定 import 时若 GE 交付件未装 (mount_opp 找不到 libcust_opapi.so) 抛的是
+# RuntimeError; 接住后统一表现为 _A5_PREFIX_OP is None, (A5, prefix) 组合在
+# adapter 构造处硬失败。
+try:
+    import prefix_attn_torch  # noqa: F401  PrefixAttention 注册 (schema + eager + OPP 挂载 + torchair converter)
+    _A5_PREFIX_OP = torch.ops.ascendc_ops.prefix_attention
+except (ImportError, RuntimeError):
+    _A5_PREFIX_OP = None
+
+
+def _soc_is_a5():
+    """当前卡是否 A5 (Ascend950PR) — prefix 算子按平台二选一的事实源。
+
+    构造 adapter 前 pipeline 已 set_device; 用前缀匹配覆盖 _9589 等派生型号
+    (与 model.yaml platforms.a5.soc 的逐字匹配不同粒度: 那是 ATC 编译目标,
+    这里只问"prefix 算子用哪家的")。
+    """
+    return torch.npu.get_device_properties(
+        torch.npu.current_device()).name.startswith("Ascend950PR")
 
 
 # ==================== 组件级替换实现 ====================
@@ -100,10 +123,15 @@ def _attention_forward(self, hidden_states, position_embeddings, **kwargs):
     基线 (self._prefix_mode=False): npu_fused_infer_attention_score 推理算子,
     图编译走 torchair Tensor 入口 (避免 dynamo specialize), eager 走
     torch_npu 入口。
-    prefix 模式 (self._prefix_mode=True, adapter.setup 注入):
-    npu_prefix_infer_attention_score (KV 内嵌版) — q/k/v 全长 TND, 行序
-    [prefix, req0, ...], prefix KV 位于 k/v 头部由算子内部处理, 无需切分;
-    actual_seq_lengths = act = cumsum([P, L0, ...]), prefix 独立成 batch 0。
+    prefix 模式 (self._prefix_mode=True, adapter.setup 注入), 按平台二选一
+    (self._prefix_a5, 同为 setup 注入):
+      910: npu_prefix_infer_attention_score (KV 内嵌版) — q/k/v 全长 TND, 行序
+           [prefix, req0, ...], prefix KV 位于 k/v 头部由算子内部处理, 无需切分;
+           actual_seq_lengths = act = cumsum([P, L0, ...]), prefix 独立成 batch 0。
+      A5:  torch.ops.ascendc_ops.prefix_attention (cannbot-dsl GE 交付件) — 语义
+           同构 (prefix-in-Q 去重 TND), 但 bounds 要 int32 (由 _varlen_forward
+           在图边界 cast 一次), causal/prefix 语义内建 (无 atten_mask/sparse_mode),
+           N1=14/N2=2/D=64 为 kernel 固定值 (qwen2.5-0.5b 特化, launch 时校验)。
 
     共同约定: hidden_states [T, D] 全程 2D 无 batch 维, reshape 只用 int
     常量 + -1 (不提取 SymInt, 消除 GE Pack 算子)。sparse_mode=2 压缩 causal
@@ -124,18 +152,22 @@ def _attention_forward(self, hidden_states, position_embeddings, **kwargs):
 
     actual_seq_lengths = self.actual_seq_lengths_tensor
     if self._prefix_mode:
-        attn_output = _PREFIX_IA_OP.tensor(
-            q, k, v,
-            atten_mask=self.atten_mask,
-            actual_seq_lengths=actual_seq_lengths,
-            actual_seq_lengths_kv=actual_seq_lengths,
-            num_heads=num_heads,
-            scale=self.scaling,
-            num_key_value_heads=num_kv_heads,
-            pre_tokens=2147483647,
-            next_tokens=0,
-            sparse_mode=2,
-        )
+        if self._prefix_a5:
+            attn_output = _A5_PREFIX_OP(
+                q, k, v, actual_seq_lengths, self.scaling)
+        else:
+            attn_output = _PREFIX_IA_OP.tensor(
+                q, k, v,
+                atten_mask=self.atten_mask,
+                actual_seq_lengths=actual_seq_lengths,
+                actual_seq_lengths_kv=actual_seq_lengths,
+                num_heads=num_heads,
+                scale=self.scaling,
+                num_key_value_heads=num_kv_heads,
+                pre_tokens=2147483647,
+                next_tokens=0,
+                sparse_mode=2,
+            )
     else:
         fia = (_torchair_fia if torch.compiler.is_compiling()
                else torch_npu.npu_fused_infer_attention_score)
@@ -165,14 +197,20 @@ def _varlen_forward(self, input_ids, position_ids, actual_seq_lengths):
         position_ids       [T] int64 — 图内 cos/sin 按 position_ids Gather
         actual_seq_lengths [N] int64 — 基线: 各序列累积长度;
                            prefix: act = cumsum([P, L0, ...]), prefix 独立成 batch 0
+    图内按层路由的实际段长是 act 原样 int64, 仅 (prefix, A5) 时在图边界 cast 成
+    int32 一次 (PrefixAttention 的 bounds 契约), 每层共用, 不逐层重复 Cast;
+    末 token 索引仍取自 int64 原始 act (index_select 要 long/int)。
     hidden 全程 2D [T, D] 无 batch 维 (避免 GE Pack); 绕开原版 forward 的
     labels/cache/mask 分支, 只保留一条计算路径。
     输出: logits [N, vocab] — 基线取每序列末 token (actual_seq_lengths-1);
           prefix 取每请求末 token (act[1:]-1, 丢掉 prefix 段结束行)。
     模式由 self._prefix_mode 区分 (adapter.setup 注入, 两个模式共用本 forward)。
     """
+    # A5 的 PrefixAttention 要 int32 bounds (910 PIA / FIA 基线都吃 int64)
+    asl = (actual_seq_lengths.to(torch.int32)
+           if self._prefix_mode and self._prefix_a5 else actual_seq_lengths)
     for layer in self.model.layers:
-        layer.self_attn.actual_seq_lengths_tensor = actual_seq_lengths
+        layer.self_attn.actual_seq_lengths_tensor = asl
 
     m = self.model
     hidden = m.embed_tokens(input_ids)
@@ -261,16 +299,27 @@ def prune_lm_head(model, token_ids):
 class Qwen25Adapter(GeModelAdapter):
     """Qwen2.5-0.5b (modeling_qwen2)。
 
-    prefix=True 使用 KV 内嵌 PIA 算子; prune_tokens 非空时剪裁 lm_head vocab。
+    prefix=True 使用 KV 内嵌 prefix 算子 (910: PIA / A5: cannbot-dsl
+    PrefixAttention, 构造时按 soc 二选一); prune_tokens 非空时剪裁 lm_head vocab。
     """
 
     MODELING = modeling_qwen2
 
     def __init__(self, prefix=False, prune_tokens=None):
         super().__init__()
-        if prefix and _PREFIX_IA_OP is None:
-            raise RuntimeError(
-                "prefix 模式需要 npu_prefix_infer_attention_score 算子 (安装见 env.sh)")
+        # 平台是运行期事实 (构造前 pipeline 已 set_device): 两平台算子不同但
+        # 图接口一致 (docs §"A5 适配现状"), 按 soc 二选一; 缺算子即硬失败,
+        # 不静默回退 baseline
+        self.a5 = _soc_is_a5()
+        if prefix:
+            if self.a5:
+                if _A5_PREFIX_OP is None:
+                    raise RuntimeError(
+                        "prefix 模式在 Ascend950PR (A5) 上需要 prefix_attn_torch 算子 "
+                        "(安装见 env.sh / scripts/install_prefix_attn_a5.sh)")
+            elif _PREFIX_IA_OP is None:
+                raise RuntimeError(
+                    "prefix 模式需要 npu_prefix_infer_attention_score 算子 (安装见 env.sh)")
         self.prefix = prefix
         self.prune_tokens = prune_tokens
         self.pruned_token_ids = None
@@ -280,9 +329,9 @@ class Qwen25Adapter(GeModelAdapter):
 
         1. lm_head vocab 剪裁 (prune_tokens 非空时) — 结构手术,
            输出维度 vocab_size → len(tokens)
-        2. 模式标志 _prefix_mode → 模型与每层 self_attn (forward 的 last 索引、
-           attention 的 FIA/PIA 算子选择); 创建时烙定, 之后不可变:
-           运行期翻标志会导致 eager 与已导出图行为分裂
+        2. 模式标志 _prefix_mode (+ 平台标志 _prefix_a5) → 模型与每层 self_attn
+           (forward 的 last 索引、attention 的 FIA/PIA/PrefixAttention 算子选择);
+           创建时烙定, 之后不可变: 运行期翻标志会导致 eager 与已导出图行为分裂
         3. 图常量: atten_mask [max_seq_len, max_seq_len] bool + RoPE cos/sin 表
            [max_seq_len, D] (注册前 squeeze 掉 batch 维) — 两者同源于 max_seq_len (pipeline 从
            cfg.graph.dynamic.max_seq_len 透传; 表长决定 position_ids 可用上限)
@@ -296,9 +345,11 @@ class Qwen25Adapter(GeModelAdapter):
             self.pruned_token_ids = self.prune_tokens
 
         model._prefix_mode = self.prefix
+        model._prefix_a5 = self.a5
         atten_mask = _build_causal_mask(max_seq_len, device)
         for layer in model.model.layers:
             layer.self_attn._prefix_mode = self.prefix
+            layer.self_attn._prefix_a5 = self.a5
             layer.self_attn.register_buffer('atten_mask', atten_mask)
         _precompute_rope_cos_sin(model, max_seq_len, device)
 

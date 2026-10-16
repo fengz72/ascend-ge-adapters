@@ -1,17 +1,18 @@
 #!/bin/bash
 # =============================================================================
-# install_prefix_attn.sh — 构建并安装 PIA 自定义算子 (PrefixInferAttentionScore)
+# install_prefix_attn.sh — 构建并安装 PIA 自定义算子 (PrefixInferAttentionScore,
+# AscendC 版, 910_9382 平台; A5 平台用 install_prefix_attn_a5.sh)
 #
 # 由 model.yaml 的 `custom_ops:` 声明, 管线在**加载 adapter 之前**执行
 # (models/qwen2.5-0.5b/model.py 会 import 它的 torch 绑定)。
 # 只有 prefix 链路需要 (adapt.params.prefix: true); 基线链路用不到, 但脚本幂等且
 # 已装即跳过, 所以留在配置里无害。
 #
-# 源码: third_party/ascend-ops/prefix-attention (git submodule, **不修改**; build.sh 只在其
-#       目录内产 build_out/, 已被该源自己的 .gitignore 忽略)
+# 源码: third_party/ascend-ops/prefix-attention/ascendc (git submodule, **不修改**;
+#       build.sh 只在其目录内产 build_out/, 已被该源自己的 .gitignore 忽略)
 # 交付: ① CANN 算子包 .run → $ASCEND_HOME_PATH/opp/vendors/custom_prefix_attn/
 #       ② torch 绑定包 npu_prefix_infer_attention_score (pip 装, 失败则回退 PYTHONPATH)
-# 步骤与版本基线见 third_party/ascend-ops/prefix-attention/README.md
+# 步骤与版本基线见 third_party/ascend-ops/prefix-attention/ascendc/README.md
 #
 # 幂等: vendor 目录 + 绑定包都在 → 只回传 env 后退出 (构建约 4min)。
 # 回传 env: 写 KEY=VALUE 到 $GE_ENV_FILE (core/setup_scripts.py 会读进 os.environ,
@@ -25,7 +26,8 @@ BINDING="npu_prefix_infer_attention_score"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 # 源目录优先用 yaml 声明的 path (框架经 $GE_SRC_DIR 传入), 单独手跑时回退到仓库内约定位置
-OP_DIR="${GE_SRC_DIR:-${REPO_ROOT}/third_party/ascend-ops/prefix-attention}"
+# (9d35424 起 ascendc 工程移入 prefix-attention/ascendc/ 子目录)
+OP_DIR="${GE_SRC_DIR:-${REPO_ROOT}/third_party/ascend-ops/prefix-attention/ascendc}"
 VENDOR_DIR="${ASCEND_HOME_PATH:?请先 source CANN 的 set_env.sh (需要 ASCEND_HOME_PATH)}/opp/vendors/${VENDOR}"
 
 log()  { echo "[prefix_attn] $*"; }

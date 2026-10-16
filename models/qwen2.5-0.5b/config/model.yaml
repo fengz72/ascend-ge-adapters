@@ -6,7 +6,7 @@ model:
   # soc 已移进 platforms.<name>.soc — 平台相关事实按平台声明, 顶层写会被硬失败拒掉
 
 source:                          # 只有 torch 一种 (来路①②同一条加载路径, 见 §2)
-  ref: /export/home/models/Qwen2.5-0.5B   # 本地权重目录 (或 hub id); 来路② 客户源码未实现 (docs §10)
+  ref: /home/h00909914/Qwen2.5-0.5B   # 本地权重目录 (或 hub id); 来路② 客户源码未实现 (docs §10)
 
 # ---- 平台表 (长期并存: 910_9382 与 A5 都进回归) ----
 # 平台是**运行期事实** (由机器上的卡决定): 框架用 torch.npu.get_device_properties(device).name
@@ -21,7 +21,7 @@ platforms:
     soc: Ascend910_9382
     aicore_num: "12|24"              # om_acl → ATC --aicore_num; ge_session → GEInitialize 限核
     custom_ops:                      # 自定义算子: 在**加载 adapter 之前**执行 (model.py 会 import 绑定)
-      - path: third_party/ascend-ops/prefix-attention
+      - path: third_party/ascend-ops/prefix-attention/ascendc
         script: models/qwen2.5-0.5b/scripts/install_prefix_attn.sh
     passes:                          # fusion pass: 在 **ATC 编译之前**执行
       - path: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
@@ -30,17 +30,29 @@ platforms:
   a5:
     soc: Ascend950PR_9589
     aicore_num: "16|32"                 # 待 A5 实测后填 (null = 不限核)
-    custom_ops: []                   # A5 的 prefix 算子未就绪 → 阶段 1 只跑 baseline
-                                     # (baseline 两平台同一个 FIA npu_fused_infer_attention_score);
-                                     # 算子就绪后在此挂安装脚本, 并给 model.py 加 (A5, prefix) 分支
+    custom_ops:                         # A5 prefix 算子 = cannbot-dsl GE 交付件
+      - path: third_party/ascend-ops/prefix-attention/cannbot-dsl/ge
+        script: models/qwen2.5-0.5b/scripts/install_prefix_attn_a5.sh
+                                        # (两平台 baseline 同一个 FIA npu_fused_infer_attention_score,
+                                        #  算子装好后 (A5, prefix) 与 (910, prefix) 一样可用,
+                                        #  model.py 的 _attention_forward 按平台二选一)
     passes: []                       # WeightNzAndMatMulV3Pass 是 MatMulV3 专属, A5 暂无对应 pass
     # max_seq_len: 2048              # 需要时覆盖 graph.dynamic.max_seq_len (UB/L2 尺寸随平台变)
+
+  a5_958b:                            # 降配机 (带宽/HBM 减小): soc 串 958b, 其余事实同 a5
+    soc: Ascend950PR_958b
+    aicore_num: "16|32"
+    custom_ops:
+      - path: third_party/ascend-ops/prefix-attention/cannbot-dsl/ge
+        script: models/qwen2.5-0.5b/scripts/install_prefix_attn_a5.sh
+    passes: []
 
 adapt:                           # torch 源适用
   adapter_class: Qwen25Adapter   # 同目录 model.py 里的类名
   params:                        # 直接作为 adapter 构造 kwargs (= 形态开关)
-    prefix: false                # true → PIA (prefix-in-Q, npu_prefix_infer_attention_score)
-                                 # 注: A5 上 prefix 需要该平台的新算子; 未装时 adapter 构造即硬失败
+    prefix: true                 # true → prefix-in-Q (910: PIA / A5: cannbot-dsl PrefixAttention,
+                                 #       平台由 adapter 探测 soc 二选一)
+                                 #       注: 未装对应平台算子时 adapter 构造即硬失败
     prune_token_file: models/qwen2.5-0.5b/config/target_tokens.json   # 声明即启用 lm_head 词表剪裁
   # 每个 param 对**框架**的后果在此声明 —— 框架不认具体开关名 (认了就意味着适配新模型要改 core/)。
   # params 的每个键都**必须**在这里出现 (漏了硬失败): 新增一个影响图结构的开关而忘了给 tag,
@@ -107,4 +119,7 @@ bench:
     script: models/qwen2.5-0.5b/scripts/gen_requests.py
     # --prefix 仅 adapt.params.prefix:true 时生效; false 时框架自动移除 (core.bench._form_args),
     # 故翻 prefix 一个开关即无缝切形态, 不必手改这行。范围 "20-25" 属负载口径 (每套抽一个 P)。
-    args: [--count, "200", --prefix, "20-25"]
+    # 注: CANN 9.1.0 上 custom_op_v2 无 ArgsUpdater/HostCpu 接口, prefix 形态的 Device-eager
+    # 算子操作包络 = 每图实例单一 (shape, bounds) → prefix 形态须临时改回 fixed 单形状池
+    # (--dist, "fixed", --seq-len, "208"); 非 prefix (baseline FIA) 无此限制, 混合口径可用。
+    args: [--count, "200", --prefix, "20"]

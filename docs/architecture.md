@@ -126,7 +126,7 @@ platforms:                       # 平台表 (长期并存: 每个平台都进�
     soc: Ascend910_9382          # ① ATC --soc ② 平台探测的匹配键 (须与 get_device_properties().name 逐字一致)
     aicore_num: "12|24"          # om_acl → ATC --aicore_num; ge_session → GEInitialize 运行期限核
     custom_ops:                  # 自定义算子 (加载 adapter 前执行), 见 §7
-      - path: third_party/ascend-ops/prefix-attention              # 三方源: 溯源 + $GE_SRC_DIR
+      - path: third_party/ascend-ops/prefix-attention/ascendc   # 三方源: 溯源 + $GE_SRC_DIR
         script: models/qwen2.5-0.5b/scripts/install_prefix_attn.sh # 安装脚本
     passes:                      # fusion pass (ATC 编译前执行), 见 §7
       - path: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
@@ -135,7 +135,9 @@ platforms:                       # 平台表 (长期并存: 每个平台都进�
   a5:
     soc: Ascend950PR_9589
     aicore_num: null             # null = 不限核
-    custom_ops: []               # A5 的 prefix 算子未就绪 → 阶段 1 只跑 baseline (FIA 两平台同一个)
+    custom_ops:                  # A5 prefix 算子 = cannbot-dsl GE 交付件 (prefix 链路用, 基线 FIA 不需要)
+      - path: third_party/ascend-ops/prefix-attention/cannbot-dsl/ge
+        script: models/qwen2.5-0.5b/scripts/install_prefix_attn_a5.sh
     passes: []                   # WeightNzAndMatMulV3Pass 是 MatMulV3 专属, A5 暂无对应 pass
 
 adapt:                           # torch 源适用
@@ -357,14 +359,16 @@ platforms:                         # 两者都**按平台声明** (§5.2): 装�
   ascend910_9382:
     soc: Ascend910_9382
     custom_ops:                    # 在**加载 adapter 之前**执行 (model.py 可能 import 算子绑定)
-      - path: third_party/ascend-ops/prefix-attention              # 三方源在哪 (溯源)
+      - path: third_party/ascend-ops/prefix-attention/ascendc    # 三方源在哪 (溯源)
         script: models/qwen2.5-0.5b/scripts/install_prefix_attn.sh # 怎么装 (用户脚本)
     passes:                        # 在 **ATC 编译之前**执行
       - path: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
         script: models/qwen2.5-0.5b/scripts/install_nz_pass.sh
   a5:
     soc: Ascend950PR_9589
-    custom_ops: []                 # A5 的 prefix 算子未就绪 → 阶段 1 只跑 baseline
+    custom_ops:                    # A5 prefix 算子 = cannbot-dsl GE 交付件 (直装 opp/op_graph, 见 §7.1)
+      - path: third_party/ascend-ops/prefix-attention/cannbot-dsl/ge
+        script: models/qwen2.5-0.5b/scripts/install_prefix_attn_a5.sh
     passes: []                     # WeightNzAndMatMulV3Pass 是 MatMulV3 专属, A5 暂无对应 pass
 ```
 
@@ -386,20 +390,20 @@ platforms:                         # 两者都**按平台声明** (§5.2): 装�
 | **fusion pass** | CANN **自动扫描** `opp/vendors/*/custom_fusion_passes/` 全部加载，不看 env、无优先级 | ❌ **不能**。per-model 目录只是组织归类，同名 pass 出现在两个 vendor 就是重复注册 → **ATC/TBE 崩**（实测：全局 `custom_nz_pass` 与 per-model 那份都注册 `MatMulWeightNZPass`） |
 | **自定义算子** | `ASCEND_CUSTOM_OPP_PATH`（冒号分隔，优先级 2>4>1>3） | ✅ 能，但靠 **env 指向**，与目录名无关；且 vendor 名由三方工程写死（PIA 的 `CMakePresets.json: vendor_name=custom_prefix_attn`，其 `build.sh` 不转发 `-D`，改名要么抄它的两阶段构建、要么装完 `mv` 目录破坏它的 `upgrade.sh`） |
 
-所以约定：**每个 pass / 算子装进它自己的 vendor 目录，全局一份**（`custom_nz_pass`、`custom_prefix_attn`），安装脚本负责"已装即跳过"与"别处已有同名 pass 就复用那份"。
+所以约定：**每个 pass / 算子装进它自己的 vendor 目录，全局一份**（`custom_nz_pass`、`custom_prefix_attn`），安装脚本负责"已装即跳过"与"别处已有同名 pass 就复用那份"。**例外**：A5 的 cannbot-dsl GE 交付件（custom_op_v2 图算子）由其自带 `install.sh` **直装 `$ASCEND_HOME_PATH/opp/op_graph/`**（非 vendors .run 包，vendor 名机制不适用）——同样全局一份、幂等由外层安装脚本兜，隔离同样靠 env 指向（`ASCEND_CUSTOM_OPP_PATH=$ASCEND_HOME_PATH/opp`）；注意 CANN 升级会清空 `opp`，需重跑安装脚本。
 
 ### 7.2 三方源
 
 | 源 | 内容 | 引入方式 |
 |---|---|---|
 | `third_party/custom_development_code/` | fusion pass 库（19 个：`WeightNzAndMatMulV3Pass`、`rmsnorm_pass`、`AttentionFusionPass`、`fa_pass` …）+ `monkey_patch/`、`model_opti_list/` | git submodule（gitcode） |
-| `third_party/ascend-ops/` | AscendC 自定义算子库；当前含 `prefix-attention/`（PIA） | git **submodule**（`github.com/fengz72/ascend-ops` @ `5be240f`；`github.com:443` 在部分网络环境不可达 → `--init` 会失败，离线兜底：经 `codeload.github.com` 下 tarball 解压到该路径，或从本仓库 git 历史取回旧的 vendored 副本） |
+| `third_party/ascend-ops/` | prefix-in-Q attention 算子库，按实现路线分目录：`prefix-attention/ascendc/`（PIA，AscendC/aclnn，910_9382）+ `prefix-attention/cannbot-dsl/`（macro kernel + GE 交付件 `ge/`，A5/Ascend950PR） | git **submodule**（`github.com/fengz72/ascend-ops` @ `9d35424`；`github.com:443` 在部分网络环境不可达 → `--init` 会失败，离线兜底：经 `codeload.github.com` 下 tarball 解压到该路径，或从本仓库 git 历史取回旧的 vendored 副本） |
 
 两者都**只读**：本仓库不改其中任何文件，构建产物落在 `.pass_build/`（仓库内、gitignored）或各源自己的 `build_out/`（被其自带 .gitignore 忽略）。
 
-- **互补**：pass 是**图级**优化（NZ 权重转换、融合等），自定义算子是**算子级**能力（PIA 的 prefix-in-Q 语义），与 Python 侧**模型级**适配（patch）三者互补。
-- qwen2.5-0.5b 用 `WeightNzAndMatMulV3Pass`（常量权重 MatMul ND→FRACTAL_NZ + MatMulV3，实测 ATC 日志 `matmul_match num=169`）+ PIA（`adapt.params.prefix: true` 时）。
-- 脚本示例：`models/qwen2.5-0.5b/scripts/install_{nz_pass,prefix_attn}.sh`（含幂等、同名冲突检测、`$GE_ENV_FILE` 回传 env 的写法）。
+- **互补**：pass 是**图级**优化（NZ 权重转换、融合等），自定义算子是**算子级**能力（prefix-in-Q 语义：910 走 PIA，A5 走 cannbot-dsl PrefixAttention），与 Python 侧**模型级**适配（patch）三者互补。
+- qwen2.5-0.5b 用 `WeightNzAndMatMulV3Pass`（常量权重 MatMul ND→FRACTAL_NZ + MatMulV3，实测 ATC 日志 `matmul_match num=169`）+ prefix 算子（`adapt.params.prefix: true` 时，按平台装 PIA 或 cannbot-dsl 交付件）。
+- 脚本示例：`models/qwen2.5-0.5b/scripts/install_{nz_pass,prefix_attn,prefix_attn_a5}.sh`（含幂等、同名冲突检测、`$GE_ENV_FILE` 回传 env 的写法）。
 - **踩过的坑**：`set -o pipefail` 下 `strings x.so | grep -q NAME` 会因 grep 提前退出触发 SIGPIPE，管道返回 141 → 冲突检测恒为假（真的把重复 pass 装进去了）。用 `grep -c` + `|| true` 替代。
 
 ## 8. 模型适配层（Adapter）
@@ -463,12 +467,12 @@ L0/L1 的 golden 可脱离 L2（export）重跑，生成阶段不占卡（脚本
 3. **形态开关写进 yaml 注释**，产物名由 `config.export_name` 带后缀（`-prefix`/`-prune`），A/B 互不覆盖。
 
 配套的两个 YAGNI 触发点（等第二个实例出现再做，别提前抽象）：
-- `models/qwen2.5-0.5b/scripts/install_prefix_attn.sh` 目前归 qwen 私有；**A5 成为第二个消费者时**上提到仓库级 `scripts/`，两处 yaml 都指过去（同 `models/common → core/` 的套路）。**尚未触发**：A5 的 prefix 算子与 910_9382 的 PIA 不是同一个（PIA 不支持 A5，需另写），故 A5 阶段 1 的 `custom_ops` 是空的；等 A5 算子就绪、确实要复用同一个安装脚本时再上提。
+- `models/qwen2.5-0.5b/scripts/install_prefix_attn{,_a5}.sh` 目前归 qwen 私有；**第二个消费者出现时**上提到仓库级 `scripts/`，两处 yaml 都指过去（同 `models/common → core/` 的套路）。**A5 没触发上提**：A5 的 prefix 算子与 910_9382 的 PIA 不是同一个（构建体系不同：.run vendor 包 vs bisheng 直装 op_graph），故各写各的脚本而不是复用同一份——"复用同一脚本才上提"的触发条件未命中。
 - 若 A5 与 qwen 的 adapter 出现重复结构（相同的 lm_head 剪裁、相同的 varlen forward 骨架）→ 上提到 `core/`（§8.2 第 5 条）。
 
 **A5 适配现状（平台轴，非模型轴）**：A5 是**第二个平台**（soc `Ascend950PR_9589`），不是第二个模型——同一个 `models/qwen2.5-0.5b/` 要在两个 SoC 上都跑，故走 §5.2 的 `platforms:` 表。分两阶段：
 1. **阶段 1（baseline）**：A5 用与 910_9382 **同一个** FIA 算子（`npu_fused_infer_attention_score`），故 `model.py` **零改动**——两平台差异全在配置层（soc / aicore_num / passes 空 / custom_ops 空）。这一步的价值是把"平台本身通不通"（soc、ATC、runtime）与"算子对不对"两个变量分开。
-2. **阶段 2（prefix）**：PIA 不支持 A5，需另写算子；其接口与 PIA 不一致但**所需参数是 PIA 参数集的子集**，故**图接口不变**（图级输入仍是 `input_ids/position_ids/actual_seq_lengths`，`atten_mask` 是 `setup` 注册的 buffer 即图常量）——只需在 `_attention_forward` 的 prefix 分支按平台二选一。算子未装时 `(A5, prefix)` 组合必须**硬失败**（复用 `model.py` 里 `prefix=True` 但 PIA 缺失即 RuntimeError 的既有模式），不静默退回 baseline。
+2. **阶段 2（prefix）——已落地**：A5 算子 = `third_party/ascend-ops/prefix-attention/cannbot-dsl/ge/`（custom_op_v2 `PrefixAttention`，bisheng 编签入的 codegen AscendC，eager 与图模式共用交付件 .so，无需 cannbotdsl）。其接口与 PIA 不一致但**所需参数是 PIA 参数集的子集**，故**图接口不变**（图级输入仍是 `input_ids/position_ids/actual_seq_lengths`）——`_attention_forward` 的 prefix 分支按平台二选一（adapter 构造时探测 soc 烙定 `_prefix_a5`）；差异点：无 `atten_mask`/`sparse_mode`（causal/prefix 语义内建）、`bounds` 要 **int32**（`_varlen_forward` 在图边界 cast 一次，图输入仍 int64）、N1/N2/D 为 kernel 固定值（qwen2.5-0.5b 特化）。算子未装时 `(A5, prefix)` 组合**硬失败**（`prefix=True` 且 `prefix_attn_torch` 缺失即 RuntimeError），不静默退回 baseline。
 
 ## 9. C++ 运行时（重建，通用）
 
@@ -771,12 +775,12 @@ ascend-ge-adapters/
 ├── third_party/                   # 三方源一律**只读** (见 §7.2)
 │   ├── nlohmann/json.hpp          # vendored header-only JSON (C++ 读三份契约)
 │   ├── custom_development_code/   # gitcode submodule: fusion_pass/ (19 个 pass)
-│   └── ascend-ops/                # git submodule: prefix-attention/ (PIA 自定义算子工程)
+│   └── ascend-ops/                # git submodule: prefix-attention/ (ascendc PIA + cannbot-dsl A5 算子)
 ├── models/
 │   └── qwen2.5-0.5b/
 │       ├── model.py               # Adapter (模型专属, 唯一手写代码之一)
 │       ├── config/model.yaml      # 声明 (唯一手写配置: 形态 + 后端 + 验证 + bench 口径)
-│       ├── scripts/               # 用户脚本: install_{nz_pass,prefix_attn}.sh / gen_requests.py
+│       ├── scripts/               # 用户脚本: install_{nz_pass,prefix_attn,prefix_attn_a5}.sh / gen_requests.py
 │       ├── results/               # 性能 run 目录 (过程产物, 本地 gitignored) + README.md (curate 的基线, 唯一入库)
 │       └── run.sh env.sh          # 薄封装 core/pipeline + 运行环境
 ├── tools/                         # varlen (生成+落盘/读回+结构不变量) / atc_utils / compare / sweep / parse_dump / parse_profiling
@@ -803,7 +807,7 @@ ascend-ge-adapters/
 1. **配置层**：`core/config.py`（YAML 解析 + manifest 生成）；qwen2.5 散参数收敛进 `config/model.yaml`
 2. **冒烟测试骨架**：小模型 e2e（export→compile→run→compare）脚本，作为后续每步的回归门（先于功能扩张建立）
 3. **Graph 抽象 + 两层 shape**：`core/graph.py`——从 AIR pbtxt 派生 io_spec（动态维），bundle 记具体 shape；落地 §6 端到端
-4. **环境准备（pass / 自定义算子）**：`third_party/custom_development_code` 与 `third_party/ascend-ops` 均为 submodule；`core/setup_scripts.py` 提供"yaml 填脚本路径"的接口（框架不假设构建方式）；`models/qwen2.5-0.5b/scripts/install_{nz_pass,prefix_attn}.sh` 为示例脚本，装到 `opp/vendors/<各自 vendor 名>/`（§7.1：pass 无 per-model 隔离，算子靠 env 指向）
+4. **环境准备（pass / 自定义算子）**：`third_party/custom_development_code` 与 `third_party/ascend-ops` 均为 submodule；`core/setup_scripts.py` 提供"yaml 填脚本路径"的接口（框架不假设构建方式）；`models/qwen2.5-0.5b/scripts/install_{nz_pass,prefix_attn,prefix_attn_a5}.sh` 为示例脚本，pass/PIA 装到 `opp/vendors/<各自 vendor 名>/`、A5 交付件直装 `opp/op_graph/`（§7.1：pass 无 per-model 隔离，算子靠 env 指向）
 5. **Source（torch）**：`core/source.py`——torch 加载（来路① hf 权重；来路② 客户源码未实现，见 §10）
 6. **Backend**：`core/backend.py`——`OmAclBackend`（包 atc_utils）；`GeSessionBackend` 留待阶段二
 7. **Verify 成体系**：`core/verify.py`——golden + bundle（含 seed/provenance）+ compare + bench 阶段

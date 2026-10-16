@@ -22,7 +22,7 @@ Source ──[Adapt]──> Graph(AIR) ──[Passes]──> Backend ──> out
 | `models/<name>/` | 逐模型：`model.py`(Adapter) + `config/model.yaml`(声明) + 产物 + `results/README.md`(性能基线) |
 | `tools/` | varlen 输入生成 / ATC 封装 / 精度比对 / dump·profiling 解析（见 `tools/README.md`） |
 | `tests/` | 回归门：`tiny_e2e`（契约层与运行时）+ `pipeline_e2e`（编排层与配置层），都是需 NPU 的脚本 |
-| `third_party/` | 三方源，一律**只读**：`custom_development_code`(submodule, fusion pass) + `ascend-ops`(submodule, PIA 自定义算子) + `nlohmann/json.hpp` |
+| `third_party/` | 三方源，一律**只读**：`custom_development_code`(submodule, fusion pass) + `ascend-ops`(submodule, prefix attention 算子: 910 PIA / A5 cannbot-dsl) + `nlohmann/json.hpp` |
 | `docs/` | 架构设计 |
 
 ## 三份契约
