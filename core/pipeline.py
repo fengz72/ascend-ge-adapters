@@ -1,339 +1,118 @@
-"""GE 适配管线编排 — 读 model.yaml, 串起 source→adapt→export→io_spec→golden→bundle
-→passes→compile→manifest。docs/architecture.md §3/§10/§11。
-
-逐模型只剩 model.py(Adapter) + config/model.yaml; 本管线通用、配置驱动。
-
-用法:
-    python -m core.pipeline --config models/qwen2.5-0.5b/config/model.yaml
-    python -m core.pipeline --config <yaml> --skip compile,run,compare
-    python -m core.pipeline --config <yaml> --device 6 --skip export,passes,compile --profiling
-    # 冒烟/调试可覆盖: --device 6 (必填) --batch-size 2 --seq-len 16 --work-dir /tmp/x
-    # ops/passes 是**用户脚本**接口 (model.yaml 的 custom_ops/passes 填脚本路径, 见 core/setup_scripts.py)
-"""
-
+"""Python and command-line entry points for seven independent operations."""
 import argparse
-import glob
-import os
-from dataclasses import asdict, replace
+import datetime
+import json
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+from core.config import ROOT, load_authoring, validate
+from core.contracts import write_json, digest
+from core import data, dependencies
 
-import torch
-import torch_npu
-
-from core.config import (check_build_record, export_name, form_flags, load_config,
-                         load_adapter, resolve_platform, write_build_record, write_manifest)
-from core.source import load_source
-from core.graph import Graph, IoSpec
-from core.exporter import GeExporter
-from core.setup_scripts import has_flag, run_scripts
-from core.backend import (backend_extra, compile_graph, default_output_dir,
-                          parse_profiling, run_runtime)
-from core.verify import Verifier, bundle_has_golden, collect_provenance
-
-# --skip 的合法取值。**校验**而非静默忽略: 拼错 (`--skip compar`) 的后果是"以为跳过了其实
-# 整段重跑"或"以为在跑其实被跳过", 与 config 拒绝已移走的顶层键同一个理由。
-# 注意 `verify` 也是有效值 (关掉 golden 生成, 连带 reference/compare 都无从比起),
-# 它曾经只在代码里被认、文档与 --help 都没列。
-SKIP_STAGES = ("ops", "export", "verify", "reference", "passes", "compile", "run", "compare")
+STEPS=('data','baseline','prepare','build','infer','compare','bench')
 
 
-def run(config_path, skip=(), dtype=torch.float16, device=None,
-        batch_size=None, seq_len=None, work_dir=None,
-        warmup=0, bench=1, runtime_extra=(), platform=None,
-        profiling=False, profiling_output=None, profiling_aic_metrics=None,
-        profiling_parse=False):
-    """跑管线, 返回产物路径 dict。skip ⊂ SKIP_STAGES (拼错即硬失败, 不静默忽略)。
+def require_success(stage,result,directory):
+    if result.get('status')=='failed':
+        detail=result.get('error') or f"accuracy failed for {result.get('accuracy',{}).get('failed_cases',[])}"
+        raise ValueError(f"{stage}: {detail}; see {directory/f'{stage}.log'}")
 
-    run/compare 为阶段二闭环: run 调 C++ runtime (manifest 驱动, OM/ACL 或 GeSession),
-    compare 用 bundle golden 比对运行时输出 (docs §10)。
 
-    reference (只在 export 阶段, 与 golden 同时算): **原版未 patch 的 HF** 逐请求前向,
-    与 patched-eager golden 比对 — 隔离出"适配"这一个变量 (compare 隔离的是"编译")。
-    adapter 未实现 unpack_requests 时自动跳过并 WARN。
+def worker(stage,config,cases,directory,device):
+    job={'stage':stage,'config':config,'cases':cases,'output':str(directory),'device':device}
+    path=directory/f'{stage}.log'
+    env=dependencies.environment(config) if stage in ('build','infer','bench') else None
+    with path.open('w') as log:
+        process=subprocess.run([sys.executable,'-m','core.worker'],input=json.dumps(job),text=True,
+                               stdout=log,stderr=subprocess.STDOUT,cwd=ROOT,env=env)
+    lines=path.read_text(errors='replace').splitlines()
+    messages=[line[len('GE_RESULT '):] for line in lines if line.startswith('GE_RESULT ')]
+    if process.returncode or len(messages)!=1:
+        errors=[line[len('GE_ERROR '):] for line in lines if line.startswith('GE_ERROR ')]
+        detail=json.loads(errors[-1]) if errors else '\n'.join(lines[-20:])
+        raise RuntimeError(f'{stage}: {detail}\nlog: {path}')
+    return json.loads(messages[0])
 
-    platform: 显式指定 platforms 表的 profile 短名 (缺省按 device 的 soc 自动探测);
-              只在交叉编译 (在本机为别的 soc 出产物) 时才需要。
 
-    profiling: run 阶段采集 profiling (ge_session 经 GEInitialize 选项, om_acl 经 acl.json),
-               产出 PROF_* 到 profiling_output (默认 <base>/io/profiling); profiling_parse
-               再接着跑 msprof parse+export 并打印算子摘要 (tools/parse_profiling.py)。
-               采集口径含整个进程 (图编译也在内)。
-    """
-    cfg = load_config(config_path)
-    skip = set(skip)
-    bad = sorted(skip - set(SKIP_STAGES))
-    if bad:
-        raise ValueError(
-            f"--skip 有无法识别的阶段 {bad} — 合法取值: {list(SKIP_STAGES)}。"
-            f"不静默忽略: 拼错会让你以为跳过了某段其实整段重跑 (或反之)")
-    md = cfg.model_dir
-    if device is None:
-        raise ValueError("必须指定 device (CLI --device): 用哪张卡是运行期事实, 不进 model.yaml")
-    torch_npu.npu.set_device(device)
-    cfg = resolve_platform(cfg, device=device, platform=platform)
-    print(f"[pipeline] device={device} platform={cfg.platform} (soc={cfg.model.soc})")
+def perform(stage,config,directory,device):
+    if stage=='data':
+        cases=data.generate(config)
+        return {'status':'success','cases':len(cases),'samples':sum(c['samples'] for c in cases),
+                'directory':config['data']['directory'],'pool_sha256':digest(cases)}
+    if stage=='prepare':return {'status':'success','dependencies':dependencies.prepare(config)}
+    if stage=='compare':return worker(stage,config,[],directory,device)
+    cases=data.load(config)
+    if stage in ('baseline','infer','compare'):cases=data.select_cases(cases,config['verification']['case_ids'])
+    elif stage=='build':cases=cases[:1]
+    return worker(stage,config,cases,directory,device)
 
-    name = export_name(cfg)
-    base = work_dir or md
-    air_dir = os.path.join(base, "air")
-    bundle_dir = os.path.join(base, "io")     # om 目录由 backend.compile_graph 自己按 base 派生
-    air_path = os.path.join(air_dir, f"{name}.air")
-    io_spec_path = os.path.join(air_dir, f"{name}.io_spec.json")
 
-    input_kwargs = dict(
-        batch_size=cfg.inputs.batch_size if batch_size is None else batch_size,
-        seq_len=cfg.inputs.seq_len if seq_len is None else seq_len,
-        prefix_len=cfg.inputs.prefix_len,
-        seed=cfg.inputs.seed,
-    )
-    # CLI 覆盖 (--batch-size/--seq-len) 回写进 cfg.inputs, 让它成为**唯一**的有效输入口径:
-    # _inputs_args (注入给脚本) 与 build_fingerprint (构建指纹) 都读 cfg.inputs, 不回写就会
-    # 静默忽略覆盖 — 冒烟用的 --batch-size 2 会被脚本按 yaml 的 10 生成, 且指纹记的也是 10。
-    cfg = replace(cfg, inputs=replace(cfg.inputs, **input_kwargs))
-
-    # ---- 自定义算子安装脚本: 必须在 load_adapter 之前 (model.py 可能 import 算子绑定) ----
-    if "ops" not in skip:
-        run_scripts(cfg.custom_ops, "custom_ops")
-
-    # ---- torch 源: source 加载 + adapter 适配 ----
-    adapter = load_adapter(cfg)
-    exporter = GeExporter(adapter, air_dir, name)
-    # verify 段的覆盖项透传给 Verifier。用 asdict 派生而不是手抄 ("ref_cosine_min", ...) 列表:
-    # 手抄的列表加字段就会漏 (rtol/atol 曾经就是这样在 yaml 里够不到)。None (未覆盖) 的项要
-    # 过滤掉, 否则会把 Verifier 的常量默认覆盖成 None → 比对时崩。
-    overrides = {k: v for k, v in asdict(cfg.verify).items() if v is not None}
-    overrides.pop("enabled", None)      # enabled 是 pipeline 的开关, 不是 Verifier 的参数
-    verify = Verifier(**overrides)
-    ref_report = None
-
-    if "export" in skip:
-        # 复用磁盘产物前先校验构建指纹: export_name 只编码 platform+prefix+prune,
-        # max_seq_len/inputs.*/soc/aicore_num 改了而复用旧 AIR 就是静默错配 (docs §5.2)
-        check_build_record(air_path, cfg, dtype)
-        graph = Graph(path=air_path, io_spec=IoSpec.from_json(io_spec_path))
-        bundle_path = os.path.join(bundle_dir, "bundle.json")
-        bundle_path = bundle_path if os.path.exists(bundle_path) else None
-    else:
-        raw = load_source(cfg, md, dtype=dtype, device=device)
-        inputs, in_logical = _generate_inputs(cfg, raw, bundle_dir, device)
-        want_golden = cfg.verify.enabled and "verify" not in skip
-
-        # 原版参考必须在 adapt **之前**算: patch 是类级 monkey-patch (进程全局), adapt 之后
-        # 同进程里任何同架构实例都走 patched forward, "原版"就名存实亡 (docs §10)
-        reference = (verify.reference(raw, adapter, inputs)
-                     if want_golden and "reference" not in skip else None)
-
-        # graph.dynamic.max_seq_len 是人工声明的唯一事实源 → 透传给 setup (RoPE 表/因果 mask
-        # 等图常量据此定长; 不传则 adapter 用默认值, 与 yaml 声明脱节 → 长序列 Gather 越界)
-        model = adapter.adapt(raw, max_seq_len=cfg.graph.dynamic.max_seq_len)
-        golden = verify.golden(model, inputs) if want_golden else None   # trace 前算 (docs §10)
-        if reference is not None:
-            ref_report = verify.compare_reference(
-                golden, reference, path=os.path.join(bundle_dir, "reference.json"))
-        air_path = exporter.trace(model, inputs, **input_kwargs)
-        write_build_record(air_path, cfg, dtype)      # 与 AIR 同名的 .build.json (--skip export 时校验)
-
-        in_nodes = adapter.io_input_nodes(inputs, **input_kwargs)
-        # 激励现在来自**进程外**(输入脚本), 故 logical 序不再由同一个函数保证 — 对账:
-        # 脚本落盘的顺序必须 == adapter 声明的 forward 序, 否则 save_bundle 会把 .bin
-        # 贴错 logical 标签 (C++ 按名配对 → 静默喂错张量)
-        if [n.logical for n in in_nodes] != in_logical:
-            raise ValueError(
-                f"输入脚本的 logical 序 {in_logical} ≠ adapter.io_input_nodes 声明的 "
-                f"{[n.logical for n in in_nodes]} — 两者都须 == patched forward 入参序 "
-                f"(脚本侧见其 FORWARD_ORDER, adapter 侧见 io_input_nodes)")
-        out_nodes = adapter.io_output_nodes(golden)
-        graph = Graph.from_air(air_path, in_nodes, out_nodes)
-        graph.io_spec.to_json(io_spec_path)
-
-        # bundle 总要落 (run 阶段需要具体 shape + .bin); golden 为 None (verify.enabled=false)
-        # 时只写 inputs, bundle.golden=null → compare 阶段自动跳过
-        # adapt.params = 形态事实源 (prefix/prune…), platform/soc = 平台事实源:
-        # 都记进 provenance, 报告才能自证是哪个平台哪种形态
-        prov = collect_provenance(model=cfg.model.name,
-                                  soc=cfg.model.soc, dtype=str(dtype),
-                                  platform=cfg.platform,
-                                  adapt_params=dict(cfg.adapt.params), **input_kwargs)
-        bundle_path = verify.save_bundle(bundle_dir, inputs, golden, graph.io_spec, prov,
-                                         logical_order=[n.logical for n in in_nodes])
-
-    if "passes" not in skip:
-        run_scripts(cfg.passes, "passes")
-    om = _compile(cfg, graph, base, skip)
-    mp = write_manifest(cfg, graph.path, om, io_spec_path, bundle_path, base_dir=base, device=device)
-
-    outputs_dir = default_output_dir(mp)
-    prof_dir = None
-    if "run" not in skip:
-        extra = list(backend_extra(cfg))
-        # 给了输出目录/要解析即视为开启采集 (与 C++ 侧 --profiling_output 的语义一致)
-        if profiling or profiling_output or profiling_parse:
-            prof_dir = profiling_output or os.path.join(base, "io", "profiling")
-            extra += ["--profiling", "--profiling_output", prof_dir]
-            if profiling_aic_metrics:
-                extra += ["--profiling_aic_metrics", profiling_aic_metrics]
-        extra += list(runtime_extra)      # CLI --runtime-opt 排在最后 → 可覆盖上面的同名项
-        run_runtime(mp, output_dir=outputs_dir, device=device,
-                    warmup=warmup, bench=bench, extra=tuple(extra))
-        if prof_dir:
-            if profiling_parse:
-                parse_profiling(prof_dir)
-            else:
-                print(f"[pipeline] profiling 数据 (PROF_*): {prof_dir}\n"
-                      f"  解析: python3 tools/parse_profiling.py parse-and-export "
-                      f"--profiling_dir {prof_dir}  (或加 --profiling-parse 自动跑)")
-
-    report = None
-    if "compare" not in skip and bundle_path:
-        if not bundle_has_golden(bundle_path):
-            print("[pipeline] bundle 无 golden (verify.enabled=false) → 跳过 compare")
-        elif not os.path.exists(os.path.join(outputs_dir, "outputs.json")):
-            print(f"[pipeline] 无运行时输出 ({outputs_dir}) → 跳过 compare")
+def execute(stage,config,*,device=None,target=None,targets=None,case_ids=None,instances=None,profiling=None):
+    """Read one current model YAML and execute a step, or sequence all seven."""
+    if stage not in (*STEPS,'run'):raise ValueError(f'unknown step: {stage}')
+    if stage in ('build','infer','bench','run'):
+        from core.targets import require_device
+        device=require_device(device)
+    options={'target':target,'device':device,'source_paths':stage in ('data','baseline','build','run')}
+    if targets is not None:options['catalog']=targets
+    config=load_authoring(Path(config),**options)
+    if case_ids is not None:config['verification']['case_ids']='all' if case_ids==['all'] else case_ids
+    if instances is not None:config['benchmark']['instances']=instances
+    if profiling is not None:config['observability']['profiling']=profiling
+    validate(config)
+    if stage=='baseline' and config['reference']['device']=='npu':
+        from core.targets import require_device
+        device=require_device(device)
+    started=datetime.datetime.now(datetime.timezone.utc)
+    run_id=started.strftime('%Y%m%dT%H%M%S')+'-'+uuid.uuid4().hex[:8]
+    directory=Path(config['work_dir'])/'results'/run_id;directory.mkdir(parents=True)
+    began=time.monotonic()
+    record={'schema':'ge-run/1','run_id':run_id,'started_at':started.isoformat(),
+            'status':'running','stage':stage,'device':device,'config':config}
+    try:
+        if stage=='run':
+            record['steps']={}
+            for step in STEPS:
+                result=perform(step,config,directory,device);record['steps'][step]=result
+                require_success(step,result,directory)
         else:
-            out_dtype = graph.io_spec.outputs[0].dtype if graph.io_spec.outputs else "float16"
-            report = verify.compare_bundle(bundle_path, outputs_dir, dtype=out_dtype)
-
-    return {"air": air_path, "io_spec": io_spec_path, "om": om,
-            "bundle": bundle_path, "manifest": mp,
-            "outputs": outputs_dir if "run" not in skip else None,
-            "profiling": prof_dir,
-            "reference": ref_report, "report": report}
-
-
-def _inputs_args(cfg, vocab, out_dir):
-    """输入脚本的 argv: 框架注入规范值, yaml 的 inputs.args 只放额外覆盖 (已写过的不覆盖)。
-
-    注入 --out/--vocab/--batch-size/--seq-len/--seed (都是 inputs.* 的通用事实);
-    **形态相关**的 flag (如 --prefix-len) 由 adapt.form 声明、form_flags 统一增删 ——
-    本函数不认具体开关名 (与 core.bench._form_args 共用同一套声明, 见 config.form_flags)。
-    --vocab 必须是**已加载模型**的 embedding 行数, 不是 config.vocab_size —— lm_head 剪裁
-    会改写后者 (见 gen_inputs.py docstring)。
-    """
-    args = list(cfg.inputs.args)
-
-    def add(flag, value):
-        if value is not None and not has_flag(args, flag):
-            args.extend([flag, str(value)])      # extend 而非 +=: 闭包里 += 会让 args 变局部名
-
-    add("--out", out_dir)
-    add("--vocab", vocab)
-    add("--batch-size", cfg.inputs.batch_size)
-    add("--seq-len", cfg.inputs.seq_len)
-    add("--seed", cfg.inputs.seed)
-    return form_flags(cfg, args, "inputs")
+            record.update(perform(stage,config,directory,device))
+            require_success(stage,record,directory)
+        record['status']='success'
+    except Exception as error:
+        record.update(status='failed',error=f'{type(error).__name__}: {error}');raise
+    finally:
+        record['duration_seconds']=time.monotonic()-began
+        write_json(directory/'result.json',record)
+    return {'status':record['status'],'result':str(directory/'result.json'),
+            **{k:record[k] for k in ('steps','performance','accuracy','graph','golden','outputs','cases','samples','directory','pool_sha256','profiling','dump') if k in record}}
 
 
-def _generate_inputs(cfg, model, out_dir, device):
-    """跑输入脚本落盘 → 读回张量。返回 (inputs tuple, logical 序)。
-
-    激励是三层 (L0 reference / L1 golden / L2 trace+bundle) 的**共同输入**, 故必须在 adapt
-    之前用 L0 模型生成 (读的是未手术的 embedding 形状)。落盘而非进程内造 → L0/L1 的 golden
-    可脱离 export 重跑, 生成阶段不占卡。
-    """
-    from tools.varlen import INPUTS_JSON, load_inputs
-
-    vocab = model.get_input_embeddings().weight.shape[0]
-    run_scripts([{"script": cfg.inputs.script,
-                  "args": _inputs_args(cfg, vocab, out_dir)}], "inputs")
-    inputs, logical, prov = load_inputs(out_dir, device="npu" if device is not None else None)
-    print(f"[inputs] {len(inputs)} 个张量 ← {os.path.join(out_dir, INPUTS_JSON)} | "
-          + " ".join(f"{n}{tuple(t.shape)}" for n, t in zip(logical, inputs))
-          + f" | vocab={vocab} T={prov.get('total_tokens')} 段数={prov.get('segments')}")
-    return inputs, logical
-
-
-def _compile(cfg, graph, base_dir, skip):
-    """om_acl → ATC 编译出 om_path; ge_session → None (但仍校验 图形态×后端 组合)。
-
-    --skip compile 时**复用磁盘上已有的 OM** (否则 manifest.om_path 会是 null, run 阶段
-    直接失败 — 而"复用 AIR/OM 只跑 runtime"正是 --skip compile 的用途)。
-
-    OM 不另设构建指纹: 它的身份已由**文件名**覆盖 —— _existing_om 按 <图名>+限核后缀匹配,
-    图名含 platform + 各形态开关的 tag (export_name), 后缀含 aicore_num; 而 soc 与 platform
-    一一对应。剩下的 max_seq_len/inputs.* 由 AIR 侧的 check_build_record 兜住 (OM 是从 AIR
-    编的, --skip export 时那道校验先触发)。
-    """
-    if "compile" in skip:
-        if cfg.backend.type != "om_acl":
-            return None
-        om = _existing_om(base_dir, graph, cfg.backend.aicore_num)
-        if om is None:
-            print(f"[pipeline][WARN] --skip compile 但 {os.path.join(base_dir, 'om')} 下没有匹配的 OM "
-                  f"→ manifest.om_path 为空, run 阶段会失败 (去掉 --skip compile 先编译)")
-        else:
-            print(f"[pipeline] --skip compile: 复用已有 OM {om}")
-        return om
-    return compile_graph(cfg, graph, base_dir=base_dir)
-
-
-def _existing_om(base_dir, graph, aicore_num):
-    """找 <base_dir>/om/<图名>[限核后缀]*.om (ATC 会追加 _linux_aarch64 之类后缀)。"""
-    from tools.atc_utils import normalize_aicore
-
-    stem = os.path.splitext(os.path.basename(graph.path))[0]
-    _, suffix = normalize_aicore(aicore_num)
-    pattern = os.path.join(base_dir, "om", stem + suffix + "*.om")
-    matches = sorted(glob.glob(pattern))
-    return matches[0] if matches else None
-
-
-def main():
-    p = argparse.ArgumentParser(description="GE 适配管线 (配置驱动)")
-    p.add_argument("--config", required=True, help="model.yaml 路径")
-    p.add_argument("--skip", default="",
-                   help=f"逗号分隔, 取值 ⊂ {{{','.join(SKIP_STAGES)}}} (拼错即硬失败)")
-    p.add_argument("--device", type=int, required=True,
-                   help="NPU 设备号 (必填; 运行期事实, 不进 model.yaml)")
-    p.add_argument("--platform", default=None,
-                   help="覆盖平台 profile 短名 (缺省按 device 的 soc 自动探测); 仅交叉编译时需要")
-    p.add_argument("--batch-size", type=int, default=None)
-    p.add_argument("--seq-len", type=int, default=None)
-    p.add_argument("--work-dir", default=None, help="覆盖产物根目录 (默认 model_dir)")
-    p.add_argument("--dtype", default="float16", help="float16|float32|bfloat16")
-    p.add_argument("--warmup", type=int, default=0, help="C++ runtime 预热次数")
-    p.add_argument("--bench", type=int, default=1, help="C++ runtime 计时执行次数")
-    p.add_argument("--runtime-opt", action="append", default=[],
-                   help="透传 C++ runtime 的选项 (可重复), 如 --runtime-opt --aicore_num=12")
-    p.add_argument("--profiling", action="store_true",
-                   help="run 阶段采集 profiling → PROF_* (ge_session 经 GEInitialize 选项, "
-                        "om_acl 经 acl.json); 解析用 tools/parse_profiling.py")
-    p.add_argument("--profiling-output", default=None,
-                   help="PROF_* 输出目录 (默认 <产物根>/io/profiling); 给了即视为开启 --profiling")
-    p.add_argument("--profiling-aic-metrics", default=None,
-                   help="AI Core 指标, 如 PipeUtilization (ge_session 缺省即此)")
-    p.add_argument("--profiling-parse", action="store_true",
-                   help="采集完接着跑 msprof parse+export 并打印算子摘要 "
-                        "(隐含 --profiling; 需 msprof 在 PATH/ASCEND_HOME)")
-    args = p.parse_args()
-
-    dtype = getattr(torch, args.dtype)
-    skip = tuple(s for s in args.skip.split(",") if s)
-    out = run(args.config, skip=skip, dtype=dtype, device=args.device,
-              batch_size=args.batch_size, seq_len=args.seq_len, work_dir=args.work_dir,
-              warmup=args.warmup, bench=args.bench, runtime_extra=tuple(args.runtime_opt),
-              platform=args.platform, profiling=args.profiling,
-              profiling_output=args.profiling_output,
-              profiling_aic_metrics=args.profiling_aic_metrics,
-              profiling_parse=args.profiling_parse)
-    print("=== 管线产物 ===")
-    for k, v in out.items():
-        if k not in ("report", "reference"):
-            print(f"  {k}: {v}")
-
-    # 两道门, 各隔离一个变量 (docs §10): reference = 适配是否正确, compare = 编译是否正确
-    failed = []
-    for key, label in (("reference", "reference (原版 HF vs 适配后 eager)"),
-                       ("report", "compare  (运行时输出 vs golden)")):
-        rep = out.get(key)
-        if rep is None:
-            continue
-        verdict = "PASS" if rep.get("pass_overall") else "FAIL"
-        print(f"  {label}: {verdict} (cosine={rep['cosine_similarity']:.8f}, "
-              f"rel_l2={rep['relative_l2_error']:.3e})")
-        if verdict == "FAIL":
-            failed.append(label)
-    if failed:
+def main(argv=None):
+    parser=argparse.ArgumentParser(description='Independent model adaptation steps')
+    sub=parser.add_subparsers(dest='command',required=True)
+    for command in (*STEPS,'run'):
+        p=sub.add_parser(command)
+        p.add_argument('--config',required=True,help='model YAML')
+        p.add_argument('--device',type=int,required=command in ('build','infer','bench','run'))
+        p.add_argument('--target');p.add_argument('--targets')
+        if command in ('baseline','infer','compare','run'):p.add_argument('--case-ids',nargs='+')
+        if command in ('bench','run'):p.add_argument('--instances',type=int)
+        if command in ('infer','bench','run'):p.add_argument('--profiling',action='store_true',default=None)
+    p=sub.add_parser('report');p.add_argument('results',nargs='+');p.add_argument('--output')
+    args=vars(parser.parse_args(argv));command=args.pop('command')
+    try:
+        if command=='report':
+            from core.results import report
+            result=report(args['results'])
+            if args['output']:Path(args['output']).write_text(result+'\n')
+            print(result);return
+        print(json.dumps(execute(command,**args),ensure_ascii=False,indent=2))
+    except Exception as error:
+        print(f'{command}: {type(error).__name__}: {error}',file=sys.stderr)
         raise SystemExit(1)
 
 
-if __name__ == "__main__":
-    main()
+if __name__=='__main__':main()

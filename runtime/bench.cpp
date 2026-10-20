@@ -34,171 +34,6 @@ Percentiles Summarize(std::vector<double> times) {
     return p;
 }
 
-void ReleaseAll(const ThreadResources &res, std::vector<bool> &created) {
-    if (!res.release) {
-        return;
-    }
-    for (size_t t = 0; t < created.size(); t++) {
-        if (created[t]) {
-            res.release(static_cast<int>(t));
-            created[t] = false;
-        }
-    }
-}
-
-}  // namespace
-
-bool IsThroughputMode(const BenchOptions &opt) {
-    return opt.threads > 1 || opt.requests > 0;
-}
-
-bool BenchRun(const BenchOptions &opt, const std::function<bool()> &step, BenchStats &stats) {
-    for (int i = 0; i < opt.warmup; i++) {
-        if (!step()) {
-            fprintf(stderr, "[ERROR] warmup run %d failed\n", i);
-            return false;
-        }
-    }
-
-    int runs = std::max(1, opt.runs);
-    std::vector<double> times;
-    times.reserve(static_cast<size_t>(runs));
-    for (int i = 0; i < runs; i++) {
-        auto begin = Clock::now();
-        if (!step()) {
-            fprintf(stderr, "[ERROR] bench run %d failed\n", i);
-            return false;
-        }
-        times.push_back(ElapsedMs(begin, Clock::now()));
-    }
-
-    Percentiles p = Summarize(std::move(times));
-    stats.runs = static_cast<size_t>(runs);
-    stats.avg_ms = p.avg;
-    stats.min_ms = p.min;
-    stats.p50_ms = p.p50;
-    stats.p99_ms = p.p99;
-    stats.max_ms = p.max;
-    return true;
-}
-
-bool BenchThroughput(const BenchOptions &opt, const ThreadResources &res, ThroughputStats &stats) {
-    if (!res.setup || !res.step) {
-        fprintf(stderr, "[ERROR] BenchThroughput 需要 setup/step 钩子\n");
-        return false;
-    }
-    const int threads = std::max(1, opt.threads);
-    stats.threads = threads;
-    std::vector<bool> created(static_cast<size_t>(threads), false);
-
-    for (int t = 0; t < threads; t++) {
-        if (!res.setup(t)) {
-            fprintf(stderr, "[ERROR] setup 线程资源失败 (tid=%d, threads=%d)\n", t, threads);
-            ReleaseAll(res, created);
-            return false;
-        }
-        created[static_cast<size_t>(t)] = true;
-    }
-
-    // warmup 轮转覆盖每份资源: GE 每个 stream 首次执行都要做 shape 特化
-    int warm = std::max(opt.warmup, threads);
-    bool ok = true;
-    for (int i = 0; i < warm && ok; i++) {
-        ok = res.step(i % threads);
-    }
-    if (!ok) {
-        fprintf(stderr, "[ERROR] warmup 执行失败 (threads=%d)\n", threads);
-        ReleaseAll(res, created);
-        return false;
-    }
-
-    int perThread = opt.requests > 0 ? std::max(1, opt.requests / threads) : std::max(1, opt.runs);
-    std::vector<std::vector<double>> perThreadTimes(static_cast<size_t>(threads));
-    std::atomic<size_t> errors{0};
-
-    auto wallBegin = Clock::now();
-    std::vector<std::thread> workers;
-    workers.reserve(static_cast<size_t>(threads));
-    for (int t = 0; t < threads; t++) {
-        workers.emplace_back([&res, &perThreadTimes, &errors, t, perThread]() {
-            if (res.threadEnter) {
-                res.threadEnter(t);
-            }
-            std::vector<double> &times = perThreadTimes[static_cast<size_t>(t)];
-            times.reserve(static_cast<size_t>(perThread));
-            for (int i = 0; i < perThread; i++) {
-                auto begin = Clock::now();
-                if (!res.step(t)) {
-                    errors.fetch_add(1);
-                    fprintf(stderr, "[ERROR] tid=%d 第 %d 个请求执行失败\n", t, i);
-                    break;
-                }
-                times.push_back(ElapsedMs(begin, Clock::now()));
-            }
-        });
-    }
-    for (auto &w : workers) {
-        w.join();
-    }
-    double wallMs = ElapsedMs(wallBegin, Clock::now());
-
-    std::vector<double> times;
-    for (const auto &v : perThreadTimes) {
-        times.insert(times.end(), v.begin(), v.end());
-    }
-    Percentiles p = Summarize(times);
-    stats.requests = times.size();
-    stats.errors = errors.load();
-    stats.wall_ms = wallMs;
-    stats.qps = wallMs > 0 ? static_cast<double>(stats.requests) / (wallMs / 1000.0) : 0.0;
-    stats.avg_ms = p.avg;
-    stats.min_ms = p.min;
-    stats.p50_ms = p.p50;
-    stats.p99_ms = p.p99;
-    stats.max_ms = p.max;
-
-    ReleaseAll(res, created);
-    return stats.errors == 0;
-}
-
-void PrintBenchStats(const std::string &label, const BenchStats &stats) {
-    std::cout << "\n============================================================\n"
-              << label << " (" << stats.runs << " runs)\n"
-              << "============================================================\n"
-              << "  avg: " << stats.avg_ms << " ms\n"
-              << "  min: " << stats.min_ms << " ms\n"
-              << "  p50: " << stats.p50_ms << " ms\n"
-              << "  p99: " << stats.p99_ms << " ms\n"
-              << "  max: " << stats.max_ms << " ms\n"
-              << "============================================================\n"
-              << std::endl;
-}
-
-void PrintThroughputStats(const std::string &label, const ThroughputStats &s) {
-    std::cout << "\n============================================================\n"
-              << label << " (threads=" << s.threads << ", requests=" << s.requests << ")\n"
-              << "============================================================\n"
-              << std::fixed << std::setprecision(3)
-              << "  wall:    " << s.wall_ms << " ms\n"
-              << "  QPS:     " << std::setprecision(2) << s.qps << " req/s\n"
-              << std::setprecision(3)
-              << "  e2e avg: " << s.avg_ms << " ms\n"
-              << "  e2e min: " << s.min_ms << " ms\n"
-              << "  e2e p50: " << s.p50_ms << " ms\n"
-              << "  e2e p99: " << s.p99_ms << " ms\n"
-              << "  e2e max: " << s.max_ms << " ms\n"
-              << "  errors:  " << s.errors << "\n"
-              << "============================================================\n"
-              << std::endl;
-}
-
-}  // namespace ge_runtime
-
-// ---------------------------------------------------------------- 变长负载 (请求池回放)
-
-namespace ge_runtime {
-namespace {
-
 void ReleasePool(const PoolResources &res, std::vector<bool> &created) {
     if (!res.release) {
         return;
@@ -228,6 +63,30 @@ std::vector<size_t> ShapeRepresentatives(const RequestPool &pool) {
 }
 
 }  // namespace
+
+bool CapturePool(int instances, const RequestPool &pool, const PoolResources &res,
+                 const std::function<bool(int, const Request &)> &collect) {
+    if (instances < 1 || pool.Empty() || !res.setup || !res.setInputs || !res.execute || !collect) return false;
+    std::vector<bool> created(static_cast<size_t>(instances), false);
+    for (int t=0; t<instances; ++t) {
+        if (!res.setup(t)) { ReleasePool(res,created); return false; }
+        created[static_cast<size_t>(t)] = true;
+    }
+    std::atomic<int> errors{0};
+    std::vector<std::thread> workers;
+    for (int t=0; t<instances; ++t) workers.emplace_back([&,t]() {
+        if (res.threadEnter) res.threadEnter(t);
+        for (const auto &request:pool.requests) {
+            PhaseTime phase;
+            if (!res.setInputs(t,request,phase) || !res.execute(t) || !collect(t,request)) {
+                errors++; break;
+            }
+        }
+    });
+    for (auto &thread:workers) thread.join();
+    ReleasePool(res,created);
+    return errors.load()==0;
+}
 
 bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
                const RequestPool &pool, const PoolResources &res, PerfResult &out) {
@@ -294,7 +153,7 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
         }
     }
     Sampler warmSampler(pool.requests.size(), seed);
-    while (warmRuns < static_cast<size_t>(std::max(0, warmup))) {
+    while (warmRuns < static_cast<size_t>(std::max(0, warmup)*instances)) {
         int t = static_cast<int>(warmRuns % static_cast<size_t>(instances));
         if (!res.setInputs(t, pool.requests[warmSampler.Next()], ph) || !res.execute(t)) {
             fprintf(stderr, "[ERROR] warmup 失败 (instance=%d)\n", t);
@@ -308,8 +167,12 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
     std::cout << "[INFO] warmup " << warmRuns << " 次 (覆盖 " << reps.size() << " 种 shape × "
               << instances << " 实例), cost " << out.warmupMs << " ms" << std::endl;
 
-    // ---- 测量: 每 worker 闭环, 从共享池随机抽样 (seed + tid, 可复现) ----
-    size_t perInstance = std::max<size_t>(1, requests / static_cast<size_t>(instances));
+    // Generate one measurement sequence before timing; instance count changes only its partition.
+    Sampler sampler(pool.requests.size(), seed);
+    std::vector<size_t> sequence(requests);
+    for (auto &index:sequence) index=sampler.Next();
+    size_t perInstance = requests / static_cast<size_t>(instances);
+    size_t remainder = requests % static_cast<size_t>(instances);
     std::vector<std::vector<RequestRecord>> per(static_cast<size_t>(instances));
     std::atomic<size_t> errors{0};
 
@@ -317,21 +180,22 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
     std::vector<std::thread> workers;
     workers.reserve(static_cast<size_t>(instances));
     for (int t = 0; t < instances; t++) {
-        workers.emplace_back([&res, &pool, &per, &errors, t, perInstance, seed]() {
+        workers.emplace_back([&res, &pool, &per, &errors, &sequence, t, perInstance, remainder, instances]() {
             if (res.threadEnter) {
                 res.threadEnter(t);
             }
-            Sampler sampler(pool.requests.size(), seed + static_cast<uint64_t>(t));
             std::vector<RequestRecord> &recs = per[static_cast<size_t>(t)];
-            recs.reserve(perInstance);
-            for (size_t i = 0; i < perInstance; i++) {
-                const Request &req = pool.requests[sampler.Next()];
+            size_t count=perInstance+(static_cast<size_t>(t)<remainder ? 1:0);
+            recs.reserve(count);
+            for (size_t i = 0; i < count; i++) {
+                size_t global = static_cast<size_t>(t) + i*static_cast<size_t>(instances);
+                const Request &req = pool.requests[sequence[global]];
                 RequestRecord rec;
                 rec.instance = t;
-                rec.req = i;
+                rec.req = global;
                 rec.inputSet = req.name;
                 rec.shapeKey = req.shapeKey;
-                rec.tokens = req.tokens;
+                rec.samples = req.samples;
 
                 PhaseTime phase;
                 auto t0 = Clock::now();
@@ -386,7 +250,7 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
             exec.push_back(rec.execMs);
             h2d.push_back(rec.h2dMs);
             desc.push_back(rec.descMs);
-            allTokens.push_back(static_cast<double>(rec.tokens));
+            allTokens.push_back(static_cast<double>(rec.samples));
         }
         ip.distinctShapes = seen.size();
         if (shapesInMeasure > 0) {
@@ -412,6 +276,7 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
     }
 
     out.requests = allE2e.size();
+    out.samples = static_cast<size_t>(std::accumulate(allTokens.begin(),allTokens.end(),0.0));
     out.errors = errors.load();
     out.qps = out.wallMs > 0 ? static_cast<double>(out.requests) / (out.wallMs / 1000.0) : 0.0;
     if (!allE2e.empty()) {
@@ -428,6 +293,7 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
         out.tokMax = pt.max;
     }
 
+    std::sort(out.records.begin(), out.records.end(), [](const RequestRecord &a, const RequestRecord &b) { return a.req < b.req; });
     ReleasePool(res, created);
     return out.errors == 0;
 }
@@ -444,9 +310,9 @@ void PrintPerfResult(const std::string &label, const PerfResult &p) {
               << "  p50 " << p.p50Ms << "  p99 " << p.p99Ms << "  max " << p.maxMs << "\n"
               << "  exec ms:   avg " << std::setprecision(3) << p.execAvgMs
               << "  p99 " << p.execP99Ms << "  (execute+sync, 不含 h2d/desc)\n"
-              << "  tokens:    avg " << std::setprecision(1) << p.tokAvg << "  min "
+              << "  samples:    avg " << std::setprecision(1) << p.tokAvg << "  min "
               << std::setprecision(0) << p.tokMin << "  p50 " << p.tokP50 << "  p99 " << p.tokP99
-              << "  max " << p.tokMax << "  (每请求 packed T)\n"
+              << "  max " << p.tokMax << "  (每次调用的业务样本数)\n"
               << "  warmup:    " << p.warmupRuns << " 次 / " << std::setprecision(1) << p.warmupMs
               << " ms   distinct shapes: " << p.distinctShapes << "\n";
     if (p.hbmBaseMb >= 0 && p.hbmPeakMb >= 0) {
@@ -486,20 +352,22 @@ nlohmann::json PerfToJson(const PerfResult &p) {
                              {"distinct_shapes", ip.distinctShapes},
                              {"specialize_ms", ip.specializeMs}});
     }
-    // "ge-bench/1" = core/bench.py 的 PERF_SCHEMA, 读回时校验 (load_perf)。改字段要两侧同步。
-    return Json{{"schema", "ge-bench/1"},
+    // Public metrics consumed by core/results.py.
+    return Json{{"schema", "ge-performance/1"},
                 {"requests", p.requests},
                 {"errors", p.errors},
                 {"wall_ms", p.wallMs},
                 {"qps", p.qps},
+                {"samples_per_second", p.wallMs>0 ? p.samples/(p.wallMs/1000.0) : 0.0},
+                {"latency_scope", "h2d_desc_execute_sync"},
                 {"e2e_ms", {{"avg", p.avgMs}, {"min", p.minMs}, {"p50", p.p50Ms},
                             {"p99", p.p99Ms}, {"max", p.maxMs}}},
                 {"exec_ms", {{"avg", p.execAvgMs}, {"p99", p.execP99Ms}}},
-                {"tokens", {{"avg", p.tokAvg}, {"min", p.tokMin}, {"p50", p.tokP50},
+                {"samples", {{"avg", p.tokAvg}, {"min", p.tokMin}, {"p50", p.tokP50},
                             {"p99", p.tokP99}, {"max", p.tokMax}}},
                 {"warmup", {{"runs", p.warmupRuns}, {"ms", p.warmupMs}}},
                 {"distinct_shapes", p.distinctShapes},
-                {"hbm_mb", {{"base", p.hbmBaseMb}, {"peak", p.hbmPeakMb}}},
+                {"hbm_mb", {{"base", p.hbmBaseMb}, {"after_setup", p.hbmPeakMb}}},
                 {"instances", instances}};
 }
 
@@ -509,10 +377,10 @@ bool WriteRequestsCsv(const std::string &path, const PerfResult &perf) {
         fprintf(stderr, "[ERROR] 无法写 %s\n", path.c_str());
         return false;
     }
-    f << "instance,req,input_set,tokens,shape_key,first_hit,h2d_ms,desc_ms,exec_ms,e2e_ms,error\n";
+    f << "instance,req,input_set,samples,shape_key,first_hit,h2d_ms,desc_ms,exec_ms,e2e_ms,error\n";
     f << std::fixed << std::setprecision(4);
     for (const auto &r : perf.records) {
-        f << r.instance << ',' << r.req << ',' << r.inputSet << ',' << r.tokens << ','
+        f << r.instance << ',' << r.req << ',' << r.inputSet << ',' << r.samples << ','
           << '"' << r.shapeKey << '"' << ',' << (r.firstHit ? 1 : 0) << ','
           << r.h2dMs << ',' << r.descMs << ',' << r.execMs << ',' << r.e2eMs << ','
           << r.error << '\n';

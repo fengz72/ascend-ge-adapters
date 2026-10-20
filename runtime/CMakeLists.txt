@@ -18,15 +18,23 @@ message(STATUS "ASCEND_HOME: ${ASCEND_HOME}")
 
 set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
 
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(runtime_contracts ../tests/runtime_contracts.cpp bench.cpp io_spec.cpp pool.cpp)
+    target_include_directories(runtime_contracts PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${THIRD_PARTY_DIR})
+    target_link_libraries(runtime_contracts PRIVATE pthread)
+    add_test(NAME runtime_contracts COMMAND runtime_contracts ${CMAKE_CURRENT_BINARY_DIR}/test-data)
+endif()
+
 add_executable(ge_runtime
     main.cpp
     io_spec.cpp
     pool.cpp
     bench.cpp
-    bench_plan.cpp
     acl_json.cpp
     backends/acl_backend.cpp
     backends/gesession_backend.cpp
+    backends/graph_loader.cpp
 )
 
 target_include_directories(ge_runtime PRIVATE
@@ -46,6 +54,8 @@ target_link_libraries(ge_runtime
     ge_common_base
     graph
     graph_base
+    fmk_onnx_parser
+    parser_common
     ascendcl
     stdc++
     pthread

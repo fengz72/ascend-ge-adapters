@@ -1,0 +1,44 @@
+model:
+  name: onnx-ranker
+source:
+  kind: onnx
+  path: work/examples/ranker.onnx
+reference:
+  device: cpu
+  dtype: preserve
+target: Ascend950PR_958b
+build:
+  backend: ge_session
+  dtype: preserve
+  options:
+    precision_mode: must_keep_origin_dtype
+verification:
+  outputs:
+    encoder/scores:0:
+      policy: numeric
+      scope: per_sample
+      rtol: 0.001
+      atol: 0.00001
+    encoder/indices:
+      policy: exact
+benchmark:
+  instances: 2
+  warmup: 2
+  iterations: 21
+
+data:
+  params:
+    count: 100
+    samples: 2
+    seed: 0
+    inputs:
+      features:0:
+        dtype: float32
+        shape:
+          - 2
+          - 4
+      bias/input:
+        dtype: float32
+        shape:
+          - 2
+          - 3

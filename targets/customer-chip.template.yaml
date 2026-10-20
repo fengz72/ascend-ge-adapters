@@ -1,0 +1,9 @@
+# Fill from the actual customer inventory. 32/28 are not inferred from SoC names.
+target:
+  id: customer-chip
+  family: a3
+  soc: REPLACE_WITH_EXACT_SOC
+  sku: REPLACE_WITH_ACTUAL_SKU
+  expected_capacity:
+    aic: 32
+    aiv: 0  # replace with actual capacity; unknown values fail check

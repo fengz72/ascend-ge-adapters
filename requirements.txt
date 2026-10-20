@@ -1,13 +1,9 @@
-# Python 依赖 (实测版本 = 当前验证环境; CANN 9.0.0 / SoC Ascend910_9382 / aarch64)
-#
-# torch 与 torch_npu 通常由厂商镜像提供 (如
-# quay.io/jd_xllm/xllm-ai:xllm-dev-a3-arm-cann9-20260605), 不建议 pip 覆盖安装。
-# 实际跑起来的版本会记进 bundle.json 的 provenance (torch_npu / transformers / git_commit),
-# 便于复现。
-
-# ---- 运行时 (管线必需) ----
-torch==2.9.0
-torch_npu==2.9.0.post2
-transformers==5.10.1
-numpy==1.26.4
-PyYAML==6.0.3
+# Torch, TorchNPU and Transformers are supplied by the validated CANN image.
+# Install these requirements with the container's python3 during image setup.
+numpy>=1.26,<3
+PyYAML>=6,<7
+onnx==1.17.0
+onnxruntime==1.20.1
+protobuf==5.29.5
+# Required only when building the A5 custom-op Python binding:
+ninja>=1.11

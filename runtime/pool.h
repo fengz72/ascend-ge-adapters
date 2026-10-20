@@ -9,29 +9,29 @@
 
 namespace ge_runtime {
 
-// 一个请求 = 一套具体输入 (shape + host 数据), 对应 pool 目录下的一个 req_*/bundle.json
+// One request contains its concrete shapes and host input bytes.
 struct Request {
     std::string name;                        // req_000
     std::vector<TensorPlan> plans;           // 图序 (与 io_spec.inputs 同序)
     std::vector<std::vector<char>> data;     // host 字节, 与 plans 同序 (启动时一次读入)
-    int64_t tokens = 0;                      // 报告用: 各输入元素数的最大值 (varlen 模型即 T)
+    int64_t samples = 0;                      // business samples declared by the input case
     std::string shapeKey;                    // 各输入 shape 拼接, 用于统计 distinct shape
 };
 
-// 请求池: 所有实例**共享**, 各实例用 seed+instance_id 独立随机抽样
+// All instances share the input pool and the seeded global measurement sequence.
 struct RequestPool {
     std::vector<Request> requests;
     std::vector<size_t> maxBytes;                 // 逐输入: 最大字节数 (预分配 device 缓冲用)
-    size_t maxOutputBytes = 0;                    // 输出缓冲: pool 内 golden 的最大字节数 (0=未知)
+    std::vector<size_t> maxOutputBytes;          // maximum declared output capacity per output
     size_t distinctShapes = 0;
 
     bool Empty() const { return requests.empty(); }
 };
 
-// 扫描 dir 下的 req_*/bundle.json (也接受 dir/bundle.json 单套) → 请求池
-RequestPool LoadPool(const IoSpec &spec, const std::string &dir);
+// One packed binary input file; offsets and shapes arrive in memory over stdin.
+RequestPool LoadPool(const IoSpec &spec, const nlohmann::json &inputs);
 
-// 每实例一个: 可复现的随机抽样 (seed = base_seed + instance_id)
+// Seeded sampling with replacement; warmup and measurement use separate samplers.
 class Sampler {
 public:
     Sampler(size_t poolSize, uint64_t seed)

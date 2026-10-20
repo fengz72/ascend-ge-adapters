@@ -17,14 +17,14 @@ This script wraps msprof and provides analysis on exported CSV/JSON files:
   - fusion_op:     Fusion operator memory usage
 
 Usage:
-    python parse_profiling.py parse  --profiling_dir ./profiling_data
-    python parse_profiling.py export --profiling_dir ./profiling_data
-    python parse_profiling.py query  --profiling_dir ./profiling_data
-    python parse_profiling.py summary --profiling_dir ./profiling_data
-    python parse_profiling.py show --profiling_dir ./profiling_data --op "Softmax"
-    python parse_profiling.py top --profiling_dir ./profiling_data --sort time --top_n 20
-    python parse_profiling.py timeline --profiling_dir ./profiling_data
-    python parse_profiling.py api --profiling_dir ./profiling_data
+    python3 parse_profiling.py parse  --profiling_dir ./profiling_data
+    python3 parse_profiling.py export --profiling_dir ./profiling_data
+    python3 parse_profiling.py query  --profiling_dir ./profiling_data
+    python3 parse_profiling.py summary --profiling_dir ./profiling_data
+    python3 parse_profiling.py show --profiling_dir ./profiling_data --op "Softmax"
+    python3 parse_profiling.py top --profiling_dir ./profiling_data --sort time --top_n 20
+    python3 parse_profiling.py timeline --profiling_dir ./profiling_data
+    python3 parse_profiling.py api --profiling_dir ./profiling_data
 """
 
 import os
@@ -594,8 +594,8 @@ def main():
         epilog="""
 Workflow:
   Step 1: Collect profiling data (run inference with --profiling)
-  Step 2: Parse + Export:  python parse_profiling.py parse-and-export --profiling_dir ./profiling_data
-  Step 3: Analyze:        python parse_profiling.py summary --profiling_dir ./profiling_data
+  Step 2: Parse + Export:  python3 parse_profiling.py parse-and-export --profiling_dir ./profiling_data
+  Step 3: Analyze:        python3 parse_profiling.py summary --profiling_dir ./profiling_data
 
 Commands:
   parse           Run msprof --parse (parse raw data to sqlite)
@@ -612,17 +612,17 @@ Commands:
 
 Examples:
   # Full workflow: parse + export + summary
-  python parse_profiling.py parse-and-export --profiling_dir ./profiling_data
-  python parse_profiling.py summary --profiling_dir ./profiling_data
+  python3 parse_profiling.py parse-and-export --profiling_dir ./profiling_data
+  python3 parse_profiling.py summary --profiling_dir ./profiling_data
 
   # Show top 20 operators by time
-  python parse_profiling.py top --profiling_dir ./profiling_data --sort time --top_n 20
+  python3 parse_profiling.py top --profiling_dir ./profiling_data --sort time --top_n 20
 
   # Show specific operator details
-  python parse_profiling.py show --profiling_dir ./profiling_data --op "FlashAttention"
+  python3 parse_profiling.py show --profiling_dir ./profiling_data --op "FlashAttention"
 
   # Plot execution time
-  python parse_profiling.py plot --profiling_dir ./profiling_data --output profiling.png
+  python3 parse_profiling.py plot --profiling_dir ./profiling_data --output profiling.png
         """
     )
 

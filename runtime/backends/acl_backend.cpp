@@ -121,21 +121,6 @@ public:
         return true;
     }
 
-    // 读盘 + 校验一次, host 数据缓存供各线程 H2D 复用 (避免每线程重复读盘)
-    bool LoadInputs(const std::vector<TensorPlan> &plans, bool dynamic) {
-        plans_ = plans;
-        dynamic_ = dynamic;
-        // dtype 支持性先整体判一遍 (枚举表是本后端专属, 见 backend_common.h 文件头),
-        // 读盘/校验/日志那部分与后端无关 → 共用 LoadHostInputs
-        for (const auto &p : plans) {
-            if (ToAclDtype(p.dtype) == ACL_DT_UNDEFINED) {
-                fprintf(stderr, "[ERROR] 不支持的 dtype '%s' (输入 '%s')\n",
-                        p.dtype.c_str(), p.logical.c_str());
-                return false;
-            }
-        }
-        return LoadHostInputs(plans, hostInputs_);
-    }
 
     bool CreateContext(int tid) {
         auto loadBegin = Clock::now();
@@ -169,10 +154,10 @@ public:
                 std::cout << "[INFO]   OM output[" << i << "] name=" << (name ? name : "?")
                           << " staticSize=" << size << (size == 0 ? " (dynamic)" : "") << std::endl;
             }
-            size_t given = pool_ != nullptr ? pool_->maxBytes.size() : plans_.size();
+            size_t given = pool_->maxBytes.size();
             if (given != inputCount_) {
                 fprintf(stderr, "[ERROR] %s 给出 %zu 个输入, 但 OM 有 %zu 个\n",
-                        pool_ != nullptr ? "请求池" : "io_spec/bundle", given, inputCount_);
+                        "请求池", given, inputCount_);
                 ReleaseContext(ctx);
                 return false;
             }
@@ -191,14 +176,10 @@ public:
             return false;
         }
 
-        // 池模式: 输入缓冲按 pool 内**最大字节数**预分配 (每请求只 H2D 实际字节 + 重设 desc);
-        // fixed 模式: 按该套输入精确分配
-        size_t nInputs = pool_ != nullptr ? pool_->maxBytes.size() : plans_.size();
+        // 输入缓冲按池内最大字节数预分配，每请求 H2D 实际字节并重设 desc。
+        size_t nInputs = pool_->maxBytes.size();
         for (size_t i = 0; i < nInputs; i++) {
-            size_t bytes = pool_ != nullptr ? pool_->maxBytes[i] : plans_[i].Bytes();
-            // p 只在 fixed 模式下用得到 (H2D 的报错名 + 动态图的 desc); 池模式的 dtype/shape
-            // 每请求由 SetInputs 重设, 这里不需要 plan
-            const TensorPlan *p = (pool_ == nullptr) ? &plans_[i] : nullptr;
+            size_t bytes = pool_->maxBytes[i];
             void *dev = nullptr;
             ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
             if (ret != ACL_SUCCESS || dev == nullptr) {
@@ -212,16 +193,6 @@ public:
             ctx.inBufs.push_back(dev);
             ctx.inSizes.push_back(bytes);
 
-            if (pool_ == nullptr) {
-                // fixed 模式: 一次 H2D + (动态图) 设一次 desc
-                ret = aclrtMemcpy(dev, bytes, hostInputs_[i].data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE);
-                if (ret != ACL_SUCCESS) {
-                    fprintf(stderr, "[ERROR] H2D failed for input '%s' (tid=%d), ret=%d\n",
-                            p->logical.c_str(), tid, ret);
-                    ReleaseContext(ctx);
-                    return false;
-                }
-            }
 
             aclDataBuffer *buf = aclCreateDataBuffer(dev, bytes);
             if (buf == nullptr || aclmdlAddDatasetBuffer(ctx.in, buf) != ACL_SUCCESS) {
@@ -233,32 +204,13 @@ public:
                 return false;
             }
 
-            if (pool_ == nullptr && dynamic_) {
-                aclTensorDesc *td = aclCreateTensorDesc(ToAclDtype(p->dtype),
-                                                        static_cast<int32_t>(p->shape.size()),
-                                                        p->shape.data(), ToAclFormat(p->format));
-                if (td == nullptr) {
-                    fprintf(stderr, "[ERROR] aclCreateTensorDesc failed (tid=%d, input %zu)\n", tid, i);
-                    ReleaseContext(ctx);
-                    return false;
-                }
-                ret = aclmdlSetDatasetTensorDesc(ctx.in, td, i);
-                aclDestroyTensorDesc(td);
-                if (ret != ACL_SUCCESS) {
-                    fprintf(stderr, "[ERROR] aclmdlSetDatasetTensorDesc failed (tid=%d, input %zu), ret=%d\n",
-                            tid, i, ret);
-                    ReleaseContext(ctx);
-                    return false;
-                }
-            }
         }
 
         for (size_t i = 0; i < outputCount_; i++) {
             size_t bytes = aclmdlGetOutputSizeByIndex(ctx.desc, i);
             if (bytes == 0) {
-                bytes = (pool_ != nullptr && pool_->maxOutputBytes > 0 && i == 0)
-                            ? pool_->maxOutputBytes          // 池内最大 golden, 覆盖最长请求
-                            : opt_.output_reserve;
+                bytes = i < pool_->maxOutputBytes.size() ? pool_->maxOutputBytes[i] : 0;
+                if(bytes==0) { ReleaseContext(ctx);return false; }
             }
             void *dev = nullptr;
             ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -361,6 +313,13 @@ public:
             fprintf(stderr, "[ERROR] aclrtSynchronizeStream failed (tid=%d), ret=%d\n", tid, ret);
             return false;
         }
+        for(size_t i=0;i<ctx->outSizes.size();i++) {
+            auto desc=aclmdlGetDatasetTensorDesc(ctx->out,i);
+            if(desc && aclGetTensorDescSize(desc)>ctx->outSizes[i]) {
+                fprintf(stderr,"[ERROR] runtime output exceeds declared capacity\n");
+                return false;
+            }
+        }
         return true;
     }
 
@@ -399,12 +358,13 @@ public:
 
             if (i < ctx->outSizes.size() && bytes > ctx->outSizes[i]) {
                 fprintf(stderr, "[ERROR] output[%zu] 实际需要 %zu 字节 > 预留 %zu 字节 "
-                                "(--output_reserve %zu MB); 输出已可能越界, 结果不可信\n",
-                        i, bytes, ctx->outSizes[i], ctx->outSizes[i] / (1024 * 1024));
+                                "; 请修正 output_capacities\n",
+                        i, bytes, ctx->outSizes[i]);
                 return false;
             }
 
             HostTensor t;
+            t.instance = tid;
             t.dtype = FromAclDtype(dtype);
             t.logical = i < spec.outputs.size() && !spec.outputs[i].logical.empty()
                             ? spec.outputs[i].logical
@@ -431,7 +391,6 @@ public:
 
     void UsePool(const RequestPool *pool) {
         pool_ = pool;
-        dynamic_ = true;      // 池模式每请求都要重设 desc
     }
 
     void ReleaseContext(int tid) {
@@ -451,7 +410,6 @@ public:
             }
         }
         ctxs_.clear();
-        hostInputs_.clear();
         if (deviceSet_) {
             aclrtResetDevice(opt_.device);
             deviceSet_ = false;
@@ -511,96 +469,50 @@ private:
     AclOptions opt_;
     bool aclInited_ = false;
     bool deviceSet_ = false;
-    bool dynamic_ = false;
     std::string omPath_;
     aclrtContext aclCtx_ = nullptr;
     size_t inputCount_ = 0;
     size_t outputCount_ = 0;
-    std::vector<TensorPlan> plans_;
-    std::vector<std::vector<char>> hostInputs_;
     const RequestPool *pool_ = nullptr;
     std::map<int, AclContext> ctxs_;
 };
 
 }  // namespace
 
-bool RunAclBackend(const Manifest &manifest, const IoSpec &spec,
-                   const std::vector<TensorPlan> &inputs, const AclOptions &opt,
-                   std::vector<HostTensor> &outputs, PerfResult *perf) {
-    if (manifest.om_path.empty()) {
-        fprintf(stderr, "[ERROR] manifest 无 om_path (backend=om_acl 需要 ATC 编译出的 OM)\n");
-        return false;
-    }
-    std::string omPath = manifest.Resolve(manifest.om_path);
-
+bool RunAclBackend(const ModelGraph &graph, const IoSpec &spec,
+                   const AclOptions &opt, PerfResult *perf) {
+    if(!opt.pool || opt.pool->Empty()) { fprintf(stderr,"[ERROR] request pool is required\n");return false; }
+    if(graph.om_path.empty()) { fprintf(stderr,"[ERROR] missing OM path\n");return false; }
     AclRunner runner(opt);
-    if (!runner.Init(omPath)) {
-        return false;
-    }
+    if(!runner.Init(graph.om_path)) return false;
+    // ---- 变长负载: 请求池回放 (每实例独立加载模型, 每请求 H2D + 重设 desc) ----
+    runner.UsePool(opt.pool);
+    PoolResources pres;
+    pres.setup = [&runner](int tid) { return runner.CreateContext(tid); };
+    pres.setInputs = [&runner](int tid, const Request &req, PhaseTime &ph) {
+        return runner.SetInputs(tid, req, ph);
+    };
+    pres.execute = [&runner](int tid) { return runner.Execute(tid); };
+    pres.release = [&runner](int tid) { runner.ReleaseContext(tid); };
+    pres.threadEnter = [&runner](int) { aclrtSetCurrentContext(runner.Context()); };
+    pres.loadMs = [&runner](int tid) { return runner.LoadMs(tid); };
+    pres.hbmUsedMb = []() { return HbmUsedMb(); };
 
-    if (opt.pool != nullptr) {
-        // ---- 变长负载: 请求池回放 (每实例独立加载模型, 每请求 H2D + 重设 desc) ----
-        runner.UsePool(opt.pool);
-        PoolResources pres;
-        pres.setup = [&runner](int tid) { return runner.CreateContext(tid); };
-        pres.setInputs = [&runner](int tid, const Request &req, PhaseTime &ph) {
-            return runner.SetInputs(tid, req, ph);
-        };
-        pres.execute = [&runner](int tid) { return runner.Execute(tid); };
-        pres.release = [&runner](int tid) { runner.ReleaseContext(tid); };
-        pres.threadEnter = [&runner](int) { aclrtSetCurrentContext(runner.Context()); };
-        pres.loadMs = [&runner](int tid) { return runner.LoadMs(tid); };
-        pres.hbmUsedMb = []() { return HbmUsedMb(); };
+    if (opt.capture) return CapturePool(opt.bench.threads, *opt.pool, pres, [&](int tid, const Request &request) {
+        std::vector<HostTensor> tensors;
+        return runner.CollectOutputs(tid, spec, tensors) && opt.capture(tid, request, tensors);
+    });
 
-        PerfResult result;
-        bool ok = BenchPool(opt.bench.threads, opt.bench.requests, opt.bench.warmup, opt.seed,
-                            *opt.pool, pres, result);
-        if (ok) {
-            PrintPerfResult("ACL OM 变长负载 (请求池回放)", result);
-        }
-        if (perf != nullptr) {
-            *perf = std::move(result);
-        }
-        return ok;
+    PerfResult result;
+    bool ok = BenchPool(opt.bench.threads, opt.bench.requests, opt.bench.warmup, opt.seed,
+                        *opt.pool, pres, result);
+    if (ok) {
+        PrintPerfResult("ACL OM 变长负载 (请求池回放)", result);
     }
-
-    if (!runner.LoadInputs(inputs, spec.HasDynamicInput())) {
-        return false;
+    if (perf != nullptr) {
+        *perf = std::move(result);
     }
-
-    ThreadResources res;
-    res.setup = [&runner](int tid) { return runner.CreateContext(tid); };
-    res.step = [&runner](int tid) { return runner.Execute(tid); };
-    res.release = [&runner](int tid) { runner.ReleaseContext(tid); };
-    // 工作线程共享主线程的默认 context (CANN 无 reset 接口; 线程退出即释放)
-    res.threadEnter = [&runner](int) { aclrtSetCurrentContext(runner.Context()); };
-
-    if (IsThroughputMode(opt.bench)) {
-        ThroughputStats stats;
-        if (!BenchThroughput(opt.bench, res, stats)) {
-            return false;
-        }
-        PrintThroughputStats("ACL OM execute+sync throughput", stats);
-        // 吞吐跑完后资源已释放: 单开一份资源跑一次, 取输出落盘
-        if (!runner.CreateContext(0) || !runner.Execute(0)) {
-            return false;
-        }
-        bool ok = runner.CollectOutputs(0, spec, outputs);
-        runner.ReleaseContext(0);
-        return ok;
-    }
-
-    if (!runner.CreateContext(0)) {
-        return false;
-    }
-    BenchStats stats;
-    if (!BenchRun(opt.bench, [&runner]() { return runner.Execute(0); }, stats)) {
-        return false;
-    }
-    PrintBenchStats("ACL OM execute+sync", stats);
-    bool ok = runner.CollectOutputs(0, spec, outputs);
-    runner.ReleaseContext(0);
     return ok;
 }
 
-}  // namespace ge_runtime
+} // namespace ge_runtime

@@ -12,14 +12,14 @@ This script provides:
 
 Usage:
     # Step 1: Convert dump files to numpy
-    python parse_dump.py convert --dump_dir ./dump_data --output ./dump_data_npy
+    python3 parse_dump.py convert --dump_dir ./dump_data --output ./dump_data_npy
 
     # Step 2: Analyze converted data
-    python parse_dump.py list --npy_dir ./dump_data_npy
-    python parse_dump.py summary --npy_dir ./dump_data_npy
-    python parse_dump.py show --npy_dir ./dump_data_npy --node "Softmax"
-    python parse_dump.py compare --npy_dir ./dump_data_npy --nodes "Conv1" "Conv2"
-    python parse_dump.py plot --npy_dir ./dump_data_npy --node "Softmax"
+    python3 parse_dump.py list --npy_dir ./dump_data_npy
+    python3 parse_dump.py summary --npy_dir ./dump_data_npy
+    python3 parse_dump.py show --npy_dir ./dump_data_npy --node "Softmax"
+    python3 parse_dump.py compare --npy_dir ./dump_data_npy --nodes "Conv1" "Conv2"
+    python3 parse_dump.py plot --npy_dir ./dump_data_npy --node "Softmax"
 
 Directory structure (CANN official):
     {dump_path}/{time}/{device_id}/{model_name}/{model_id}/{data_index}/{dump_file}
@@ -193,7 +193,7 @@ def convert_dump_files(dump_dir, output_dir, msaccucmp_path=None):
         print(f"[INFO] Processing: {leaf_dir}")
         
         cmd = [
-            'python3', msaccucmp_path, 'convert',
+            sys.executable, msaccucmp_path, 'convert',
             '-d', leaf_dir,
             '-out', output_dir,
             '-v', '2',
@@ -376,7 +376,7 @@ def show_operator_data(npy_dir, node_name, show_stats=True):
     
     if not matching_files:
         print(f"[INFO] No files found for operator: {node_name}")
-        print(f"       Try: python parse_dump.py list --npy_dir {npy_dir}")
+        print(f"       Try: python3 parse_dump.py list --npy_dir {npy_dir}")
         return
     
     print(f"\n{'='*80}")
@@ -606,26 +606,26 @@ def main():
         epilog="""
 Examples:
   # Convert dump files to numpy
-  python parse_dump.py convert --dump_dir ./dump_data --output ./dump_data_npy
+  python3 parse_dump.py convert --dump_dir ./dump_data --output ./dump_data_npy
 
   # List all operators
-  python parse_dump.py list --npy_dir ./dump_data_npy
+  python3 parse_dump.py list --npy_dir ./dump_data_npy
 
   # Show summary
-  python parse_dump.py summary --npy_dir ./dump_data_npy
+  python3 parse_dump.py summary --npy_dir ./dump_data_npy
 
   # Show specific operator data
-  python parse_dump.py show --npy_dir ./dump_data_npy --node "Softmax"
+  python3 parse_dump.py show --npy_dir ./dump_data_npy --node "Softmax"
 
   # Compare two operators in the same directory
-  python parse_dump.py compare --npy_dir ./dump_data_npy --nodes "Conv1" "Conv2"
+  python3 parse_dump.py compare --npy_dir ./dump_data_npy --nodes "Conv1" "Conv2"
 
   # Compare operators from two different directories
-  python parse_dump.py diff --npy_dir1 ./dump1_npy --node1 "Softmax" \
+  python3 parse_dump.py diff --npy_dir1 ./dump1_npy --node1 "Softmax" \
                             --npy_dir2 ./dump2_npy --node2 "Softmax"
 
   # Plot operator data
-  python parse_dump.py plot --npy_dir ./dump_data_npy --node "Softmax"
+  python3 parse_dump.py plot --npy_dir ./dump_data_npy --node "Softmax"
         """
     )
     

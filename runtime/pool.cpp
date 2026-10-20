@@ -1,105 +1,48 @@
 #include "pool.h"
-
-#include <dirent.h>
-#include <sys/stat.h>
-
 #include <algorithm>
+#include <cstring>
 #include <set>
 #include <sstream>
 #include <stdexcept>
 
 namespace ge_runtime {
-namespace {
-
-std::string BaseName(const std::string &path) {
-    size_t pos = path.find_last_of('/');
-    return pos == std::string::npos ? path : path.substr(pos + 1);
-}
-
-bool HasBundle(const std::string &dir) {
-    struct stat st {};
-    return stat(JoinPath(dir, "bundle.json").c_str(), &st) == 0 && S_ISREG(st.st_mode);
-}
-
-// <dir>/bundle.json 存在 → 单套; 否则收 <dir>/*/bundle.json (按名字排序, 生成器用零填充编号)
-std::vector<std::string> FindBundleDirs(const std::string &dir) {
-    std::vector<std::string> dirs;
-    if (HasBundle(dir)) {
-        dirs.push_back(dir);
-        return dirs;
-    }
-    DIR *dp = opendir(dir.c_str());
-    if (dp == nullptr) {
-        return dirs;
-    }
-    while (struct dirent *ent = readdir(dp)) {
-        std::string name = ent->d_name;
-        if (name == "." || name == "..") {
-            continue;
-        }
-        std::string sub = JoinPath(dir, name);
-        struct stat st {};
-        if (stat(sub.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && HasBundle(sub)) {
-            dirs.push_back(sub);
-        }
-    }
-    closedir(dp);
-    std::sort(dirs.begin(), dirs.end());
-    return dirs;
-}
-
-}  // namespace
-
-RequestPool LoadPool(const IoSpec &spec, const std::string &dir) {
-    std::vector<std::string> dirs = FindBundleDirs(dir);
-    if (dirs.empty()) {
-        throw std::runtime_error("请求池为空: " + dir +
-                                 " (期望 <dir>/req_*/bundle.json, 或 <dir>/bundle.json 单套)");
-    }
-
-    RequestPool pool;
-    std::set<std::string> shapeKeys;
-    for (const auto &d : dirs) {
-        Bundle bundle = Bundle::Load(JoinPath(d, "bundle.json"));
-        Request req;
-        req.name = (d == dir) ? "bundle" : BaseName(d);
-        req.plans = BuildInputPlans(spec, bundle, d);
-        for (const auto &p : req.plans) {
-            std::vector<char> bytes;
-            if (!ReadBinFile(p.file, bytes)) {
-                throw std::runtime_error("读不到请求 " + req.name + " 的输入: " + p.file);
-            }
-            if (bytes.size() != p.Bytes()) {
-                throw std::runtime_error("请求 " + req.name + " 输入 '" + p.logical + "' 字节数 " +
-                                         std::to_string(bytes.size()) + " != " +
-                                         std::to_string(p.Bytes()));
-            }
-            req.data.push_back(std::move(bytes));
-        }
-
+RequestPool LoadPool(const IoSpec &spec, const nlohmann::json &inputs) {
+    std::vector<char> bytes;
+    if(!ReadBinFile(inputs.at("file").get<std::string>(),bytes)) throw std::runtime_error("cannot read packed inputs");
+    RequestPool pool;std::set<std::string> shapes,names;
+    pool.maxBytes.assign(spec.inputs.size(),0);
+    pool.maxOutputBytes.assign(spec.outputs.size(),0);
+    for(const auto &item:inputs.at("cases")) {
+        Request request;request.name=item.at("id").get<std::string>();request.samples=item.at("samples").get<int64_t>();
+        if(request.name.empty() || !names.insert(request.name).second || request.samples<1) throw std::runtime_error("invalid case ID/sample count");
+        const auto &tensors=item.at("tensors");
+        if(tensors.size()!=spec.inputs.size()) throw std::runtime_error("input count differs from graph");
+        std::set<std::string> tensorNames;
+        for(const auto &tensor:tensors) if(!tensorNames.insert(tensor.at("name").get<std::string>()).second) throw std::runtime_error("duplicate input name");
         std::ostringstream key;
-        for (size_t i = 0; i < req.plans.size(); i++) {
-            req.tokens = std::max(req.tokens, NumElements(req.plans[i].shape));
-            key << ShapeToString(req.plans[i].shape) << (i + 1 < req.plans.size() ? ";" : "");
+        for(size_t index=0;index<spec.inputs.size();++index) {
+            const auto &node=spec.inputs[index];const nlohmann::json *found=nullptr;
+            for(const auto &tensor:tensors) if(tensor.at("name")==node.logical) found=&tensor;
+            if(!found) throw std::runtime_error("missing named input "+node.logical);
+            TensorPlan plan;plan.logical=node.logical;plan.node=node.node.empty()?node.logical:node.node;
+            plan.dtype=found->at("dtype").get<std::string>();plan.format=node.format;
+            plan.shape=found->at("shape").get<std::vector<int64_t>>();
+            if(plan.dtype!=node.dtype || plan.shape.size()!=node.shape.size()) throw std::runtime_error("input dtype/rank mismatch");
+            for(size_t axis=0;axis<node.shape.size();++axis) if(node.shape[axis]>=0 && node.shape[axis]!=plan.shape[axis]) throw std::runtime_error("static dimension mismatch");
+            size_t size=plan.Bytes(),offset=found->at("offset").get<size_t>();
+            if(found->at("bytes").get<size_t>()!=size || offset>bytes.size() || size>bytes.size()-offset) throw std::runtime_error("packed input byte range mismatch");
+            request.data.emplace_back(bytes.begin()+offset,bytes.begin()+offset+size);
+            request.plans.push_back(plan);key<<ShapeToString(plan.shape)<<';';
+            pool.maxBytes[index]=std::max(pool.maxBytes[index],size);
         }
-        req.shapeKey = key.str();
-        shapeKeys.insert(req.shapeKey);
-        pool.maxOutputBytes = std::max(pool.maxOutputBytes, ExpectedOutputBytes(spec, bundle, 0));
-        pool.requests.push_back(std::move(req));
-    }
-
-    // 逐输入取池内最大字节数 → 后端按它预分配 device 缓冲 (每请求只 H2D 实际字节)。
-    // 只算**字节数**不算逐维最大 shape: 缓冲分配要的是字节数, 而各维最大值拼出来的
-    // "最大 shape" 未必是池里真实存在的一套 (T 最大与 N 最大可能来自不同请求), 拿它分配
-    // 既偏大又语义不清。原来这里还算了一份 maxShape, 从来没人读 → 已删。
-    pool.maxBytes.assign(spec.inputs.size(), 0);
-    for (const auto &req : pool.requests) {
-        for (size_t i = 0; i < req.plans.size() && i < pool.maxBytes.size(); i++) {
-            pool.maxBytes[i] = std::max(pool.maxBytes[i], req.plans[i].Bytes());
+        for(size_t index=0;index<spec.outputs.size();++index) {
+            size_t capacity=item.at("output_capacities").at(spec.outputs[index].logical).get<size_t>();
+            if(capacity==0) throw std::runtime_error("output capacity must be positive");
+            pool.maxOutputBytes[index]=std::max({pool.maxOutputBytes[index],capacity,spec.outputs[index].max_bytes});
         }
+        request.shapeKey=key.str();shapes.insert(request.shapeKey);pool.requests.push_back(std::move(request));
     }
-    pool.distinctShapes = shapeKeys.size();
-    return pool;
+    if(pool.Empty()) throw std::runtime_error("empty input pool");
+    pool.distinctShapes=shapes.size();return pool;
 }
-
-}  // namespace ge_runtime
+} // namespace ge_runtime

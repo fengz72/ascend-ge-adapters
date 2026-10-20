@@ -1,113 +1,123 @@
-# Ascend GE Adapters
+# Ascend GE model adapters
 
-把客户 torch 模型搬到华为 Ascend NPU 的 GE 上**高效运行**（2 种后端），并内建精度/性能验证的 onboarding 管线。
+一个模型一份 YAML，模型改动集中在独立适配文件。框架提供运行能力，优化策略交给 Skills。
 
-```
-Source ──[Adapt]──> Graph(AIR) ──[Passes]──> Backend ──> outputs ──> compare(golden)
-  ①torch            + io_spec    ATC 装 pass    OM/ACL | GeSession
-              └── adapt **前**的原版 HF 前向 = reference ──> compare(golden)   # 验"适配"
-```
+## 环境
 
-- **设计文档**：[`docs/architecture.md`](docs/architecture.md)（契约、动态 shape 策略、pass 子系统、适配协议、实测结论）
-- **逐模型文档**：`models/<model>/results/README.md`（curate 的**性能基线** + 复现口径；run 目录是本地过程产物，不入库）
-- **适配新模型**：照 `models/qwen2.5-0.5b/model.py` 复制修改 + 写 `config/model.yaml`，框架零改动
-- **当前复用边界**：**decoder-only CausalLM、单 logits 输出**（`source` 只走 `AutoModelForCausalLM`、`verify.reference` 写死 HF 调用约定 `model(input_ids=…, position_ids=…, use_cache=False).logits[:, -1]`、bundle 单 golden、C++ 仅在单输出时精确推导缓冲）。输出侧的 `logical="logits"` 已不是硬编码——它是 `adapter.io_output_nodes` 的**默认实现**，覆盖即可（多输出仍需先扩上面几处）。ViT / encoder / seq2seq / 多输出模型能复用适配协议与运行时，但需先扩这几处——见 [`docs/architecture.md`](docs/architecture.md) §10「已知限制」。
-
-## 目录
-
-| 路径 | 职责 |
-|---|---|
-| `core/` | 通用框架（Python）：config / source / adapter / exporter / graph / setup_scripts / backend / verify / bench / pipeline |
-| `runtime/` | 通用执行运行时（C++）：单入口 + manifest 分发 + `acl_backend`(OM) / `gesession_backend`(AIR) + bench |
-| `models/<name>/` | 逐模型：`model.py`(Adapter) + `config/model.yaml`(声明) + 产物 + `results/README.md`(性能基线) |
-| `tools/` | varlen 输入生成 / ATC 封装 / 精度比对 / dump·profiling 解析（见 `tools/README.md`） |
-| `tests/` | 回归门：`tiny_e2e`（契约层与运行时）+ `pipeline_e2e`（编排层与配置层），都是需 NPU 的脚本 |
-| `third_party/` | 三方源，一律**只读**：`custom_development_code`(submodule, fusion pass) + `ascend-ops`(submodule, prefix attention 算子: 910 PIA / A5 cannbot-dsl) + `nlohmann/json.hpp` |
-| `docs/` | 架构设计 |
-
-## 三份契约
-
-| 契约 | 文件 | 内容 |
-|---|---|---|
-| **io_spec** | `air/<name>.io_spec.json` | 图接口：node/logical/dtype/format + 动态维 `-1`；**按图 Data 序** |
-| **bundle** | `io/bundle.json` | 一组具体输入：**具体 shape** + .bin 路径 + golden + provenance；**按 forward 序** |
-| **manifest** | `io/manifest.json` | 运行时入口：backend / 图与 OM 路径 / io_spec / device / bundle（路径相对，可移植） |
-
-两侧靠 **logical 名**配对（不按位置）——图 Data 序 ≠ forward 入参序（实测，见 docs §15）。
-
-## 快速开始
+在 CANN 容器的项目根目录执行，使用容器 Python：
 
 ```bash
-# 0) 环境 (CANN + vendor 算子 + PYTHONPATH)
 source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
-
-# 1) 构建 C++ 运行时 (一次性)
-bash runtime/build.sh                       # → runtime/build/ge_runtime
-
-# 2) 跑一个模型的全链路 (导出→ATC→执行→比对)
-./models/qwen2.5-0.5b/run.sh --device 6 --batch-size 2 --seq-len 16
-
-# 3) 切形态 (改 model.yaml 的 adapt.params: prefix/prune; 产物名自动带后缀, 不互相覆盖)
-#    配置只描述"当前形态", 历史形态靠 git — 见 docs/architecture.md §5.2
-
-# 4) 只跑执行 + 比对 (复用已有 AIR/OM/bundle)
-./models/qwen2.5-0.5b/run.sh --device 6 --skip export,passes,compile --warmup 10 --bench 100
-
-# 5) 变长负载性能测试 (多实例 + 请求池回放 → 本地报告; 口径在 model.yaml 的 bench 段)
-python3 -m core.bench --config models/qwen2.5-0.5b/config/model.yaml --device 6
-#   → models/qwen2.5-0.5b/results/<run_id>/{run,perf}.json + perf.md (只出性能; 精度归 run.sh 两道门)
-#   覆盖: --instances 8 --requests 4000
-
-# 5b) 并发档位扫描 (每档一个 ge_runtime 子进程, 汇总 scaling 表; 档位循环不进 C++)
-python3 tools/sweep.py --config models/qwen2.5-0.5b/config/model.yaml --device 6 --levels 1,2,4,8
-#   → models/qwen2.5-0.5b/results/sweep-<ts>.md (QPS/加速比/并行效率/p99/HBM 一张表)
-
-# 6) 吞吐 / 限核 / profiling
-./runtime/build/ge_runtime models/qwen2.5-0.5b/io/manifest.json --device 6 \
-    --threads 4 --requests 800
-# profiling 三个入口都是命令行开关 (采集覆盖整个进程, 含图编译/warmup):
-./models/qwen2.5-0.5b/run.sh --device 6 --skip export,passes,compile --profiling-parse
-#   → models/qwen2.5-0.5b/io/profiling/PROF_* + 自动 msprof 解析并打印算子摘要
-#   (只采集不解析: --profiling; 改目录: --profiling-output)
-python3 -m core.bench --config models/qwen2.5-0.5b/config/model.yaml --device 6 \
-    --requests 20 --profiling-parse
-#   → models/qwen2.5-0.5b/results/<run_id>/profiling/PROF_*   (性能测试; requests 要压小, 数据量随它涨)
-./runtime/build/ge_runtime <manifest> --device 6 --bench 20 --profiling --profiling_output ./prof
-python3 tools/parse_profiling.py parse-and-export --profiling_dir ./prof   # → op_summary 等 CSV
+python3 -m pip install -r requirements.txt
+bash runtime/build.sh
+export QWEN_MODEL_DIR=/path/to/Qwen2.5-0.5B
+export OPENBLAS_NUM_THREADS=8 OMP_NUM_THREADS=8 MKL_NUM_THREADS=8
+mkdir -p work/tmp
+export TMPDIR="$PWD/work/tmp"
 ```
 
-`ge_runtime` 的完整选项：`--output_dir --device --warmup --bench --threads --requests
---bench-plan --graph_run_mode --precision_mode --aicore_num --output_reserve --dump*
---profiling*`（`--help`）。**一次只测一档并发**（`--threads`）——档位扫描是"同一件事跑 N 遍"，
-归 `tools/sweep.py`（每档独立进程，资源彻底建/销，HBM 归还干净）。
-性能报告的格式、curate 基线与复现口径见 `models/<model>/results/README.md`（run 目录是本地过程产物，不入库）。
+## 七个独立步骤
 
-## 测试
+每条命令只执行本步，缺少输入、图或依赖时直接报错，不补跑前置步骤。没有 check、resolve、verify 或 profile 命令。
+
+| 步骤 | 命令 | 读取 | 产出 |
+|---|---|---|---|
+| 1 | data | 模型 YAML、生成脚本 | 持久化输入 NPY |
+| 2 | baseline | 已有输入、原始模型 | golden.npz |
+| 3 | prepare | 选定依赖源码、构建脚本 | 算子/pass/plugin 安装目录 |
+| 4 | build | 已有输入、原始模型、适配代码、已安装依赖 | AIR / ONNX，以及 ATC 路径的 OM |
+| 5 | infer | 已有图、输入、运行适配代码 | outputs.npz，可采集 profiling |
+| 6 | compare | 已有 golden、output、YAML 阈值 | 精度结果 |
+| 7 | bench | 已有图、完整输入池、性能参数 | 吞吐、延迟、逐次调用记录，可采集 profiling |
+
+Qwen 依次执行：
 
 ```bash
-python3 tests/tiny_e2e.py --device 6        # 极小模型全链路, 两后端 (几百 MB 显存, 分钟级)
-python3 tests/pipeline_e2e.py --device 6    # 同上规模, 但走 core.pipeline 编排 + 配置层
-./models/qwen2.5-0.5b/run.sh --device 6     # 真实模型全链路 (含下面两道精度门)
+python3 -m core.pipeline data --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b
+python3 -m core.pipeline baseline --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b
+python3 -m core.pipeline prepare --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b
+python3 -m core.pipeline build --config models/qwen2.5-0.5b/config/model.yaml --device 6
+python3 -m core.pipeline infer --config models/qwen2.5-0.5b/config/model.yaml --device 6
+python3 -m core.pipeline compare --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b
+python3 -m core.pipeline bench --config models/qwen2.5-0.5b/config/model.yaml --device 6 --instances 1
 ```
 
-两道 e2e 门**分工不重叠**：`tiny_e2e` 直接调 Graph/Verifier/run_atc/ge_runtime，验**契约层与
-运行时**；`pipeline_e2e` 调 `core.pipeline.run()`，验**编排层与配置层**（platforms 探测与摊平、
-`adapt.form`、构建指纹、用户脚本接口、adapter 三组契约）。详见 `docs/architecture.md` §14。
+run 只按上述顺序调用同一套步骤函数。比较不通过时汇总选定 case 的精度错误并停止，独立 bench 仍可以运行。
 
-**两道精度门**（都在 `run.sh` 里，各隔离一个变量，FAIL 即非 0 退出）：
+```bash
+python3 -m core.pipeline run --config models/qwen2.5-0.5b/config/model.yaml --device 6
+```
 
-| 门 | 比对 | 证明 | 产物 |
-|---|---|---|---|
-| `reference` | 原版**未 patch** 的 HF 逐请求前向 vs 适配后 eager golden | **适配**正确（融合算子替换、varlen 打包、prefix 语义、末 token 取值、lm_head 剪裁） | `io/reference.json` |
-| `compare` | C++ 运行时输出 vs golden | **编译**正确（AIR→OM/GeSession、图序喂入、动态 shape 特化） | `io/outputs/` |
+## Python 调用
 
-`reference` 必须在 `adapt()` 之前算（patch 是进程级类属性），且需要 adapter 实现
-`unpack_requests`（把打包的图输入还原成逐请求）与 `reference_columns`（输出被剪裁时取哪些列）；
-未实现则 WARN 跳过。门限比 `compare` 松一档（跨实现，见 `core/verify.py` 的 `REF_*`）。
-跳过：`--skip reference`。
+命令行与 Python 共用 core/pipeline.py。execute 读取当前 YAML、选择平台并应用本次参数覆盖；main 只解析命令行和显示结果。execute 的 config 参数只接收一个 YAML 路径，不接收已解析字典或配置列表。
 
-## 依赖
+```python
+from core.pipeline import execute
 
-见 `requirements.txt`（Python）与 `runtime/CMakeLists.txt`（C++：CANN 的 `ascendcl` / `ge_*` / `graph*`，
-C++17，`-D_GLIBCXX_USE_CXX11_ABI=0`）。GE 在线路径额外要求把本机 site-packages 注入 `PYTHONPATH`
-（tbe pywrapper 用内嵌 python3，缺 numpy 会让 `GEInitialize` 返回 -1）——`models/*/env.sh` 已处理。
+result = execute(
+    "bench",
+    "models/qwen2.5-0.5b/config/model.yaml",
+    device=6,
+    instances=4,
+)
+print(result["performance"])
+```
+
+execute(stage, config, *, device=None, target=None, targets=None, case_ids=None, instances=None, profiling=None) 支持与命令行相同的运行覆盖。case_ids 可以是 ["case-0000", "case-0001"] 或 "all"；targets 是可选芯片目录 YAML 路径。覆盖只保存在内存和实际结果中，不改模型 YAML。Python 调用错误直接抛出异常，命令行显示错误并以非零状态退出。
+
+独立 cli.py 已删除，不保留旧模块入口。report 是读取已有结果的工具命令，不属于七步管线。
+
+## 精度与性能范围
+
+Qwen 默认 verification.case_ids 为 case-0000。baseline、infer、compare 都只处理所选 case；日常只计算一组 golden，最终验收可以各步传 --case-ids all，或 run --case-ids all。精度默认单实例，与 benchmark.instances 分开。主流程没有候选 eager 精度门禁；候选融合算子替换仍在 build 导出前应用。
+
+bench 始终读取完整输入池，不需要 golden、output 或精度证据，也不读取原始权重。infer/bench/compare/prepare 不要求 QWEN_MODEL_DIR；该变量供 data/baseline/build/run 读取原始模型使用。
+
+```bash
+python3 -m core.pipeline bench --config models/qwen2.5-0.5b/config/model.yaml --device 6 --instances 1
+python3 -m core.pipeline bench --config models/qwen2.5-0.5b/config/model.yaml --device 6 --instances 8
+```
+
+--instances 只在本次调用覆盖 YAML，不改 YAML，不生成临时 YAML。iterations 是所有实例合计的模型调用次数。Qwen 当前默认 batch=16，1000 次调用对应 16000 个业务样本。按 seed 生成全局有放回抽样序列，实例数只改变分工；每实例至少预热所有输入 shape。导出、GE 编译、加载、预热不计入性能时间。
+
+## 图、数据和运行结果
+
+Qwen 原始输入位于 models/qwen2.5-0.5b/io/inputs，每个 case 一个目录，包含 input_ids.npy、position_ids.npy、actual_seq_lengths.npy。当前默认 100 组、batch16；保留历史 batch10 的生成方法并确定性扩展请求。data 负责生成/更新；其余步骤只读取已有文件，不调用生成脚本的 generate。
+
+图位于 work/<模型名>/build。具名 IO 信息直接写入 AIR 图属性或 ONNX metadata，GE 运行从图读取，不生成 cases.json、build.json、lock.json、io.json 或交付清单。ATC 路径保留导出图和 model.om；运行 OM 时从旁边的导出图读取相同 IO。原始模型、模型参数或输入编码改变后显式重跑 data/build；框架不自动判断旧图是否可复用。
+
+baseline 和 infer 分别在 work/<模型名> 保存 golden.npz、outputs.npz，只包含本次选择的 case；每个 case 保留业务输出与对齐信息。compare 要求为所有实际业务输出配置策略，缺失、多余或未配置的输出直接报错；不允许空策略绕过精度比较。compare 只读取这两个数据文件，无需输入目录、NPU、原始模型或依赖安装目录。精度和性能结果、日志、requests.csv 位于 work/<模型名>/results/<run>。测量过程中执行失败时仍保存已完成调用、失败调用和部分统计，并将本次结果标为 failed；初始化失败不生成虚假的性能值。内部传输使用的 inputs.bin/outputs.bin 在执行结束删除。
+
+每次命令读取当前 YAML。修改实例数直接重跑 bench；GE Session 限核在加载 AIR 时设置，ATC 限核在编译 OM 时设置，因此 ATC 编译参数改变需要显式重新 build。修改依赖源码后显式 prepare。没有自动缓存命中或兼容旧接口的分支。
+
+## Profiling 与平台
+
+infer、bench 或 run 可传 --profiling，也可使用 YAML 的 observability.profiling。采集复用当前图，普通 bench 的随机负载也支持采集；性能结果会标明 profiling_enabled，带采集开销的结果单独看待。GE Session dump 尚不支持。
+
+--device 指定本次设备；按精确 SoC 选择模型 YAML 的 platforms 和可选 chips。离线步骤用 --target 指定精确 SoC。Qwen A3/A5 核数预算为 12|24 和 16|32，预算不表示独占绑核。依赖脚本接收 GE_SRC_DIR、GE_BUILD_DIR、GE_INSTALL_DIR、GE_PYTHON，安装到 work 下的依赖目录。
+
+```text
+models/       模型适配、数据脚本、唯一模型 YAML、构建脚本和原始输入
+third_party/  自定义算子、GE pass、插件源码
+targets/      精确芯片目录
+core/         七步编排、源模型加载、导出、比较和原生运行边界
+runtime/      GE Session / ATC OM 执行、并发、限核、测量、采集
+tools/        profiling/dump 离线分析
+tests/        行为与运行契约测试
+docs/         项目说明、验证与调优文档
+images/       文档图片统一平铺存放
+work/         本机生成的图、依赖、golden、output 和结果，Git 忽略
+```
+
+```bash
+python3 -m core.pipeline report work/qwen2.5-0.5b/results/<run>/result.json
+python3 -m unittest discover -s tests -p 'test_*.py'
+ctest --test-dir runtime/build --output-on-failure
+```
+
+每次性能运行保存带版本号的原始结果和逐调用记录，可通过 core.results.export_benchmarks 导出统一 CSV，字段与计量口径见 docs/benchmark-results.md。
+
+历史 batch10 的 Qwen Prefix 在 A5 上以原 FP16 路径和当前模型 YAML 阈值（cosine >= 0.998、relative L2 <= 0.05）通过 100 组、1000 个业务样本的全量比较；旧阈值下的失败记录保留在验证文档中。本次框架回归在A5设备1完成当前batch16默认单组精度和四实例1000次性能，业务QPS=2657.744、p99=27.007ms，未重跑batch16全量精度。A3 尚无实机，ATC 本轮暂不验证。实测状态见 docs/validation.md。
+
+Qwen A5 的测试范围、趋势图、配置选择、复现命令及完整测试结果统一见 [调优记录](docs/qwen2.5-0.5b/调优记录.md)。

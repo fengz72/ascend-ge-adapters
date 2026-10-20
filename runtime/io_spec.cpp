@@ -1,4 +1,6 @@
 #include "io_spec.h"
+#include <set>
+#include <limits>
 
 #include <sys/stat.h>
 
@@ -16,18 +18,6 @@ namespace {
 
 using Json = nlohmann::json;
 
-Json ParseFile(const std::string &path) {
-    std::ifstream f(path);
-    if (!f.is_open()) {
-        throw std::runtime_error("cannot open json file: " + path);
-    }
-    try {
-        return Json::parse(f);
-    } catch (const std::exception &e) {
-        throw std::runtime_error("invalid json in " + path + ": " + e.what());
-    }
-}
-
 std::vector<int64_t> ToShape(const Json &j) {
     std::vector<int64_t> shape;
     if (!j.is_array()) {
@@ -39,7 +29,7 @@ std::vector<int64_t> ToShape(const Json &j) {
     return shape;
 }
 
-// 字段缺失或为 null 都视作空串 (manifest 的 om_path 在 ge_session 下即为 null)
+// 可选字段缺失或为 null 时使用空串。
 std::string Str(const Json &j, const char *key) {
     auto it = j.find(key);
     if (it == j.end() || it->is_null()) {
@@ -51,7 +41,8 @@ std::string Str(const Json &j, const char *key) {
 IoNode ToIoNode(const Json &j) {
     IoNode n;
     n.node = Str(j, "node");
-    n.logical = Str(j, "logical");
+    n.logical = Str(j, "name");
+    n.max_bytes = j.value("max_bytes", size_t{0});
     n.dtype = Str(j, "dtype");
     std::string format = Str(j, "format");
     n.format = format.empty() ? "ND" : format;
@@ -64,69 +55,10 @@ IoNode ToIoNode(const Json &j) {
     return n;
 }
 
-BundleEntry ToBundleEntry(const Json &j) {
-    BundleEntry e;
-    e.logical = Str(j, "logical");
-    e.file = Str(j, "file");
-    if (j.contains("shape")) {
-        e.shape = ToShape(j["shape"]);
-    }
-    return e;
-}
-
-// bundle 路径的 plan 校验: dtype 可识别、shape 具体、
-// .bin 存在且字节数 == shape×dtype。只 stat 不读盘 — 真正的读发生在 backend 的 H2D。
-void ValidatePlan(const TensorPlan &p, const char *shapeFrom) {
-    if (p.dtype.empty()) {
-        throw std::runtime_error("io_spec input '" + p.logical + "' has no dtype");
-    }
-    if (DtypeSize(p.dtype) == 0) {
-        throw std::runtime_error("unsupported dtype '" + p.dtype + "' for input '" + p.logical + "'");
-    }
-    if (p.shape.empty()) {
-        throw std::runtime_error(std::string(shapeFrom) + " gives no concrete shape for input '" +
-                                 p.logical + "'");
-    }
-    for (int64_t d : p.shape) {
-        if (d <= 0) {
-            throw std::runtime_error("input '" + p.logical + "' shape must be positive, got " +
-                                     ShapeToString(p.shape) + " (from " + shapeFrom + ")");
-        }
-    }
-    struct stat st {};
-    if (stat(p.file.c_str(), &st) != 0) {
-        throw std::runtime_error("cannot stat input file: " + p.file + " (" + strerror(errno) + ")");
-    }
-    if (!S_ISREG(st.st_mode)) {
-        throw std::runtime_error("input file is not a regular file: " + p.file);
-    }
-    size_t fileSize = static_cast<size_t>(st.st_size);
-    if (fileSize != p.Bytes()) {
-        throw std::runtime_error("input '" + p.logical + "' file " + p.file + " size " +
-                                 std::to_string(fileSize) + " != shape bytes " +
-                                 std::to_string(p.Bytes()) + " (shape=" + ShapeToString(p.shape) +
-                                 ", dtype=" + p.dtype + ")");
-    }
-}
-
 }  // namespace
 
-bool IoSpec::HasDynamicInput() const {
-    for (const auto &n : inputs) {
-        if (!n.dynamic_dims.empty()) {
-            return true;
-        }
-        for (int64_t d : n.shape) {
-            if (d < 0) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-IoSpec IoSpec::Load(const std::string &path) {
-    Json j = ParseFile(path);
+IoSpec IoSpec::FromJson(const Json &j) {
+    if (j.value("schema", "") != "ge-io/1") throw std::runtime_error("unsupported IOSpec schema");
     IoSpec spec;
     if (j.contains("inputs")) {
         for (const auto &e : j["inputs"]) {
@@ -139,140 +71,24 @@ IoSpec IoSpec::Load(const std::string &path) {
         }
     }
     if (spec.inputs.empty()) {
-        throw std::runtime_error("io_spec has no inputs: " + path);
+        throw std::runtime_error("io_spec has no inputs");
     }
+    for (const auto *nodes : {&spec.inputs, &spec.outputs}) {
+        std::set<std::string> names;
+        for (const auto &node : *nodes) {
+            if (node.logical.empty() || !names.insert(node.logical).second || DtypeSize(node.dtype)==0)
+                throw std::runtime_error("invalid/duplicate IOSpec name or dtype");
+        }
+    }
+    if (spec.outputs.empty()) throw std::runtime_error("IOSpec requires outputs");
     return spec;
 }
 
-Bundle Bundle::Load(const std::string &path) {
-    Json j = ParseFile(path);
-    Bundle b;
-    if (j.contains("inputs")) {
-        for (const auto &e : j["inputs"]) {
-            b.inputs.push_back(ToBundleEntry(e));
-        }
-    }
-    if (j.contains("golden") && j["golden"].is_object()) {
-        b.golden = ToBundleEntry(j["golden"]);
-    }
-    if (b.inputs.empty()) {
-        throw std::runtime_error("bundle has no inputs: " + path);
-    }
-    return b;
-}
-
-std::string Manifest::Resolve(const std::string &rel) const {
-    return JoinPath(base_dir, rel);
-}
-
-Manifest Manifest::Load(const std::string &path) {
-    Json j = ParseFile(path);
-    Manifest m;
-    m.backend = Str(j, "backend");
-    m.graph_path = Str(j, "graph_path");
-    m.om_path = Str(j, "om_path");
-    m.io_spec = Str(j, "io_spec");
-    m.bundle = Str(j, "bundle");
-    if (j.contains("device") && j["device"].is_number_integer()) {
-        m.device = j["device"].get<int>();
-    }
-    // manifest 内路径相对 base_dir (= io/ 的父目录, 见 docs §5.5)
-    m.base_dir = DirName(DirName(path));
-    if (m.backend.empty()) {
-        throw std::runtime_error("manifest missing 'backend': " + path);
-    }
-    return m;
-}
-
 size_t TensorPlan::Bytes() const {
-    return static_cast<size_t>(NumElements(shape)) * DtypeSize(dtype);
-}
-
-namespace {
-
-// 报错时把两侧的 logical 名列出来 — 错配一眼可见, 不用再去翻两个 json 对
-std::string JoinLogical(const std::vector<std::string> &names) {
-    std::string s;
-    for (const auto &n : names) {
-        if (!s.empty()) {
-            s += ", ";
-        }
-        s += n.empty() ? "<空>" : n;
-    }
-    return s.empty() ? "<无>" : s;
-}
-
-}  // namespace
-
-std::vector<TensorPlan> BuildInputPlans(const IoSpec &spec, const Bundle &bundle,
-                                       const std::string &bundle_dir) {
-    std::vector<TensorPlan> plans;
-    for (size_t i = 0; i < spec.inputs.size(); i++) {
-        const IoNode &node = spec.inputs[i];
-        const BundleEntry *entry = nullptr;
-        for (const auto &e : bundle.inputs) {
-            if (!e.logical.empty() && e.logical == node.logical) {
-                entry = &e;
-                break;
-            }
-        }
-        if (entry == nullptr) {
-            // 与 core/graph.py 的 from_air 同一标准: 名字配不上就硬失败, **不**退回按位置取
-            // bundle.inputs[i] —— 图 Data 序 ≠ forward 序 (qwen2.5-0.5b 实测), 按位置硬配会
-            // 静默喂错张量, 表现为 tiling 崩或精度全错且不指向真因。
-            std::vector<std::string> specNames, bundleNames;
-            for (const auto &n : spec.inputs) {
-                specNames.push_back(n.logical);
-            }
-            for (const auto &e : bundle.inputs) {
-                bundleNames.push_back(e.logical);
-            }
-            throw std::runtime_error(
-                "io_spec 输入 #" + std::to_string(i) + " (logical=" + node.logical +
-                ") 在 bundle 里找不到同名项 — 拒绝按位置硬配 (会静默喂错张量)。\n"
-                "  io_spec logical: " + JoinLogical(specNames) + "\n"
-                "  bundle  logical: " + JoinLogical(bundleNames) + "\n"
-                "→ bundle 与 io_spec 不是同一次导出的产物? 去掉 --skip export 重新生成");
-        }
-
-        TensorPlan p;
-        p.node = node.node.empty() ? node.logical : node.node;
-        p.logical = node.logical;
-        p.dtype = node.dtype;
-        p.format = node.format.empty() ? "ND" : node.format;
-        p.shape = entry->shape;
-        p.file = JoinPath(bundle_dir, entry->file);
-
-        ValidatePlan(p, "bundle");
-        plans.push_back(p);
-    }
-    return plans;
-}
-
-size_t ExpectedOutputBytes(const IoSpec &spec, const Bundle &bundle, size_t index) {
-    if (index >= spec.outputs.size()) {
-        return 0;
-    }
-    const IoNode &node = spec.outputs[index];
-    const std::vector<int64_t> &concrete = bundle.golden.shape;
-    size_t elem = DtypeSize(node.dtype);
-    if (elem == 0 || concrete.size() != node.shape.size()) {
-        return 0;
-    }
-    int64_t numel = 1;
-    for (size_t i = 0; i < node.shape.size(); i++) {
-        int64_t d = node.shape[i];
-        if (d < 0) {
-            d = concrete[i];                 // 动态维取 golden 的具体值
-        } else if (d != concrete[i]) {
-            return 0;                        // 静态维与 golden 不符 → 不敢推导
-        }
-        if (d <= 0) {
-            return 0;
-        }
-        numel *= d;
-    }
-    return static_cast<size_t>(numel) * elem;
+    auto count = static_cast<size_t>(NumElements(shape));
+    auto width = DtypeSize(dtype);
+    if (width==0 || count>std::numeric_limits<size_t>::max()/width) throw std::runtime_error("tensor byte size overflow");
+    return count * width;
 }
 
 size_t DtypeSize(const std::string &dtype) {
@@ -294,6 +110,7 @@ size_t DtypeSize(const std::string &dtype) {
 int64_t NumElements(const std::vector<int64_t> &shape) {
     int64_t n = 1;
     for (int64_t d : shape) {
+        if (d<1 || n>std::numeric_limits<int64_t>::max()/d) throw std::runtime_error("tensor element count overflow");
         n *= d;
     }
     return n;
@@ -326,19 +143,6 @@ bool ReadBinFile(const std::string &path, std::vector<char> &out) {
     return true;
 }
 
-bool WriteBinFile(const std::string &path, const void *data, size_t bytes) {
-    std::ofstream f(path, std::ios::binary | std::ios::trunc);
-    if (!f.is_open()) {
-        return false;
-    }
-    if (bytes > 0) {
-        f.write(static_cast<const char *>(data), static_cast<std::streamsize>(bytes));
-    }
-    bool ok = f.good();
-    f.close();
-    return ok;
-}
-
 bool MakeDirs(const std::string &path) {
     if (path.empty()) {
         return false;
@@ -360,60 +164,6 @@ bool MakeDirs(const std::string &path) {
     }
     struct stat st {};
     return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
-}
-
-bool SaveOutputs(const std::string &dir, const std::vector<HostTensor> &outputs,
-                 std::string &indexPath) {
-    if (!MakeDirs(dir)) {
-        fprintf(stderr, "[ERROR] cannot create output dir: %s\n", dir.c_str());
-        return false;
-    }
-    Json items = Json::array();
-    for (size_t i = 0; i < outputs.size(); i++) {
-        const HostTensor &t = outputs[i];
-        std::string rel = "output_" + std::to_string(i) + ".bin";
-        if (!WriteBinFile(JoinPath(dir, rel), t.data.data(), t.data.size())) {
-            fprintf(stderr, "[ERROR] cannot write %s\n", JoinPath(dir, rel).c_str());
-            return false;
-        }
-        items.push_back({{"logical", t.logical},
-                         {"dtype", t.dtype},
-                         {"shape", t.shape},
-                         {"bytes", t.data.size()},
-                         {"file", rel}});
-    }
-    indexPath = JoinPath(dir, "outputs.json");
-    std::ofstream f(indexPath);
-    if (!f.is_open()) {
-        fprintf(stderr, "[ERROR] cannot write %s\n", indexPath.c_str());
-        return false;
-    }
-    f << Json({{"outputs", items}}).dump(2) << std::endl;
-    return true;
-}
-
-std::string DirName(const std::string &path) {
-    size_t pos = path.find_last_of('/');
-    if (pos == std::string::npos) {
-        return ".";
-    }
-    if (pos == 0) {
-        return "/";
-    }
-    return path.substr(0, pos);
-}
-
-std::string JoinPath(const std::string &dir, const std::string &rel) {
-    if (rel.empty()) {
-        return rel;
-    }
-    if (rel[0] == '/') {
-        return rel;
-    }
-    if (dir.empty() || dir == ".") {
-        return rel;
-    }
-    return dir + "/" + rel;
 }
 
 }  // namespace ge_runtime

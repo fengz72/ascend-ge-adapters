@@ -1,0 +1,28 @@
+model:
+  name: tiny-ranker
+  adapter_file: models/tiny/adapter.py
+source:
+  kind: torch
+  factory: models.tiny.adapter:create_model
+reference:
+  device: cpu
+  dtype: float32
+target: Ascend950PR_958b
+build:
+  backend: ge_session
+  dtype: float32
+  options:
+    precision_mode: must_keep_origin_dtype
+verification:
+  outputs:
+    scores:
+      policy: numeric
+      scope: per_sample
+      rtol: 0.001
+      atol: 0.00001
+    indices:
+      policy: exact
+benchmark:
+  instances: 2
+  warmup: 2
+  iterations: 21
