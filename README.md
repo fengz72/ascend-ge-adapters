@@ -16,6 +16,12 @@ mkdir -p work/tmp
 export TMPDIR="$PWD/work/tmp"
 ```
 
+A3 原生GE执行前，在CANN环境之后加载容器Python环境：
+
+```bash
+source models/qwen2.5-0.5b/scripts/env_a3.sh
+```
+
 ## 七个独立步骤
 
 每条命令只执行本步，缺少输入、图或依赖时直接报错，不补跑前置步骤。没有 check、resolve、verify 或 profile 命令。
@@ -95,7 +101,7 @@ baseline 和 infer 分别在 work/<模型名> 保存 golden.npz、outputs.npz，
 
 infer、bench 或 run 可传 --profiling，也可使用 YAML 的 observability.profiling。采集复用当前图，普通 bench 的随机负载也支持采集；性能结果会标明 profiling_enabled，带采集开销的结果单独看待。GE Session dump 尚不支持。
 
---device 指定本次设备；按精确 SoC 选择模型 YAML 的 platforms 和可选 chips。离线步骤用 --target 指定精确 SoC。Qwen A3/A5 核数预算为 12|24 和 16|32，预算不表示独占绑核。依赖脚本接收 GE_SRC_DIR、GE_BUILD_DIR、GE_INSTALL_DIR、GE_PYTHON，安装到 work 下的依赖目录。
+--device 指定本次设备；按精确 SoC 选择模型 YAML 的 platforms 和可选 chips。离线步骤用 --target 指定精确 SoC。Ascend910_9382 本机物理容量为24|48，芯片配置使用本次实测的8|16、batch16、5实例；A5预算为16|32。核预算不表示独占绑核。依赖脚本接收 GE_SRC_DIR、GE_BUILD_DIR、GE_INSTALL_DIR、GE_PYTHON，安装到 work 下的依赖目录。
 
 ```text
 models/       模型适配、数据脚本、唯一模型 YAML、构建脚本和原始输入
@@ -118,6 +124,8 @@ ctest --test-dir runtime/build --output-on-failure
 
 每次性能运行保存带版本号的原始结果和逐调用记录，可通过 core.results.export_benchmarks 导出统一 CSV，字段与计量口径见 docs/benchmark-results.md。
 
-历史 batch10 的 Qwen Prefix 在 A5 上以原 FP16 路径和当前模型 YAML 阈值（cosine >= 0.998、relative L2 <= 0.05）通过 100 组、1000 个业务样本的全量比较；旧阈值下的失败记录保留在验证文档中。本次框架回归在A5设备1完成当前batch16默认单组精度和四实例1000次性能，业务QPS=2657.744、p99=27.007ms，未重跑batch16全量精度。A3 尚无实机，ATC 本轮暂不验证。实测状态见 docs/validation.md。
+历史 batch10 的 Qwen Prefix 在 A5 上以原 FP16 路径和当前模型 YAML 阈值（cosine >= 0.998、relative L2 <= 0.05）通过 100 组、1000 个业务样本的全量比较；旧阈值下的失败记录保留在验证文档中。本次框架回归在A5设备1完成当前batch16默认单组精度和四实例1000次性能，业务QPS=2657.744、p99=27.007ms，未重跑batch16全量精度。A3 Ascend910_9382 已完成实机全量精度与性能调优，详见A3调优记录。ATC 本轮暂不验证。实测状态见 docs/validation.md。
 
 Qwen A5 的测试范围、趋势图、配置选择、复现命令及完整测试结果统一见 [调优记录](docs/qwen2.5-0.5b/调优记录.md)。
+
+Qwen A3 Ascend910_9382 的最优实测配置、三轮确认、全量精度、复现命令和全部57次尝试见 [A3调优记录](docs/qwen2.5-0.5b/qwen2.5-0.5b-a3-tuning.md)。

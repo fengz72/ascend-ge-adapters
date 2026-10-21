@@ -52,7 +52,7 @@ benchmark:
 # Per-platform defaults are applied automatically from target.family.
 platforms:
   a3:
-    # A3 尚无实机环境；此配置的算子和 GE pass 需要在 A3 单独验证。
+    # A3 Prefix 与 GE pass 已在 Ascend910_9382 验证；其他 A3 SoC 待实测。
     model:
       params:
         attention: prefix_910
@@ -91,3 +91,15 @@ platforms:
             - prefix_attn_torch
       ge_passes: []
       parser_plugins: []
+
+# Ascend910_9382 physical 24|48; measured optimum, see A3 tuning record.
+chips:
+  Ascend910_9382:
+    build:
+      options:
+        aicore_num: 8|16
+    data:
+      params:
+        batch_size: 16
+    benchmark:
+      instances: 5

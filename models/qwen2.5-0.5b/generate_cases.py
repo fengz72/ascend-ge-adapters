@@ -135,7 +135,13 @@ def load(config):
     directory=Path(config['data']['directory'])
     paths=sorted(p for p in directory.iterdir() if p.is_dir() and p.name.startswith('case-'))
     if not paths:raise ValueError(f'no cases in {directory}; run data first')
-    return [load_case(path) for path in paths]
+    cases=[load_case(path) for path in paths]
+    expected=config['data'].get('params',{}).get('batch_size')
+    if expected is not None:
+        for case in cases:
+            if case['samples']!=expected:
+                raise ValueError(f"{directory}/{case['id']}: actual batch {case['samples']} != configured batch_size {expected}; run data first")
+    return cases
 
 
 def main():

@@ -35,8 +35,9 @@ def environment(config):
     for entry in entries(config):
         install=directory(config,entry)/'install'
         if not install.is_dir():raise FileNotFoundError(f"dependency {entry['id']} is not built; run prepare")
+        # CANN must see the installed vendor path rather than an install/opp alias.
         for folder,key in (('opp','ASCEND_CUSTOM_OPP_PATH'),('lib','LD_LIBRARY_PATH'),('python','PYTHONPATH')):
-            if (install/folder).exists():paths[key].append(str(install/folder))
+            if (install/folder).exists():paths[key].append(str((install/folder).resolve()))
         paths['LD_LIBRARY_PATH'].extend(str(p.parent) for p in install.rglob('*.so'))
     for key,values in paths.items():
         values.extend(p for p in env.get(key,'').split(os.pathsep) if p)

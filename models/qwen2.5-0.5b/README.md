@@ -104,10 +104,14 @@ python3 -m core.pipeline compare --config models/qwen2.5-0.5b/config/model.yaml 
 
 ## 平台与边界
 
-platforms.a3 选择 prefix_910、weight_nz，GE 核数预算 12|24；platforms.a5 选择 prefix_a5，当前默认核数预算 16|32。--device 识别芯片自动选择配置，不保存卡号。Prefix 的 T、prefix、bounds、实际 batch 可变；不重复配置 Prefix batch。
+platforms.a3 选择 prefix_910、weight_nz；Ascend910_9382通过chips覆盖为实测8|16、batch16、5实例；platforms.a5 选择 prefix_a5，当前默认核数预算 16|32。--device 识别芯片自动选择配置，不保存卡号。Prefix 的 T、prefix、bounds 可变；输入池中各组实际 batch 必须与 data.params.batch_size 一致，否则加载时明确报错，需显式执行 data 重建输入。
 
-历史 A5 验证（16|32核、batch=10）已按当前 FP16 阈值通过完整 100 组、1000 个业务样本。最小 cosine=0.9994753718802383，最大 relative L2=0.034476225797271505；同一输出按旧 0.999/0.02 阈值仍有两组失败。当时只调整验收阈值，保留相同 FP16 模型和 CPU FP32 golden。A3 和其他 A5 芯片未实测，ATC 本轮暂不验证。历史性能和 profiling 见 docs/validation.md。只有 model.yaml、适配文件、数据生成脚本、实际依赖源码和构建脚本随项目交付，work 不交付。
+历史 A5 验证（16|32核、batch=10）已按当前 FP16 阈值通过完整 100 组、1000 个业务样本。最小 cosine=0.9994753718802383，最大 relative L2=0.034476225797271505；同一输出按旧 0.999/0.02 阈值仍有两组失败。当时只调整验收阈值，保留相同 FP16 模型和 CPU FP32 golden。本次已完成Ascend910_9382实测；其他A3/A5芯片待验证，ATC 本轮暂不验证。历史性能和 profiling 见 docs/validation.md。只有 model.yaml、适配文件、数据生成脚本、实际依赖源码和构建脚本随项目交付，work 不交付。
 
 ## A5 性能调优（2026-10-20）
 
 当前 A5 默认：限核 **16|32**、**batch_size=16**、**instances=4**；Prefix 源码 kAicCores=16，对应算子已重建安装。data.directory 固定为 models/qwen2.5-0.5b/io/inputs，含100组 batch16 输入；与历史调优 batch16 输入池摘要一致。该配置此前三轮各10000次调用，业务QPS中位数 2662.044，最差轮整 batch p99 为26.865ms。原 batch10 输入、golden 和 output 保留在 work/qwen2.5-0.5b/validation/history-batch10；本次框架修改的 batch16 验证范围及结果见 docs/validation.md，不能将历史 batch10 全量精度结论直接推广到 batch16 全量。测试范围、选型理由、趋势图、复现命令及全部164次测试结果见 [调优记录](../../docs/qwen2.5-0.5b/调优记录.md)。
+
+## A3 实测（2026-10-20）
+
+Ascend910_9382（物理24|48）推荐8|16、batch16、5实例。三轮业务QPS中位数2172.093，最差P99 41.266ms；100组/1600样本精度通过。在项目根目录运行前source `models/qwen2.5-0.5b/scripts/env_a3.sh`。完整记录和所有失败/中断见 [A3调优记录](../../docs/qwen2.5-0.5b/qwen2.5-0.5b-a3-tuning.md)。

@@ -235,6 +235,35 @@ class Framework(unittest.TestCase):
             with self.assertRaises(ValueError):generate(config)
             self.assertEqual(saved,{p:p.read_bytes() for p in inputs.rglob('*.npy')})
 
+    def test_qwen_bench_rejects_stale_batch_in_any_case_before_worker(self):
+        from core.data import load
+        from core.pipeline import perform
+        spec=importlib.util.spec_from_file_location('generator',QWEN.parent.parent/'generate_cases.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        config=load_authoring(QWEN,target='Ascend910_9382')
+        self.assertEqual(config['data']['params']['batch_size'],16)
+        self.assertEqual(config['benchmark']['instances'],5)
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory,'config.json').write_text('{"vocab_size":64}')
+            config['source']['ref']=directory
+            config['data']['directory']=str(Path(directory,'inputs'))
+            config['data']['params']['count']=2
+            expected=generate(config)
+            self.assertEqual(load(config),expected)
+            stale=list(module.generate_cases(64,count=2,batch_size=14))[-1]
+            folder=Path(config['data']['directory'],stale['id'])
+            for name,value in module.packed_inputs(stale).items():np.save(folder/f'{name}.npy',value)
+            saved={p:p.read_bytes() for p in Path(config['data']['directory']).rglob('*.npy')}
+            config['source']['ref']='/must/not/load/weights'
+            with patch('core.pipeline.worker') as worker:
+                with self.assertRaisesRegex(ValueError,'case-0001: actual batch 14 != configured batch_size 16; run data first'):
+                    perform('bench',config,Path(directory),1)
+                worker.assert_not_called()
+            self.assertEqual(saved,{p:p.read_bytes() for p in saved})
+            config['source']['ref']=directory
+            self.assertEqual(generate(config),expected)
+            self.assertEqual(load(config),expected)
+
     def test_npy_case_loader_rejects_invalid_bounds_and_positions(self):
         spec=importlib.util.spec_from_file_location('generator',QWEN.parent.parent/'generate_cases.py')
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
@@ -301,7 +330,7 @@ class Framework(unittest.TestCase):
         self.assertEqual(a5['build']['options']['aicore_num'],
                          yaml.safe_load(QWEN.read_text())['platforms']['a5']['build']['options']['aicore_num'])
         self.assertEqual(a3['model']['params']['attention'],'prefix_910')
-        self.assertEqual(a3['build']['options']['aicore_num'],'12|24')
+        self.assertEqual(a3['build']['options']['aicore_num'],'8|16')
         self.assertNotIn('device',a5['target']);self.assertNotIn('artifacts',a5)
 
     def test_explicit_and_detected_chip_select_same_config(self):
@@ -351,6 +380,18 @@ class Framework(unittest.TestCase):
             self.assertNotIn('ASCEND_CUSTOM_OPP_PATH',environment(config))
         with patch.dict(os.environ,{'ASCEND_CUSTOM_OPP_PATH':'/one:/two'}):
             self.assertEqual(environment(config)['ASCEND_CUSTOM_OPP_PATH'],'/one:/two')
+
+    def test_custom_opp_symlink_preserves_vendor_directory_identity(self):
+        from core.dependencies import environment
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);vendor=root/'vendors/custom_prefix_attn'
+            vendor.mkdir(parents=True)
+            install=root/'dependencies/prefix/install';install.mkdir(parents=True)
+            (install/'opp').symlink_to(vendor,target_is_directory=True)
+            config={'work_dir':str(root),'dependencies':{'custom_ops':[{'id':'prefix'}]}}
+            with patch.dict(os.environ,{'ASCEND_CUSTOM_OPP_PATH':'/existing/vendor'}):
+                paths=environment(config)['ASCEND_CUSTOM_OPP_PATH'].split(os.pathsep)
+            self.assertEqual(paths,[str(vendor),'/existing/vendor'])
 
     def test_packed_input_is_one_binary_and_named_shapes_are_checked(self):
         from core.worker import encode
