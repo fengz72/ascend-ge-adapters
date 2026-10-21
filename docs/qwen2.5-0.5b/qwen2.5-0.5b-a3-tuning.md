@@ -421,3 +421,7 @@ SIGTERM中断发生在完成445次预热之后，未形成完整测量统计；�
 - 审计结果：`A3-audit-20261021.json`。
 
 - 本次恢复与默认复验记录包：`qwen-a3-default-validation-20261021.zip`（输入、精度、逐调用JSONL、回归日志与修复源码）。
+
+## A3/A5 profiling补充（2026-10-21）
+
+两端22次运行、12组profiling的逐算子和Prefix Attention实现对比见 [A3/A5 profiling对比](qwen2.5-0.5b-a3-a5-profiling.md)。这批采集使用隔离配置与输入，原推荐配置与输入池未改动。

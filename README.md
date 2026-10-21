@@ -129,3 +129,7 @@ ctest --test-dir runtime/build --output-on-failure
 Qwen A5 的测试范围、趋势图、配置选择、复现命令及完整测试结果统一见 [调优记录](docs/qwen2.5-0.5b/调优记录.md)。
 
 Qwen A3 Ascend910_9382 的最优实测配置、三轮确认、全量精度、复现命令和全部57次尝试见 [A3调优记录](docs/qwen2.5-0.5b/qwen2.5-0.5b-a3-tuning.md)。
+
+Qwen A3/A5的逐算子profiling、Prefix Attention实现差异和全部实验记录见 [A3/A5 profiling对比](docs/qwen2.5-0.5b/qwen2.5-0.5b-a3-a5-profiling.md)。
+
+CANN Eager 自定义算子托管辅流接口的实机核验结果见 [9.1.0 B243](docs/cann-9.1.0-eager-attached-stream-support.md) 与 [9.2.0-beta.2 B086](docs/cann-9.2.0-eager-attached-stream-support.md)。
