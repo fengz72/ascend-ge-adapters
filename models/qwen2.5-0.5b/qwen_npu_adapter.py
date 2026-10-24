@@ -11,37 +11,30 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from transformers.models.qwen2 import modeling_qwen2 as hf
-
-PATCH_TARGETS = (
-    "Qwen2RMSNorm.forward", "apply_rotary_pos_emb", "Qwen2Attention.forward",
-    "Qwen2Model.forward", "Qwen2ForCausalLM.forward",
-)
 
 
 def _params(config):
-    params = config["model"]["params"]
+    params = {"attention": "fia", "operators": "npu", "prune_output": False,
+              **config["model"]["params"]}
     allowed = {"score_token_ids_file", "attention", "operators", "prune_output", "max_seq_len"}
     if set(params) - allowed:
         raise ValueError(f"unknown Qwen model.params: {set(params)-allowed}")
+    if params["attention"] not in ("fia", "prefix_910", "prefix_a5"):
+        raise ValueError(f"unknown attention implementation: {params['attention']}")
+    if params["operators"] != "npu":
+        raise ValueError("Qwen adaptation requires NPU operators; CPU oracles belong in tests")
+    if type(params.get("max_seq_len")) is not int or params["max_seq_len"] < 1:
+        raise ValueError("max_seq_len must be a positive integer")
     return params
 
 
-def _bounds_dtype(config):
-    return np.int32 if _params(config).get("attention", "fia") == "prefix_a5" else np.int64
+def _bounds_dtype(params):
+    return np.int32 if params["attention"] == "prefix_a5" else np.int64
 
 
-def _encode_bounds(lengths, config):
-    bounds = np.cumsum(lengths, dtype=np.int64)
-    dtype = _bounds_dtype(config)
-    if dtype == np.int32 and bounds[-1] > np.iinfo(np.int32).max:
-        raise ValueError("packed bounds exceed int32 range")
-    return bounds.astype(dtype, copy=False)
-
-
-def _tokens(config):
-    path = Path(_params(config)["score_token_ids_file"])
+def _tokens(params):
+    path = Path(params["score_token_ids_file"])
     if not path.is_absolute():
         path = Path(__file__).parent / path
     value = json.loads(path.read_text())
@@ -52,12 +45,10 @@ def _tokens(config):
 
 
 def describe(config):
-    ids, path = _tokens(config)
     params = _params(config)
-    kind = params.get("attention", "fia")
-    if kind not in ("fia", "prefix_910", "prefix_a5"):
-        raise ValueError(f"unknown attention implementation: {kind}")
-    requirements = [] if params.get("operators", "npu") == "torch" or kind == "fia" else ["prefix_attention_a5" if kind == "prefix_a5" else "prefix_attention_910"]
+    ids, path = _tokens(params)
+    kind = params["attention"]
+    requirements = [] if kind == "fia" else ["prefix_attention_a5" if kind == "prefix_a5" else "prefix_attention_910"]
     return {"version": 2, "global_patch": True, "in_place": True,
             "patches": list(PATCH_TARGETS), "required_dependencies": requirements,
             "referenced_files": [path], "reference_params": {"score_token_ids": ids},
@@ -65,50 +56,57 @@ def describe(config):
 
 
 def rms_norm_forward(self, hidden_states):
-    """Patch Qwen2RMSNorm.forward: select the fused NPU RMSNorm."""
-    if self._ge_npu:
-        import torch_npu
-        return torch_npu.npu_rms_norm(hidden_states, self.weight, self.variance_epsilon)[0]
-    dtype = hidden_states.dtype
-    x = hidden_states.float()
-    return self.weight * (x * torch.rsqrt(x.square().mean(-1, keepdim=True) + self.variance_epsilon)).to(dtype)
+    import torch_npu
+    return torch_npu.npu_rms_norm(hidden_states, self.weight, self.variance_epsilon)[0]
 
 
 def rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
-    """Patch HF RoPE for packed TND inputs; CPU path is a semantic oracle."""
-    if q.device.type == "npu":
+    import torch_npu
+    return torch_npu.npu_apply_rotary_pos_emb(q, k, cos, sin, layout="TND", rotary_mode="half")
+
+
+def _init_attention(model, kind, family):
+    """Resolve the platform operator once before patching/exporting the model."""
+    weight = next(model.parameters())
+    if weight.device.type != "npu":
+        raise ValueError("move the original model to the selected NPU before adapt")
+    if kind == "prefix_910" and family != "a3":
+        raise ValueError("this prefix_910 recipe requires the configured A3 target")
+    cfg = model.config
+    heads, kv_heads = cfg.num_attention_heads, cfg.num_key_value_heads
+    if kind == "prefix_a5":
+        dims = (heads, kv_heads, model.model.layers[0].self_attn.head_dim)
+        if weight.dtype != torch.float16:
+            raise ValueError("current A5 prefix delivery supports float16 only")
+        if dims != (14, 2, 64):
+            raise ValueError(f"current A5 kernel requires (14,2,64), got {dims}")
+        if family != "a5":
+            raise ValueError("prefix_a5 requires an A5 target")
+        import prefix_attn_torch
+        op = torch.ops.ascendc_ops.prefix_attention
+        return lambda q, k, v, bounds, mask, scale: op(q, k, v, bounds, scale)
+    if kind == "prefix_910":
+        import npu_prefix_infer_attention_score
+        prefix_op = torch.ops.npu_ops_transformer.npu_prefix_infer_attention_score.tensor
+    else:
         import torch_npu
-        return torch_npu.npu_apply_rotary_pos_emb(q, k, cos, sin, layout="TND", rotary_mode="half")
-    def rotate(x):
-        a, b = x.chunk(2, dim=-1)
-        return torch.cat((-b, a), dim=-1)
-    return q * cos + rotate(q) * sin, k * cos + rotate(k) * sin
+        from torchair.ops import npu_fused_infer_attention_score as graph_fia
+        eager_fia = torch_npu.npu_fused_infer_attention_score
 
-
-def _torch_attention(q, k, v, bounds, prefix):
-    # CPU semantic oracle for adapter isolation tests; not the NPU export path.
-    ends = bounds.tolist()
-    outputs, start = [], 0
-    prefix_end = ends[0] if prefix else 0
-    for index, end in enumerate(ends):
-        query = q[start:end].transpose(0, 1)
-        keys, values = k[start:end], v[start:end]
-        shared = prefix_end if prefix and index > 0 else 0
-        if shared:
-            keys = torch.cat((k[:shared], keys), dim=0)
-            values = torch.cat((v[:shared], values), dim=0)
-        repeat = q.shape[1] // k.shape[1]
-        keys = keys.repeat_interleave(repeat, dim=1).transpose(0, 1)
-        values = values.repeat_interleave(repeat, dim=1).transpose(0, 1)
-        causal = torch.arange(keys.shape[1], device=q.device)[None, :] <= (torch.arange(end-start, device=q.device)[:, None] + shared)
-        outputs.append(F.scaled_dot_product_attention(query, keys, values, attn_mask=causal).transpose(0, 1))
-        start = end
-    return torch.cat(outputs, dim=0)
+    def attention(q, k, v, bounds, mask, scale):
+        arguments = dict(num_heads=heads, scale=scale, num_key_value_heads=kv_heads,
+                         actual_seq_lengths=bounds, actual_seq_lengths_kv=bounds,
+                         atten_mask=mask, sparse_mode=2)
+        if kind == "prefix_910":
+            return prefix_op(q, k, v, pre_tokens=2147483647, next_tokens=0, **arguments)
+        op = graph_fia if torch.compiler.is_compiling() else eager_fia
+        return op(q, k, v, input_layout="TND", **arguments)[0]
+    return attention
 
 
 def attention_forward(self, hidden_states, position_embeddings, attention_mask,
                       actual_seq_lengths, **kwargs):
-    """Patch Qwen2Attention.forward; keep the HF Q/K/V/O projection modules."""
+    """Keep the HF projections and call the operator bound during adaptation."""
     heads, kv_heads = self.config.num_attention_heads, self.config.num_key_value_heads
     q = self.q_proj(hidden_states).reshape(-1, heads, self.head_dim)
     k = self.k_proj(hidden_states).reshape(-1, kv_heads, self.head_dim)
@@ -116,20 +114,7 @@ def attention_forward(self, hidden_states, position_embeddings, attention_mask,
     q, k = hf.apply_rotary_pos_emb(q, k, *position_embeddings)
     q = q.reshape(-1, heads, self.head_dim)
     k = k.reshape(-1, kv_heads, self.head_dim)
-    bounds, kind = actual_seq_lengths, self._ge_attention
-    if self._ge_operators == "torch":
-        out = _torch_attention(q, k, v, bounds, kind != "fia")
-    elif kind == "prefix_a5":
-        out = self._ge_prefix_op(q, k, v, bounds, self.scaling)
-    else:
-        arguments = dict(num_heads=heads, scale=self.scaling,
-                         actual_seq_lengths=bounds, actual_seq_lengths_kv=bounds,
-                         num_key_value_heads=kv_heads, atten_mask=attention_mask, sparse_mode=2)
-        if kind == "prefix_910":
-            out = self._ge_prefix_op(q, k, v, pre_tokens=2147483647, next_tokens=0, **arguments)
-        else:
-            op = self._ge_graph_fia if torch.compiler.is_compiling() else self._ge_eager_fia
-            out, _ = op(q, k, v, input_layout="TND", **arguments)
+    out = self._ge_attention_op(q, k, v, actual_seq_lengths, attention_mask, self.scaling)
     return self.o_proj(out.reshape(-1, self.config.hidden_size).contiguous()), None
 
 
@@ -154,13 +139,21 @@ def score_forward(self, input_ids, position_ids, actual_seq_lengths):
 packed_model_forward._ge_qwen_patch = True
 
 
+PATCHES = (
+    (hf.Qwen2RMSNorm, "forward", rms_norm_forward),
+    (hf, "apply_rotary_pos_emb", rotary_pos_emb),
+    (hf.Qwen2Attention, "forward", attention_forward),
+    (hf.Qwen2Model, "forward", packed_model_forward),
+    (hf.Qwen2ForCausalLM, "forward", score_forward),
+)
+PATCH_TARGETS = tuple(name if owner is hf else f"{owner.__name__}.{name}"
+                      for owner, name, _ in PATCHES)
+
+
 def apply_patches():
-    """The complete patch list. Reapplying assigns methods without wrapping them."""
-    hf.Qwen2RMSNorm.forward = rms_norm_forward
-    hf.apply_rotary_pos_emb = rotary_pos_emb
-    hf.Qwen2Attention.forward = attention_forward
-    hf.Qwen2Model.forward = packed_model_forward
-    hf.Qwen2ForCausalLM.forward = score_forward
+    """Assign methods from the same table used to describe the patches."""
+    for owner, name, implementation in PATCHES:
+        setattr(owner, name, implementation)
 
 
 def _require_clean_reference():
@@ -181,51 +174,14 @@ def adapt(raw_model, config):
     rope = getattr(cfg, "rope_parameters", None) or getattr(cfg, "rope_scaling", None) or {}
     if rope.get("rope_type", rope.get("type", "default")) != "default":
         raise ValueError("dynamic/scaled RoPE requires a separate validated recipe")
-    ids, _ = _tokens(config)
+    report = describe(config)
+    ids = report["reference_params"]["score_token_ids"]
     if max(ids) >= raw_model.lm_head.out_features:
         raise ValueError("score token outside model vocabulary")
-    if params.get("operators", "npu") not in ("torch", "npu"):
-        raise ValueError("operators must be torch or npu")
-    kind = params.get("attention", "fia")
-    describe(config)
-    if type(params.get("max_seq_len")) is not int or params["max_seq_len"] < 1:
-        raise ValueError("max_seq_len must be a positive integer")
-    if params.get("operators", "npu") == "npu":
-        if next(raw_model.parameters()).device.type != "npu":
-            raise ValueError("move the original model to the selected NPU before adapt")
-        if kind == "prefix_910" and config["target"]["family"] != "a3":
-            raise ValueError("this prefix_910 recipe requires the configured A3 target")
-    if params.get("operators", "npu") == "npu" and kind == "prefix_a5":
-        dims = (cfg.num_attention_heads, cfg.num_key_value_heads, raw_model.model.layers[0].self_attn.head_dim)
-        if next(raw_model.parameters()).dtype != torch.float16:
-            raise ValueError("current A5 prefix delivery supports float16 only")
-        if dims != (14, 2, 64):
-            raise ValueError(f"current A5 kernel requires (14,2,64), got {dims}")
-        if config["target"]["family"] != "a5":
-            raise ValueError("prefix_a5 requires an A5 target")
-    operators = params.get("operators", "npu")
-    if operators == "npu":
-        import torch_npu
-        if kind == "fia":
-            from torchair.ops import npu_fused_infer_attention_score
-        elif kind == "prefix_a5":
-            import prefix_attn_torch
-        else:
-            import npu_prefix_infer_attention_score
-    for norm in [raw_model.model.norm] + [norm for layer in raw_model.model.layers
-                                          for norm in (layer.input_layernorm, layer.post_attention_layernorm)]:
-        norm._ge_npu = operators == "npu"
+    kind = params["attention"]
+    attention_op = _init_attention(raw_model, kind, config["target"]["family"])
     for layer in raw_model.model.layers:
-        attention = layer.self_attn
-        attention._ge_attention, attention._ge_operators = kind, operators
-        if operators == "npu":
-            if kind == "fia":
-                attention._ge_graph_fia = npu_fused_infer_attention_score
-                attention._ge_eager_fia = torch_npu.npu_fused_infer_attention_score
-            elif kind == "prefix_a5":
-                attention._ge_prefix_op = torch.ops.ascendc_ops.prefix_attention
-            else:
-                attention._ge_prefix_op = torch.ops.npu_ops_transformer.npu_prefix_infer_attention_score.tensor
+        layer.self_attn._ge_attention_op = attention_op
     model, rope = raw_model.model, raw_model.model.rotary_emb
     model._ge_attention = kind
     positions = torch.arange(params["max_seq_len"], device=rope.inv_freq.device).float()
@@ -235,10 +191,10 @@ def adapt(raw_model, config):
     model.register_buffer("_ge_cos", (frequencies.cos() * rope.attention_scaling).to(weight), persistent=False)
     model.register_buffer("_ge_sin", (frequencies.sin() * rope.attention_scaling).to(weight), persistent=False)
     # sparse_mode=2 uses a fixed compressed causal template on NPU.
-    mask_size = 2048 if operators == "npu" else params["max_seq_len"]
+    mask_size = 2048
     model.register_buffer("_ge_mask", torch.triu(torch.ones(mask_size, mask_size, dtype=torch.bool,
                                                            device=weight.device), diagonal=1), persistent=False)
-    if params.get("prune_output", False):
+    if params["prune_output"]:
         head = raw_model.lm_head
         index = torch.tensor(ids, device=head.weight.device)
         head.weight = nn.Parameter(head.weight.index_select(0, index).clone(), requires_grad=False)
@@ -248,91 +204,114 @@ def adapt(raw_model, config):
     raw_model.requires_grad_(False).eval()
     apply_patches()
     raw_model._ge_qwen_adapted = True
-    return raw_model, {**describe(config), "weight_storage": "original HF modules; selected head copied", "attention": kind}
+    return raw_model, {**report, "weight_storage": "original HF modules; selected head copied", "attention": kind}
 
 
-class Handle:
-    def __init__(self, model, config, candidate):
-        self.model, self.config, self.candidate = model, config, candidate
-        self.device = next(model.parameters()).device
-        self.ids, _ = _tokens(config)
-        self.prefix = config["model"]["params"].get("attention", "fia") != "fia"
+def _encode_inputs(case, params, padded=False):
+    """Shared NumPy encoding for reference, export and AIR execution."""
+    prefix, requests = case["payload"]["prefix"], case["payload"]["requests"]
+    if not requests or any(not request["tokens"] for request in requests):
+        raise ValueError("every Qwen request needs its own nonempty token sequence")
+    if case["samples"] != len(requests):
+        raise ValueError("business sample count differs from request count")
+    if len({request["id"] for request in requests}) != len(requests):
+        raise ValueError("Qwen request IDs must be unique within a case")
+    rows = [prefix + request["tokens"] for request in requests]
+    if max(map(len, rows)) > params["max_seq_len"]:
+        raise ValueError("request exceeds max_seq_len")
+    if padded:
+        width = max(map(len, rows))
+        return {"input_ids": np.asarray([row + [0]*(width-len(row)) for row in rows], dtype=np.int64),
+                "attention_mask": np.asarray([[1]*len(row) + [0]*(width-len(row)) for row in rows], dtype=np.int64),
+                "position_ids": np.asarray([list(range(len(row))) + [0]*(width-len(row)) for row in rows], dtype=np.int64)}
+    if params["attention"] == "fia":
+        segments, positions = rows, [list(range(len(row))) for row in rows]
+    else:
+        if not prefix:
+            raise ValueError("prefix recipe needs a nonempty prefix")
+        segments = [prefix] + [request["tokens"] for request in requests]
+        positions = [list(range(len(prefix)))] + [list(range(len(prefix), len(prefix)+len(row))) for row in segments[1:]]
+    bounds = np.cumsum([len(row) for row in segments], dtype=np.int64)
+    dtype = _bounds_dtype(params)
+    if dtype == np.int32 and bounds[-1] > np.iinfo(np.int32).max:
+        raise ValueError("packed bounds exceed int32 range")
+    return {"input_ids": np.asarray(sum(segments, []), dtype=np.int64),
+            "position_ids": np.asarray(sum(positions, []), dtype=np.int64),
+            "actual_seq_lengths": bounds.astype(dtype, copy=False)}
+
+
+class RuntimeHandle:
+    """Array-only execution recipe: no weights, NPU context or HF patch needed."""
+    def __init__(self, config, io, report=None):
+        self.params, self.io = _params(config), io
+        self.report = report if report is not None else describe(config)
+        self.ids = self.report["reference_params"]["score_token_ids"]
 
     def encode(self, case):
-        prefix, requests = case["payload"]["prefix"], case["payload"]["requests"]
-        if not requests or any(not request["tokens"] for request in requests):
-            raise ValueError("every Qwen request needs its own nonempty token sequence")
-        ids = [request["id"] for request in requests]
-        if len(set(ids)) != len(ids):
-            raise ValueError("Qwen request IDs must be unique within a case")
-        rows = [prefix + request["tokens"] for request in requests]
-        if case["samples"] != len(requests):
-            raise ValueError("business sample count differs from request count")
-        if not rows or any(not row for row in rows):
-            raise ValueError("empty Qwen request")
-        if max(map(len, rows)) > self.config["model"]["params"]["max_seq_len"]:
-            raise ValueError("request exceeds max_seq_len")
-        if not self.candidate:
-            width = max(map(len, rows))
-            ids = [row + [0] * (width-len(row)) for row in rows]
-            mask = [[1]*len(row) + [0]*(width-len(row)) for row in rows]
-            pos = [list(range(len(row))) + [0]*(width-len(row)) for row in rows]
-            return {key: torch.tensor(value, dtype=torch.int64, device=self.device) for key, value in [("input_ids", ids), ("attention_mask", mask), ("position_ids", pos)]}
-        if self.prefix:
-            if not prefix:
-                raise ValueError("prefix recipe needs a nonempty prefix")
-            segments = [prefix] + [request["tokens"] for request in requests]
-            positions = [list(range(len(prefix)))] + [list(range(len(prefix), len(prefix)+len(request["tokens"]))) for request in requests]
-        else:
-            segments, positions = rows, [list(range(len(row))) for row in rows]
-        values = {"input_ids": sum(segments, []), "position_ids": sum(positions, []), "actual_seq_lengths": _encode_bounds([len(x) for x in segments], self.config)}
-        if min(values["input_ids"]) < 0 or max(values["input_ids"]) >= self.model.model.embed_tokens.num_embeddings:
+        return _encode_inputs(case, self.params)
+
+    def decode(self, outputs, case):
+        scores = outputs["scores"]
+        if not self.params["prune_output"]:
+            scores = scores[..., self.ids]
+        if hasattr(scores, "detach"):
+            scores = scores.detach().float().cpu().numpy()
+        return {"outputs": {"scores": scores},
+                "alignment": {"rows": [r["id"] for r in case["payload"]["requests"]], "columns": self.ids}}
+
+    def output_capacities(self, case):
+        node = self.io["outputs"][0]
+        return {"scores": case["samples"] * node["shape"][-1] * np.dtype(node["dtype"]).itemsize}
+
+
+class Handle(RuntimeHandle):
+    def __init__(self, model, config, candidate, report=None):
+        head = model.lm_head.weight
+        output = {"name": "scores", "dtype": str(head.dtype).removeprefix("torch."),
+                  "shape": [-1, head.shape[0]], "dynamic_dims": [0]}
+        super().__init__(config, {"schema": "ge-io/1", "outputs": [output]}, report)
+        self.model, self.candidate = model, candidate
+        self.device = next(model.parameters()).device
+
+    def encode(self, case):
+        values = _encode_inputs(case, self.params, padded=not self.candidate)
+        if self.candidate and (values["input_ids"].min() < 0 or
+                               values["input_ids"].max() >= self.model.model.embed_tokens.num_embeddings):
             raise ValueError("input token outside vocabulary")
-        return {name: torch.tensor(value, dtype=(torch.int32 if name == "actual_seq_lengths"
-                                                  and _bounds_dtype(self.config) == np.int32 else torch.int64),
-                                   device=self.device) for name, value in values.items()}
+        return {name: torch.tensor(value, device=self.device) for name, value in values.items()}
 
     def run(self, inputs):
         with torch.inference_mode():
             if not self.candidate:
                 _require_clean_reference()
-                # Ask the unmodified HF API for the positions needed by this
-                # task. Avoid materializing batch*seq*vocab logits for the
-                # batch=10 pool; all requested vocabulary logits remain intact.
+                # Select only needed positions without materializing batch*seq*vocab logits.
                 positions = (inputs["attention_mask"].sum(dim=1) - 1).unique(sorted=True)
                 return {"logits": self.model(**inputs, use_cache=False, logits_to_keep=positions).logits,
                         "positions": positions.detach().cpu().tolist()}
             return {"scores": self.model(**inputs)}
 
     def decode(self, outputs, case):
-        requests, prefix = case["payload"]["requests"], case["payload"]["prefix"]
         if self.candidate:
-            scores = outputs["scores"]
-            if not self.config["model"]["params"].get("prune_output", False):
-                scores = scores[..., self.ids]
-        else:
-            logits = outputs["logits"]
-            if hasattr(logits, "detach"):
-                logits = logits.detach().float().cpu().numpy()
-            positions = {value: index for index, value in enumerate(outputs["positions"])}
-            scores = np.stack([logits[i, positions[len(prefix)+len(r["tokens"])-1], self.ids] for i, r in enumerate(requests)])
-        if hasattr(scores, "detach"):
-            scores = scores.detach().float().cpu().numpy()
-        return {"outputs": {"scores": scores}, "alignment": {"rows": [r["id"] for r in requests], "columns": self.ids}}
+            return super().decode(outputs, case)
+        logits = outputs["logits"]
+        if hasattr(logits, "detach"):
+            logits = logits.detach().float().cpu().numpy()
+        requests, prefix = case["payload"]["requests"], case["payload"]["prefix"]
+        positions = {value: index for index, value in enumerate(outputs["positions"])}
+        scores = np.stack([logits[i, positions[len(prefix)+len(r["tokens"])-1], self.ids] for i, r in enumerate(requests)])
+        return {"outputs": {"scores": scores},
+                "alignment": {"rows": [r["id"] for r in requests], "columns": self.ids}}
 
     def output_capacities(self, case):
-        width = self.model.lm_head.weight.shape[0]
-        return {"scores": len(case["payload"]["requests"])*width*self.model.lm_head.weight.element_size()}
+        head = self.model.lm_head.weight
+        return {"scores": case["samples"] * head.shape[0] * head.element_size()}
 
     def export_spec(self):
-        if self.config["model"]["params"].get("operators", "npu") != "npu":
-            raise ValueError("Qwen torch operator path is a CPU semantic test oracle, not an NPU exporter")
-        inputs = [{"name": name, "dtype": (np.dtype(_bounds_dtype(self.config)).name
+        inputs = [{"name": name, "dtype": (np.dtype(_bounds_dtype(self.params)).name
                                           if name == "actual_seq_lengths" else "int64"),
                    "shape": [-1], "dynamic_dims": [0]}
                   for name in ("input_ids", "position_ids", "actual_seq_lengths")]
-        width = self.model.lm_head.weight.shape[0]
-        return {"format": "torch", "model": self.model, "io": {"schema": "ge-io/1", "inputs": inputs, "outputs": [{"name": "scores", "dtype": str(self.model.lm_head.weight.dtype).removeprefix("torch."), "shape": [-1, width], "dynamic_dims": [0]}]}}
+        return {"format": "torch", "model": self.model, "io": {**self.io, "inputs": inputs}}
 
 
 def prepare_reference(source, config):
@@ -342,43 +321,7 @@ def prepare_reference(source, config):
 
 def prepare_candidate(source, config):
     model, report = adapt(source, config)
-    result = Handle(model, config, True)
-    result.report = report
-    return result
-
-
-class RuntimeHandle:
-    """Array-only execution recipe: no weights, NPU context or HF patch needed."""
-    def __init__(self, config, io):
-        self.config, self.io = config, io
-        self.ids, _ = _tokens(config)
-
-    def encode(self, case):
-        prefix, requests = case['payload']['prefix'], case['payload']['requests']
-        if len(requests) != case['samples'] or not requests or any(not r['tokens'] for r in requests):
-            raise ValueError('invalid Qwen case request count/tokens')
-        if len({r['id'] for r in requests}) != len(requests):
-            raise ValueError('duplicate Qwen request IDs')
-        if _params(self.config).get('attention', 'fia') == 'fia':
-            segments = [prefix + r['tokens'] for r in requests]
-            positions = [list(range(len(row))) for row in segments]
-        else:
-            if not prefix:raise ValueError('prefix recipe needs a nonempty prefix')
-            segments = [prefix] + [r['tokens'] for r in requests]
-            positions = [list(range(len(prefix)))] + [list(range(len(prefix), len(prefix)+len(row))) for row in segments[1:]]
-        return {'input_ids': np.asarray(sum(segments, []), dtype=np.int64),
-                'position_ids': np.asarray(sum(positions, []), dtype=np.int64),
-                'actual_seq_lengths': _encode_bounds([len(row) for row in segments], self.config)}
-
-    def decode(self, outputs, case):
-        scores = outputs['scores']
-        if not _params(self.config).get('prune_output', False):scores = scores[..., self.ids]
-        return {'outputs': {'scores': scores},
-                'alignment': {'rows': [r['id'] for r in case['payload']['requests']], 'columns': self.ids}}
-
-    def output_capacities(self, case):
-        node = self.io['outputs'][0]
-        return {'scores': case['samples'] * node['shape'][-1] * np.dtype(node['dtype']).itemsize}
+    return Handle(model, config, True, report)
 
 
 def prepare_runtime(config, io):

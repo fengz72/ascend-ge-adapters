@@ -3,13 +3,49 @@ import importlib.util
 import shutil
 import tempfile
 import unittest
+from unittest import mock
+from types import SimpleNamespace
+import sys
 from pathlib import Path
 import numpy as np
 import torch
+import torch.nn.functional as F
 from transformers import Qwen2Config, Qwen2ForCausalLM
 from transformers.models.qwen2 import modeling_qwen2 as hf
 
 PATH = Path('models/qwen2.5-0.5b/qwen_npu_adapter.py').resolve()
+
+
+def cpu_rms_norm(self, hidden_states):
+    x = hidden_states.float()
+    return self.weight * (x * torch.rsqrt(x.square().mean(-1, keepdim=True) + self.variance_epsilon)).to(hidden_states.dtype)
+
+
+def cpu_rope(q, k, cos, sin, unsqueeze_dim=1):
+    def rotate(x):
+        a, b = x.chunk(2, dim=-1)
+        return torch.cat((-b, a), dim=-1)
+    return q * cos + rotate(q) * sin, k * cos + rotate(k) * sin
+
+
+def cpu_attention(q, k, v, bounds, mask, scale, *, prefix):
+    ends = bounds.tolist()
+    outputs, start = [], 0
+    prefix_end = ends[0] if prefix else 0
+    for index, end in enumerate(ends):
+        query = q[start:end].transpose(0, 1)
+        keys, values = k[start:end], v[start:end]
+        shared = prefix_end if prefix and index > 0 else 0
+        if shared:
+            keys = torch.cat((k[:shared], keys), dim=0)
+            values = torch.cat((v[:shared], values), dim=0)
+        repeat = q.shape[1] // k.shape[1]
+        keys = keys.repeat_interleave(repeat, dim=1).transpose(0, 1)
+        values = values.repeat_interleave(repeat, dim=1).transpose(0, 1)
+        causal = torch.arange(keys.shape[1])[None, :] <= (torch.arange(end-start)[:, None] + shared)
+        outputs.append(F.scaled_dot_product_attention(query, keys, values, attn_mask=causal, scale=scale).transpose(0, 1))
+        start = end
+    return torch.cat(outputs, dim=0)
 
 
 class QwenPatches(unittest.TestCase):
@@ -22,13 +58,15 @@ class QwenPatches(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('customer_qwen', PATH)
         self.adapter = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.adapter)
+        self.init_attention = self.adapter._init_attention
+        self._use_cpu_operators(self.adapter)
         with torch.random.fork_rng():
             torch.manual_seed(4)
             self.raw = Qwen2ForCausalLM(Qwen2Config(vocab_size=64, hidden_size=32,
                 intermediate_size=64, num_hidden_layers=2, num_attention_heads=4,
                 num_key_value_heads=2, max_position_embeddings=64)).eval()
         self.config = {'model': {'params': {'score_token_ids_file': 'config/target_tokens.json',
-                                   'operators': 'torch', 'attention': 'fia',
+                                   'operators': 'npu', 'attention': 'fia',
                                    'prune_output': True, 'max_seq_len': 64}},
                        'target': {'family': 'a3'}}
         generator_spec = importlib.util.spec_from_file_location('qwen_case_generator', PATH.parent/'generate_cases.py')
@@ -45,6 +83,16 @@ class QwenPatches(unittest.TestCase):
         self.cases[1]['samples'] = 3
         # Generator defaults must not restrict external/actual case batches.
         self.config['data'] = {'params': {'batch_size': 10}}
+
+    def _use_cpu_operators(self, module):
+        replacements = {module.rms_norm_forward: cpu_rms_norm, module.rotary_pos_emb: cpu_rope}
+        patches = tuple((owner, name, replacements.get(fn, fn)) for owner, name, fn in module.PATCHES)
+        table = mock.patch.object(module, 'PATCHES', patches)
+        initializer = mock.patch.object(module, '_init_attention', side_effect=lambda model, kind, family:
+            lambda q, k, v, bounds, mask, scale: cpu_attention(q, k, v, bounds, mask, scale, prefix=kind != 'fia'))
+        for patch in (table, initializer):
+            patch.start()
+            self.addCleanup(patch.stop)
 
     def test_patches_reuse_hf_modules_and_match_original_golden(self):
         reference = self.adapter.prepare_reference(self.raw, self.config)
@@ -148,6 +196,8 @@ class QwenPatches(unittest.TestCase):
         self.adapter.apply_patches()
         self.adapter.apply_patches()
         self.assertIs(hf.Qwen2Attention.forward, forward)
+        for owner, name, implementation in self.adapter.PATCHES:
+            self.assertIs(getattr(owner, name), implementation)
         with self.assertRaisesRegex(ValueError, 'already adapted'):
             self.adapter.adapt(model, self.config)
 
@@ -161,6 +211,74 @@ class QwenPatches(unittest.TestCase):
                 for name, value in model_handle.encode(case).items():
                     np.testing.assert_array_equal(runtime.encode(case)[name], value.numpy())
                 self.assertEqual(runtime.output_capacities(case)['scores'], case['samples']*8*2)
+                dtype = np.int32 if kind == 'prefix_a5' else np.int64
+                self.assertEqual(runtime.encode(case)['actual_seq_lengths'].dtype, np.dtype(dtype))
+                self.assertEqual(model_handle.export_spec()['io']['inputs'][2]['dtype'], np.dtype(dtype).name)
+
+    def test_model_and_runtime_reject_the_same_invalid_cases(self):
+        config = copy.deepcopy(self.config)
+        config['model']['params']['attention'] = 'prefix_a5'
+        model = self.adapter.Handle(self.raw, config, True)
+        runtime = self.adapter.prepare_runtime(config, model.export_spec()['io'])
+        for failure in ('empty_prefix', 'empty_request', 'sample_count', 'duplicate_id', 'max_seq_len'):
+            case = copy.deepcopy(self.cases[0])
+            if failure == 'empty_prefix': case['payload']['prefix'] = []
+            elif failure == 'empty_request': case['payload']['requests'][0]['tokens'] = []
+            elif failure == 'sample_count': case['samples'] += 1
+            elif failure == 'duplicate_id': case['payload']['requests'][1]['id'] = case['payload']['requests'][0]['id']
+            else: case['payload']['requests'][0]['tokens'] = [1]*65
+            for handle in (model, runtime):
+                with self.subTest(failure=failure, handle=type(handle).__name__), self.assertRaises(ValueError):
+                    handle.encode(case)
+
+    def test_model_and_runtime_decode_selected_scores_identically(self):
+        for prune in (False, True):
+            config = copy.deepcopy(self.config)
+            config['model']['params']['prune_output'] = prune
+            model = self.adapter.Handle(self.raw, config, True)
+            runtime = self.adapter.prepare_runtime(config, model.export_spec()['io'])
+            for case in self.cases:
+                width = len(model.ids) if prune else self.raw.config.vocab_size
+                scores = np.arange(case['samples']*width, dtype=np.float32).reshape(case['samples'], width)
+                expected = scores if prune else scores[:, model.ids]
+                for handle, value in ((runtime, scores), (model, torch.tensor(scores))):
+                    result = handle.decode({'scores': value}, case)
+                    np.testing.assert_array_equal(result['outputs']['scores'], expected)
+                    self.assertEqual(result['alignment']['rows'], [r['id'] for r in case['payload']['requests']])
+                    self.assertEqual(result['alignment']['columns'], model.ids)
+
+    def test_npu_attention_binding_preserves_platform_call_contracts(self):
+        weight = SimpleNamespace(device=SimpleNamespace(type='npu'), dtype=torch.float16)
+        model = SimpleNamespace(parameters=lambda: iter([weight]),
+            config=SimpleNamespace(num_attention_heads=14, num_key_value_heads=2),
+            model=SimpleNamespace(layers=[SimpleNamespace(self_attn=SimpleNamespace(head_dim=64))]))
+        q, k, v, mask = object(), object(), object(), object()
+        a3_op, a5_op = mock.Mock(), mock.Mock()
+        eager, graph = mock.Mock(return_value=('eager', None)), mock.Mock(return_value=('graph', None))
+        modules = {'prefix_attn_torch': SimpleNamespace(), 'npu_prefix_infer_attention_score': SimpleNamespace(),
+                   'torch_npu': SimpleNamespace(npu_fused_infer_attention_score=eager),
+                   'torchair.ops': SimpleNamespace(npu_fused_infer_attention_score=graph)}
+        with mock.patch.dict(sys.modules, modules), \
+             mock.patch.object(torch.ops.ascendc_ops, 'prefix_attention', a5_op, create=True), \
+             mock.patch.object(torch.ops.npu_ops_transformer, 'npu_prefix_infer_attention_score',
+                               SimpleNamespace(tensor=a3_op), create=True):
+            for kind, family in [('prefix_a5', 'a5'), ('prefix_910', 'a3'), ('fia', 'a5')]:
+                bounds = torch.tensor([3, 10], dtype=torch.int32 if family == 'a5' and kind != 'fia' else torch.int64)
+                op = self.init_attention(model, kind, family)
+                if kind == 'prefix_a5':
+                    self.assertIs(op(q, k, v, bounds, mask, .125), a5_op.return_value)
+                    a5_op.assert_called_once_with(q, k, v, bounds, .125)
+                    continue
+                arguments = dict(num_heads=14, num_key_value_heads=2, scale=.125,
+                    actual_seq_lengths=bounds, actual_seq_lengths_kv=bounds, atten_mask=mask, sparse_mode=2)
+                if kind == 'prefix_910':
+                    self.assertIs(op(q, k, v, bounds, mask, .125), a3_op.return_value)
+                    a3_op.assert_called_once_with(q, k, v, pre_tokens=2147483647, next_tokens=0, **arguments)
+                else:
+                    for compiling, target, result in [(False, eager, 'eager'), (True, graph, 'graph')]:
+                        with mock.patch('torch.compiler.is_compiling', return_value=compiling):
+                            self.assertEqual(op(q, k, v, bounds, mask, .125), result)
+                        target.assert_called_once_with(q, k, v, input_layout='TND', **arguments)
 
     def test_standalone_patch_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -171,6 +289,7 @@ class QwenPatches(unittest.TestCase):
             spec = importlib.util.spec_from_file_location('delivered_adapter', path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
+            self._use_cpu_operators(module)
             model, report = module.adapt(self.raw, self.config)
             self.assertIs(model, self.raw)
             self.assertTrue(report['global_patch'])

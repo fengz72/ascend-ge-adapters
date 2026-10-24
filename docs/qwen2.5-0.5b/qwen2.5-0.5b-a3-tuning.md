@@ -1,8 +1,10 @@
 # Qwen2.5-0.5B Prefix A3 调优记录
 
+> 本文保留各日期的 A3 调优与复测结果；推荐值、环境与命令均属于对应实验。当前配置与后续分析入口见[文档索引](README.md)。
+
 2026-10-20至2026-10-21，在 99 机器的 `hejun-cann9-qwen25` 容器、逻辑设备1、Ascend910_9382（物理24 AIC / 48 AIV）上，已测范围内推荐 **限核 8|16、batch=16、并发实例=5**。三轮各10000次模型调用的业务QPS中位数为 **2172.093**，最差轮整batch P99为 **41.266ms**，低于60ms；三轮完成测量均零执行错误。
 
-参数已写入 `models/qwen2.5-0.5b/config/model.yaml` 的 `chips.Ascend910_9382`，原公共参数与A5参数保留。该芯片配置自动选中 `prefix_910` 与 `weight_nz`，使用FP16和 `force_fp16`。
+上述参数现统一维护在 `models/qwen2.5-0.5b/config/model.yaml` 的 `platforms.a3`，原公共参数与A5参数保留。该平台配置自动选中 `prefix_910` 与 `weight_nz`，使用FP16和 `force_fp16`。
 
 ## 环境与测量口径
 

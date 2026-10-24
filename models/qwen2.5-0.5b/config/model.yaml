@@ -44,12 +44,11 @@ verification:
       relative_l2_max: 0.05
 work_dir: work/qwen2.5-0.5b
 benchmark:
-  instances: 4
   warmup: 10
   iterations: 1000
   seed: 42
 
-# Per-platform defaults are applied automatically from target.family.
+# Platform settings apply on top of the common settings via target.family.
 platforms:
   a3:
     # A3 Prefix 与 GE pass 已在 Ascend910_9382 验证；其他 A3 SoC 待实测。
@@ -58,7 +57,9 @@ platforms:
         attention: prefix_910
     build:
       options:
-        aicore_num: "12|24"
+        aicore_num: "8|16"
+    benchmark:
+      instances: 5
     dependencies:
       custom_ops:
         - id: prefix_attention_910
@@ -81,6 +82,8 @@ platforms:
     build:
       options:
         aicore_num: "16|32"
+    benchmark:
+      instances: 3
     dependencies:
       custom_ops:
         - id: prefix_attention_a5
@@ -95,25 +98,3 @@ platforms:
           revision: fba9f846cc31792fb155cb8c5653b06a74ea4137
           build_script: models/qwen2.5-0.5b/scripts/build_nz_pass.sh
       parser_plugins: []
-
-# Measured defaults for the exact A3/A5 SoCs; see the tuning records.
-chips:
-  Ascend910_9382:
-    build:
-      options:
-        aicore_num: 8|16
-    data:
-      params:
-        batch_size: 16
-    benchmark:
-      instances: 5
-  # A5 NZ 推荐最优配置：16|32、batch16、3实例，依据当前已完成的扫描结果。
-  Ascend950PR_958b:
-    build:
-      options:
-        aicore_num: 16|32
-    data:
-      params:
-        batch_size: 16
-    benchmark:
-      instances: 3

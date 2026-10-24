@@ -101,7 +101,7 @@ baseline 和 infer 分别在 work/<模型名> 保存 golden.npz、outputs.npz，
 
 infer、bench 或 run 可传 --profiling，也可使用 YAML 的 observability.profiling。采集复用当前图，普通 bench 的随机负载也支持采集；性能结果会标明 profiling_enabled，带采集开销的结果单独看待。GE Session dump 尚不支持。
 
---device 指定本次设备；按精确 SoC 选择模型 YAML 的 platforms 和可选 chips。离线步骤用 --target 指定精确 SoC。精确芯片默认配置由 YAML 的 chips 定义：Ascend910_9382 使用8|16、batch16、5实例；Ascend950PR_958b 的NZ推荐最优配置为16|32、batch16、3实例。核预算不表示独占绑核。A3 和 A5 默认均启用权重 NZ Pass。依赖脚本接收 GE_SRC_DIR、GE_BUILD_DIR、GE_INSTALL_DIR、GE_PYTHON；依赖交付件保存在 work 下，NZ Pass 同时安装到 ${ASCEND_OPP_PATH}/vendors/custom_nz_pass/custom_fusion_passes/，由 GE 自动加载。
+--device 指定本次设备；识别精确 SoC 后，按平台选择模型 YAML 的 platforms。离线步骤用 --target 指定精确 SoC。核数预算、batch 和实例数统一由模型 YAML 的公共段及 platforms 定义，实测依据见[模型文档索引](docs/qwen2.5-0.5b/README.md)。核预算不表示独占绑核。依赖由所选模型配置声明。依赖脚本接收 GE_SRC_DIR、GE_BUILD_DIR、GE_INSTALL_DIR、GE_PYTHON；依赖交付件保存在 work 下，NZ Pass 同时安装到 ${ASCEND_OPP_PATH}/vendors/custom_nz_pass/custom_fusion_passes/，由 GE 自动加载。
 
 ```text
 models/       模型适配、数据脚本、唯一模型 YAML、构建脚本和原始输入
@@ -126,9 +126,7 @@ ctest --test-dir runtime/build --output-on-failure
 
 ## 相关文档
 
-- [A3调优记录](docs/qwen2.5-0.5b/qwen2.5-0.5b-a3-tuning.md)
-- [A3/A5复测与无缓存调优](docs/qwen2.5-0.5b/qwen2.5-0.5b-a3-a5-retuning.md)
-- [A3/A5逐算子profiling对比](docs/qwen2.5-0.5b/qwen2.5-0.5b-a3-a5-profiling.md)
-- [A5权重NZ实验与回归记录](docs/qwen2.5-0.5b/qwen2.5-0.5b-a5-weight-nz.md)
-- [A5默认NZ与限核、实例数调优](docs/qwen2.5-0.5b/qwen2.5-0.5b-a5-nz-tuning.md)
-- CANN辅流接口核验：[9.1.0](docs/cann-9.1.0-eager-attached-stream-support.md)、[9.2.0](docs/cann-9.2.0-eager-attached-stream-support.md)、[9.3.0](docs/cann-9.3.0-eager-attached-stream-support.md)
+- [Qwen 使用说明](models/qwen2.5-0.5b/README.md)与[适配、验证、调优及 profiling 索引](docs/qwen2.5-0.5b/README.md)
+- [核心契约](docs/architecture.md)、[七步迁移说明](docs/migration.md)、[芯片选择](docs/targets.md)
+- [结果格式](docs/benchmark-results.md)与[框架验证记录](docs/validation.md)
+- CANN 辅流接口核验：[9.1.0](docs/cann-9.1.0-eager-attached-stream-support.md)、[9.2.0](docs/cann-9.2.0-eager-attached-stream-support.md)、[9.3.0](docs/cann-9.3.0-eager-attached-stream-support.md)

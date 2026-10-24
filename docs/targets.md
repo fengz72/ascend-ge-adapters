@@ -1,14 +1,14 @@
 # 平台和芯片
 
-targets/targets.yaml 按 A3/A5 列出精确 SoC。设备号来自 --device，识别后将模型 YAML 的公共段、platforms.<family>、chips.<soc> 顺序合并。每次 execute/命令行只接收一个 model.yaml；--targets 或 execute 的 targets 参数可指定芯片目录。
+[targets.yaml](../targets/targets.yaml) 按 A3/A5 列出精确 SoC。设备号来自 `--device`，识别后将模型 YAML 的公共段和 `platforms.<family>` 顺序合并。每次命令只读取一个模型 YAML；`--targets` 或 Python execute 的 `targets` 参数可指定芯片目录。
 
 ```bash
 python3 -m core.pipeline bench --config models/qwen2.5-0.5b/config/model.yaml --device 6
 python3 -m core.pipeline prepare --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b
 ```
 
-修改 benchmark.instances 后重复同一 bench 命令，不生成实例 YAML。芯片容量由设备查询，不从 A3/A5 名称推断。可在目录为客户 SKU 声明 expected_capacity，以实际查询进行核对。
+模型优化、依赖、核数、batch 和实例数统一由模型 YAML 的公共段及 platforms 维护；同一平台使用一套参数，不再按 SoC 叠加覆盖。芯片目录只管理硬件身份，可声明 `expected_capacity` 与设备查询结果核对；不从 A3/A5 名称推断实际容量。
 
-Qwen 当前 platforms.a3.build.options.aicore_num 为 12|24，a5 为 16|32；没有芯片级预算覆盖。A3 选择 prefix_910 和 weight_nz，A5 选择 prefix_a5。模型优化、依赖和核数选项均在模型 YAML，目录只管理硬件身份。
+修改实例数后直接重跑 bench；修改其他参数按[七步流程](../README.md#七个独立步骤)执行相应阶段。GE 核数预算不表示独占绑核。
 
-A5 Ascend950PR_958b 已有实测；A3 和其他 A5 SoC 没有环境，尚未验证。平台选择成功只证明配置选择成功，不代表模型或算子已验收。GE 核数预算不表示独占绑核或任意限核能力。
+平台选择成功不代表模型或算子已验收。Qwen 的已验证 SoC、配置与实测范围见[模型文档索引](qwen2.5-0.5b/README.md)，本页不维护模型默认值或历史性能。
