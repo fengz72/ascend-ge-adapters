@@ -28,6 +28,18 @@ def _params(config):
     return params
 
 
+def _bounds_dtype(config):
+    return np.int32 if _params(config).get("attention", "fia") == "prefix_a5" else np.int64
+
+
+def _encode_bounds(lengths, config):
+    bounds = np.cumsum(lengths, dtype=np.int64)
+    dtype = _bounds_dtype(config)
+    if dtype == np.int32 and bounds[-1] > np.iinfo(np.int32).max:
+        raise ValueError("packed bounds exceed int32 range")
+    return bounds.astype(dtype, copy=False)
+
+
 def _tokens(config):
     path = Path(_params(config)["score_token_ids_file"])
     if not path.is_absolute():
@@ -126,7 +138,7 @@ def packed_model_forward(self, input_ids, position_ids, actual_seq_lengths):
     x = self.embed_tokens(input_ids)
     position_embeddings = (self._ge_cos.index_select(0, position_ids).unsqueeze(1),
                            self._ge_sin.index_select(0, position_ids).unsqueeze(1))
-    bounds = actual_seq_lengths.to(torch.int32) if self._ge_attention == "prefix_a5" else actual_seq_lengths
+    bounds = actual_seq_lengths
     for layer in self.layers:
         x = layer(x, attention_mask=self._ge_mask, position_embeddings=position_embeddings,
                   actual_seq_lengths=bounds)
@@ -273,10 +285,12 @@ class Handle:
             positions = [list(range(len(prefix)))] + [list(range(len(prefix), len(prefix)+len(request["tokens"]))) for request in requests]
         else:
             segments, positions = rows, [list(range(len(row))) for row in rows]
-        values = {"input_ids": sum(segments, []), "position_ids": sum(positions, []), "actual_seq_lengths": np.cumsum([len(x) for x in segments]).tolist()}
+        values = {"input_ids": sum(segments, []), "position_ids": sum(positions, []), "actual_seq_lengths": _encode_bounds([len(x) for x in segments], self.config)}
         if min(values["input_ids"]) < 0 or max(values["input_ids"]) >= self.model.model.embed_tokens.num_embeddings:
             raise ValueError("input token outside vocabulary")
-        return {name: torch.tensor(value, dtype=torch.int64, device=self.device) for name, value in values.items()}
+        return {name: torch.tensor(value, dtype=(torch.int32 if name == "actual_seq_lengths"
+                                                  and _bounds_dtype(self.config) == np.int32 else torch.int64),
+                                   device=self.device) for name, value in values.items()}
 
     def run(self, inputs):
         with torch.inference_mode():
@@ -313,7 +327,10 @@ class Handle:
     def export_spec(self):
         if self.config["model"]["params"].get("operators", "npu") != "npu":
             raise ValueError("Qwen torch operator path is a CPU semantic test oracle, not an NPU exporter")
-        inputs = [{"name": name, "dtype": "int64", "shape": [-1], "dynamic_dims": [0]} for name in ("input_ids", "position_ids", "actual_seq_lengths")]
+        inputs = [{"name": name, "dtype": (np.dtype(_bounds_dtype(self.config)).name
+                                          if name == "actual_seq_lengths" else "int64"),
+                   "shape": [-1], "dynamic_dims": [0]}
+                  for name in ("input_ids", "position_ids", "actual_seq_lengths")]
         width = self.model.lm_head.weight.shape[0]
         return {"format": "torch", "model": self.model, "io": {"schema": "ge-io/1", "inputs": inputs, "outputs": [{"name": "scores", "dtype": str(self.model.lm_head.weight.dtype).removeprefix("torch."), "shape": [-1, width], "dynamic_dims": [0]}]}}
 
@@ -351,7 +368,7 @@ class RuntimeHandle:
             positions = [list(range(len(prefix)))] + [list(range(len(prefix), len(prefix)+len(row))) for row in segments[1:]]
         return {'input_ids': np.asarray(sum(segments, []), dtype=np.int64),
                 'position_ids': np.asarray(sum(positions, []), dtype=np.int64),
-                'actual_seq_lengths': np.cumsum([len(row) for row in segments], dtype=np.int64)}
+                'actual_seq_lengths': _encode_bounds([len(row) for row in segments], self.config)}
 
     def decode(self, outputs, case):
         scores = outputs['scores']

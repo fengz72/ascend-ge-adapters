@@ -63,14 +63,14 @@ platforms:
       custom_ops:
         - id: prefix_attention_910
           source: third_party/ascend-ops/prefix-attention/ascendc
-          revision: b4b30cd73862d19e16242f2d1e82075ace83d770
+          revision: fbf0400872079046c1b494188c5d8bd2749d868a
           build_script: models/qwen2.5-0.5b/scripts/build_prefix_910.sh
           python_imports:
             - npu_prefix_infer_attention_score
       ge_passes:
         - id: weight_nz
           source: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
-          revision: fdc4366285412d96cd538876df4aaae8945f00c5
+          revision: fba9f846cc31792fb155cb8c5653b06a74ea4137
           build_script: models/qwen2.5-0.5b/scripts/build_nz_pass.sh
       parser_plugins: []
   a5:
@@ -85,14 +85,14 @@ platforms:
       custom_ops:
         - id: prefix_attention_a5
           source: third_party/ascend-ops/prefix-attention/cannbot-dsl/ge
-          revision: b4b30cd73862d19e16242f2d1e82075ace83d770
+          revision: fbf0400872079046c1b494188c5d8bd2749d868a
           build_script: models/qwen2.5-0.5b/scripts/build_prefix_a5.sh
           python_imports:
             - prefix_attn_torch
       ge_passes: []
       parser_plugins: []
 
-# Ascend910_9382 physical 24|48; measured optimum, see A3 tuning record.
+# Measured defaults for the exact A3/A5 SoCs; see the tuning records.
 chips:
   Ascend910_9382:
     build:
@@ -103,3 +103,12 @@ chips:
         batch_size: 16
     benchmark:
       instances: 5
+  Ascend950PR_958b:
+    build:
+      options:
+        aicore_num: 16|32
+    data:
+      params:
+        batch_size: 16
+    benchmark:
+      instances: 3

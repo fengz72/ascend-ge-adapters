@@ -3,10 +3,13 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <exception>
 #include <cstdio>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <numeric>
 #include <set>
 #include <thread>
@@ -121,53 +124,21 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
                   << " → " << out.hbmPeakMb << " MB)" << std::endl;
     }
 
-    // ---- warmup: 每实例 × 每个 distinct shape, 不足 warmup 再随机补 ----
+    // 预先分配预热请求，保持原有逐实例 shape 覆盖和随机补齐的采样顺序。
     std::vector<size_t> reps = ShapeRepresentatives(pool);
-    auto warmBegin = Clock::now();
-    PhaseTime ph;
-    size_t warmRuns = 0;
-    // 特化代价付在 warmup: 逐实例记录"首次命中某 shape"的 execute 耗时, 并把已见过的 shape
-    // 带进测量段 (否则测量段会把 warmup 已经特化过的 shape 又算一次特化)
+    std::vector<std::vector<size_t>> warmSequences(static_cast<size_t>(instances), reps);
+    Sampler warmSampler(pool.requests.size(), seed);
+    size_t plannedWarmRuns = reps.size() * static_cast<size_t>(instances);
+    while (plannedWarmRuns < static_cast<size_t>(std::max(0, warmup)) * instances) {
+        size_t t = plannedWarmRuns % static_cast<size_t>(instances);
+        warmSequences[t].push_back(warmSampler.Next());
+        ++plannedWarmRuns;
+    }
     std::vector<std::set<std::string>> seenShapes(static_cast<size_t>(instances));
     std::vector<double> warmSpecialize(static_cast<size_t>(instances), 0.0);
-    for (int t = 0; t < instances; t++) {
-        for (size_t idx : reps) {
-            if (!res.setInputs(t, pool.requests[idx], ph)) {
-                fprintf(stderr, "[ERROR] warmup setInputs 失败 (instance=%d, req=%s)\n", t,
-                        pool.requests[idx].name.c_str());
-                ReleasePool(res, created);
-                return false;
-            }
-            auto execBegin = Clock::now();
-            if (!res.execute(t)) {
-                fprintf(stderr, "[ERROR] warmup execute 失败 (instance=%d, req=%s)\n", t,
-                        pool.requests[idx].name.c_str());
-                ReleasePool(res, created);
-                return false;
-            }
-            double execMs = ElapsedMs(execBegin, Clock::now());
-            if (seenShapes[static_cast<size_t>(t)].insert(pool.requests[idx].shapeKey).second) {
-                warmSpecialize[static_cast<size_t>(t)] += execMs;
-            }
-            warmRuns++;
-        }
-    }
-    Sampler warmSampler(pool.requests.size(), seed);
-    while (warmRuns < static_cast<size_t>(std::max(0, warmup)*instances)) {
-        int t = static_cast<int>(warmRuns % static_cast<size_t>(instances));
-        if (!res.setInputs(t, pool.requests[warmSampler.Next()], ph) || !res.execute(t)) {
-            fprintf(stderr, "[ERROR] warmup 失败 (instance=%d)\n", t);
-            ReleasePool(res, created);
-            return false;
-        }
-        warmRuns++;
-    }
-    out.warmupRuns = warmRuns;
-    out.warmupMs = ElapsedMs(warmBegin, Clock::now());
-    std::cout << "[INFO] warmup " << warmRuns << " 次 (覆盖 " << reps.size() << " 种 shape × "
-              << instances << " 实例), cost " << out.warmupMs << " ms" << std::endl;
+    std::vector<size_t> warmCounts(static_cast<size_t>(instances), 0);
 
-    // Generate one measurement sequence before timing; instance count changes only its partition.
+    // Generate one measurement sequence before timing; warmup does not consume it.
     Sampler sampler(pool.requests.size(), seed);
     std::vector<size_t> sequence(requests);
     for (auto &index:sequence) index=sampler.Next();
@@ -176,52 +147,120 @@ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
     std::vector<std::vector<RequestRecord>> per(static_cast<size_t>(instances));
     std::atomic<size_t> errors{0};
 
-    auto wallBegin = Clock::now();
+    std::mutex phaseMutex;
+    std::condition_variable phaseCv;
+    size_t ready = 0;
+    bool startMeasure = false, warmFailed = false;
+    auto warmBegin = Clock::now();
+    Clock::time_point wallBegin;
     std::vector<std::thread> workers;
     workers.reserve(static_cast<size_t>(instances));
-    for (int t = 0; t < instances; t++) {
-        workers.emplace_back([&res, &pool, &per, &errors, &sequence, t, perInstance, remainder, instances]() {
-            if (res.threadEnter) {
-                res.threadEnter(t);
-            }
-            std::vector<RequestRecord> &recs = per[static_cast<size_t>(t)];
-            size_t count=perInstance+(static_cast<size_t>(t)<remainder ? 1:0);
-            recs.reserve(count);
-            for (size_t i = 0; i < count; i++) {
-                size_t global = static_cast<size_t>(t) + i*static_cast<size_t>(instances);
-                const Request &req = pool.requests[sequence[global]];
-                RequestRecord rec;
-                rec.instance = t;
-                rec.req = global;
-                rec.inputSet = req.name;
-                rec.shapeKey = req.shapeKey;
-                rec.samples = req.samples;
+    try {
+        for (int t = 0; t < instances; t++) {
+            workers.emplace_back([&, t]() {
+                std::vector<RequestRecord> &recs = per[static_cast<size_t>(t)];
+                size_t count = perInstance + (static_cast<size_t>(t) < remainder ? 1 : 0);
+                bool warmOk = true;
+                try {
+                    if (res.threadEnter) res.threadEnter(t);
+                    recs.reserve(count);
+                    // 在同一工作线程预热和测量，覆盖线程首次使用 ACL/runtime 的开销。
+                    for (size_t idx : warmSequences[static_cast<size_t>(t)]) {
+                        PhaseTime phase;
+                        if (!res.setInputs(t, pool.requests[idx], phase)) {
+                            warmOk = false;
+                            break;
+                        }
+                        auto execBegin = Clock::now();
+                        if (!res.execute(t)) {
+                            warmOk = false;
+                            break;
+                        }
+                        double execMs = ElapsedMs(execBegin, Clock::now());
+                        if (seenShapes[static_cast<size_t>(t)].insert(pool.requests[idx].shapeKey).second) {
+                            warmSpecialize[static_cast<size_t>(t)] += execMs;
+                        }
+                        ++warmCounts[static_cast<size_t>(t)];
+                    }
+                } catch (const std::exception &e) {
+                    fprintf(stderr, "[ERROR] warmup instance=%d: %s\n", t, e.what());
+                    warmOk = false;
+                } catch (...) {
+                    fprintf(stderr, "[ERROR] warmup instance=%d: unknown exception\n", t);
+                    warmOk = false;
+                }
+                if (!warmOk) fprintf(stderr, "[ERROR] warmup 失败 (instance=%d)\n", t);
+                {
+                    std::unique_lock<std::mutex> lock(phaseMutex);
+                    warmFailed = warmFailed || !warmOk;
+                    ++ready;
+                    phaseCv.notify_all();
+                    phaseCv.wait(lock, [&]() { return startMeasure; });
+                    if (warmFailed) return;
+                }
+                for (size_t i = 0; i < count; i++) {
+                    size_t global = static_cast<size_t>(t) + i*static_cast<size_t>(instances);
+                    const Request &req = pool.requests[sequence[global]];
+                    RequestRecord rec;
+                    rec.instance = t;
+                    rec.req = global;
+                    rec.inputSet = req.name;
+                    rec.shapeKey = req.shapeKey;
+                    rec.samples = req.samples;
 
-                PhaseTime phase;
-                auto t0 = Clock::now();
-                bool ok = res.setInputs(t, req, phase);
-                rec.h2dMs = phase.h2dMs;
-                rec.descMs = phase.descMs;
-                auto t1 = Clock::now();
-                if (ok) {
-                    ok = res.execute(t);
+                    PhaseTime phase;
+                    auto t0 = Clock::now();
+                    bool ok = res.setInputs(t, req, phase);
+                    rec.h2dMs = phase.h2dMs;
+                    rec.descMs = phase.descMs;
+                    auto t1 = Clock::now();
+                    if (ok) ok = res.execute(t);
+                    auto t2 = Clock::now();
+                    rec.execMs = ok ? ElapsedMs(t1, t2) : 0.0;
+                    rec.e2eMs = ElapsedMs(t0, t2);
+                    rec.error = ok ? 0 : 1;
+                    recs.push_back(rec);
+                    if (!ok) {
+                        errors.fetch_add(1);
+                        fprintf(stderr, "[ERROR] instance=%d 第 %zu 个请求失败 (input=%s)\n", t, i,
+                                req.name.c_str());
+                        break;
+                    }
                 }
-                auto t2 = Clock::now();
-                rec.execMs = ok ? ElapsedMs(t1, t2) : 0.0;
-                rec.e2eMs = ElapsedMs(t0, t2);
-                rec.error = ok ? 0 : 1;
-                recs.push_back(rec);
-                if (!ok) {
-                    errors.fetch_add(1);
-                    fprintf(stderr, "[ERROR] instance=%d 第 %zu 个请求失败 (input=%s)\n", t, i,
-                            req.name.c_str());
-                    break;
-                }
-            }
-        });
+            });
+        }
+    } catch (const std::exception &e) {
+        // 启动部分线程失败时也释放等待者，再统一回收实例资源。
+        {
+            std::lock_guard<std::mutex> lock(phaseMutex);
+            warmFailed = true;
+            startMeasure = true;
+        }
+        phaseCv.notify_all();
+        for (auto &worker : workers) worker.join();
+        fprintf(stderr, "[ERROR] 创建 benchmark 工作线程失败: %s\n", e.what());
+        ReleasePool(res, created);
+        return false;
     }
-    for (auto &w : workers) {
-        w.join();
+    {
+        std::unique_lock<std::mutex> lock(phaseMutex);
+        phaseCv.wait(lock, [&]() { return ready == static_cast<size_t>(instances); });
+        out.warmupRuns = std::accumulate(warmCounts.begin(), warmCounts.end(), size_t{0});
+        out.warmupMs = ElapsedMs(warmBegin, Clock::now());
+        if (!warmFailed) {
+            std::cout << "[INFO] warmup " << out.warmupRuns << " 次 (覆盖 " << reps.size()
+                      << " 种 shape × " << instances << " 实例), cost " << out.warmupMs
+                      << " ms; measurement uses the same workers" << std::endl;
+        }
+        // 所有工作线程完成预热后统一起跑，线程创建和预热不计入吞吐窗口。
+        wallBegin = Clock::now();
+        startMeasure = true;
+    }
+    phaseCv.notify_all();
+    for (auto &worker : workers) worker.join();
+    if (warmFailed) {
+        ReleasePool(res, created);
+        return false;
     }
     out.wallMs = ElapsedMs(wallBegin, Clock::now());
 

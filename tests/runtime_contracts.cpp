@@ -1,4 +1,6 @@
 #include <stdexcept>
+#include <atomic>
+#include <thread>
 #include <fstream>
 #include <iostream>
 #include "io_spec.h"
@@ -72,6 +74,52 @@ int main(int argc,char **argv) {
     CHECK(PerfToJson(partial)["errors"]==1);
     CHECK(WriteRequestsCsv(dir+"/partial.csv",partial));
     {std::ifstream file(dir+"/partial.csv");size_t lines=0;std::string line;while(std::getline(file,line))++lines;CHECK(lines==5);}
+    // Warmup and measurement must share each instance's entered worker thread.
+    // A slow worker must finish warming before any worker measures a request.
+    {
+        PoolResources sameWorker;
+        std::thread::id owners[2];
+        std::atomic<size_t> completed[2]{};
+        size_t releasedWorkers=0;
+        sameWorker.setup=[](int){return true;};
+        sameWorker.threadEnter=[&](int tid){owners[tid]=std::this_thread::get_id();};
+        sameWorker.setInputs=[&](int tid,const Request &,PhaseTime &) {
+            if(owners[tid]!=std::this_thread::get_id()) return false;
+            if(completed[tid].load()>=5 && completed[1-tid].load()<5) return false;
+            return true;
+        };
+        sameWorker.execute=[&](int tid) {
+            if(owners[tid]!=std::this_thread::get_id()) return false;
+            if(tid==1 && completed[tid].load()==0)
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            ++completed[tid];
+            return true;
+        };
+        sameWorker.release=[&](int){++releasedWorkers;};
+        PerfResult warmed;
+        CHECK(BenchPool(2,7,5,42,pool,sameWorker,warmed));
+        CHECK(warmed.warmupRuns==10 && warmed.requests==7 && warmed.errors==0);
+        CHECK(completed[0]==9 && completed[1]==8 && releasedWorkers==2);
+        for(const auto &rec:warmed.records) CHECK(!rec.firstHit);
+    }
+    // One worker's warmup failure must release all waiting workers and resources.
+    {
+        PoolResources failWarm;
+        size_t releasedWorkers=0;
+        failWarm.setup=[](int){return true;};
+        failWarm.setInputs=[](int,const Request &,PhaseTime &){return true;};
+        failWarm.execute=[](int tid){return tid!=0;};
+        failWarm.release=[&](int){++releasedWorkers;};
+        PerfResult failedWarm;
+        CHECK(!BenchPool(2,7,5,42,pool,failWarm,failedWarm));
+        CHECK(failedWarm.records.empty() && releasedWorkers==2);
+        releasedWorkers=0;
+        failWarm.threadEnter=[](int tid){if(tid==0) throw std::runtime_error("thread enter failure");};
+        failWarm.execute=[](int){return true;};
+        PerfResult failedEnter;
+        CHECK(!BenchPool(2,7,5,42,pool,failWarm,failedEnter));
+        CHECK(failedEnter.records.empty() && releasedWorkers==2);
+    }
     resources.setup=[](int){return false;};
     PerfResult unmeasured;
     CHECK(!BenchPool(1,10,0,42,pool,resources,unmeasured));

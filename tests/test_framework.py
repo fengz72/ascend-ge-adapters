@@ -27,10 +27,23 @@ class Framework(unittest.TestCase):
     def setUp(self):self.enterContext(patch.dict(os.environ,{'QWEN_MODEL_DIR':'/weights/Qwen'}))
     def qwen(self,**kwargs):return load_authoring(QWEN,target=SOC,**kwargs)
 
+    def test_qwen_exact_chip_defaults(self):
+        for soc,attention,cores,instances in (
+            ('Ascend910_9382','prefix_910','8|16',5),
+            ('Ascend950PR_958b','prefix_a5','16|32',3),
+        ):
+            with self.subTest(soc=soc):
+                config=load_authoring(QWEN,target=soc,source_paths=False)
+                self.assertEqual(config['model']['params']['attention'],attention)
+                self.assertEqual(config['build']['options']['aicore_num'],cores)
+                self.assertEqual(config['data']['params']['batch_size'],16)
+                self.assertEqual(config['benchmark']['instances'],instances)
+
     def test_yaml_changes_and_environment_are_read_again_without_output_files(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory,'model.yaml')
-            authoring=yaml.safe_load(QWEN.read_text());authoring['benchmark']['instances']=1
+            authoring=yaml.safe_load(QWEN.read_text())
+            authoring.setdefault('chips',{}).setdefault(SOC,{})['benchmark']={'instances':1}
             path.write_text(yaml.safe_dump(authoring,sort_keys=False))
             first=load_authoring(path,target=SOC)
             path.write_text(path.read_text().replace('instances: 1','instances: 8'))

@@ -83,6 +83,7 @@ bool CapturePool(int instances, const RequestPool &pool, const PoolResources &re
 
 // 闭环并发: instances 个 worker (1:1 绑实例), 共 requests 个请求, 每实例从共享池随机抽样
 // 全局 seed 先生成请求序列，再分给实例；warmup 不消耗测量序列。
+// 每实例在同一工作线程中预热和测量，全部预热成功后统一开始计时。
 bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
                const RequestPool &pool, const PoolResources &res, PerfResult &out);
 
