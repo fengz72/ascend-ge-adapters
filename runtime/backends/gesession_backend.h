@@ -12,7 +12,7 @@ namespace ge_runtime {
 
 struct GeSessionOptions {
     int device = 0;
-    int graph_run_mode = 1;
+    int graph_run_mode = 0;          // GE PREDICTION; inference is the project default.
     std::string precision_mode = "force_fp16";
     std::string aicore_num;
     BenchOptions bench;             // 池模式用 bench.threads(=实例数)/requests/warmup

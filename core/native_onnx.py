@@ -1,6 +1,7 @@
 """Built-in identity ONNX handle. Standard ONNX models need no custom Python file."""
 from pathlib import Path
 import numpy as np
+from core.config import validate_dtype
 
 
 def generate_cases(params):
@@ -26,15 +27,20 @@ class Handle:
     def __init__(self, path, config, candidate):
         import onnx
         self.path, self.config, self._session = path, config, None
+        section = 'build' if candidate else 'reference'
+        expected = validate_dtype(config[section]['dtype'], f'{section}.dtype')
         model = onnx.load(path, load_external_data=False)
         def node(value):
             shape = [d.dim_value if d.HasField('dim_value') else -1 for d in value.type.tensor_type.shape.dim]
             return {'name': value.name, 'dtype': str(onnx.helper.tensor_dtype_to_np_dtype(value.type.tensor_type.elem_type)), 'shape': shape, 'dynamic_dims': [i for i, n in enumerate(shape) if n == -1]}
         initializer = {x.name for x in model.graph.initializer}
         self.io = {'schema': 'ge-io/1', 'inputs': [node(x) for x in model.graph.input if x.name not in initializer], 'outputs': [node(x) for x in model.graph.output]}
-        expected = config['build']['dtype'] if candidate else config['reference']['dtype']
-        if expected != 'preserve' and any(x['dtype'].startswith(('float','bfloat')) and x['dtype'] != expected for x in self.io['inputs']):
-            raise ValueError('ONNX floating input dtype differs from declared expectation; use preserve for mixed types')
+        floating = expected == 'bfloat16' or np.dtype(expected).kind == 'f'
+        if floating:
+            if any(x['dtype'].startswith(('float','bfloat')) and x['dtype'] != expected for x in self.io['inputs']):
+                raise ValueError(f'ONNX floating input dtype differs from {section}.dtype={expected}; export a source model with matching floating inputs')
+        elif not any(x['dtype'] == expected for x in self.io['inputs']):
+            raise ValueError(f'ONNX has no input matching {section}.dtype={expected}')
 
     @property
     def session(self):

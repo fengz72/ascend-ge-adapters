@@ -11,22 +11,41 @@ from core.targets import CATALOG, select_target, validate_target
 ROOT=Path(__file__).resolve().parent.parent
 SECTIONS={
     'model': {'name','adapter_file','params'},
-    'source': {'kind','ref','loader','factory','params','path','files'},
+    'source': {'kind','ref','loader','factory','params','files'},
     'reference': {'device','dtype'},
     'data': {'script','directory','params'},
     'build': {'backend','dtype','options'},
-    'verification': {'case_ids','outputs'},
+    'verification': {'case_ids','outputs','script','params'},
     'benchmark': {'instances','warmup','iterations','seed'},
     'observability': {'profiling','dump','aic_metrics'},
 }
 DEFAULTS={
     'model': {'params': {}}, 'reference': {'device':'cpu','dtype':'float32'},
-    'data': {'params': {}}, 'build': {'backend':'ge_session','dtype':'float16','options':{}},
+    'data': {'params': {}}, 'build': {'backend':'ge_session','dtype':'float32','options':{}},
     'verification': {'case_ids':'all','outputs':{}},
     'benchmark': {'instances':1,'warmup':10,'iterations':1000,'seed':42},
     'dependencies': {'custom_ops':[],'ge_passes':[],'parser_plugins':[]},
     'observability': {'profiling':False,'dump':False},
 }
+def validate_dtype(value,field,*,floating_only=False):
+    import numpy as np
+    if not isinstance(value,str) or not value:
+        raise ValueError(f'{field} must name a concrete numeric or boolean dtype')
+    # BF16 has native GE/ACL support but is not a built-in NumPy dtype.
+    if value=='bfloat16':return value
+    try:dtype=np.dtype(value)
+    except (TypeError,ValueError) as error:
+        raise ValueError(f'{field} is not a concrete dtype: {value!r}') from error
+    if dtype.name!=value:
+        raise ValueError(f'{field} must use a concrete canonical dtype name: {dtype.name}')
+    supported=(dtype.kind=='f' and dtype.itemsize in (2,4,8) or
+               dtype.kind in 'iu' and dtype.itemsize in (1,2,4,8) or
+               dtype.kind=='b')
+    if not supported:
+        raise ValueError(f'{field}={value} is unsupported by native tensor IO')
+    if floating_only and dtype.kind!='f':
+        raise ValueError(f'{field}={value} cannot cast Torch model parameters; a floating dtype is required')
+    return value
 
 def merge(base, overlay):
     result=copy.deepcopy(base)
@@ -49,18 +68,21 @@ def validate(config):
     if not isinstance(config['model']['params'],dict) or not isinstance(config['data']['params'],dict):raise ValueError('model.params/data.params must be mappings')
     if 'directory' in config['data'] and (not isinstance(config['data']['directory'],str) or not config['data']['directory'].strip()):raise ValueError('data.directory must be a nonempty path')
     kind=config['source'].get('kind')
-    required={'transformers':('ref','loader'),'torch':('factory',),'onnx':('path',)}
+    required={'transformers':('ref','loader'),'torch':('factory',),'onnx':('ref',)}
     if kind not in required:raise ValueError('source.kind must be transformers, torch or onnx')
     for name in required[kind]:
-        if not config['source'].get(name):raise ValueError(f'source.{name} is required')
+        value=config['source'].get(name)
+        if not isinstance(value,str) or not value.strip():raise ValueError(f'source.{name} must be a nonempty string')
     validate_target(config['target'])
     if config['build']['backend'] not in ('ge_session','atc_om'):raise ValueError('unknown build.backend')
     exact_keys(config['build']['options'],('aicore_num','precision_mode','graph_run_mode'),'build.options')
     if config['build']['backend']=='atc_om' and 'graph_run_mode' in config['build']['options']:raise ValueError('graph_run_mode is a GE Session option')
-    if config['build']['dtype'] not in ('float16','float32','bfloat16','preserve'):raise ValueError('unsupported build dtype')
-    if kind!='onnx' and config['build']['dtype']=='preserve':raise ValueError('Torch sources need explicit floating dtype')
+    for section in ('build','reference'):
+        validate_dtype(config[section]['dtype'],f'{section}.dtype',floating_only=kind!='onnx')
     if config['reference']['device'] not in ('cpu','npu'):raise ValueError('reference.device must be cpu or npu')
     validate_case_ids(config['verification']['case_ids'])
+    if 'script' in config['verification'] and (not isinstance(config['verification']['script'],str) or not config['verification']['script'].strip()):raise ValueError('verification.script must be a nonempty path')
+    if not isinstance(config['verification'].get('params',{}),dict):raise ValueError('verification.params must be a mapping')
     for name,policy in config['verification']['outputs'].items():
         exact_keys(policy,('policy','scope','cosine_min','relative_l2_max','rtol','atol','max_abs_error','top_k'),f'verification.outputs.{name}')
         if policy.get('policy','numeric') not in ('numeric','exact','topk'):raise ValueError('unsupported accuracy policy')
@@ -89,7 +111,7 @@ def load_authoring(paths, *, target=None, device=None, catalog=CATALOG, source_p
         common=merge(common,base);layers.append((base,layer.get('platforms',{}),layer.get('chips',{})))
     if not layers:raise ValueError('at least one YAML is required')
     chosen=select_target(target if target is not None else common.get('target','auto'),device=device,catalog=catalog)
-    config=copy.deepcopy(DEFAULTS);explicit_build=False;explicit_reference=False
+    config=copy.deepcopy(DEFAULTS)
     for base,platforms,chips in layers:
         for name,branches in (('platforms',platforms),('chips',chips)):
             if not isinstance(branches,dict):raise ValueError(f'{name} must be a mapping')
@@ -100,25 +122,23 @@ def load_authoring(paths, *, target=None, device=None, catalog=CATALOG, source_p
                 validate(probe)
         if platforms and chosen['family'] not in platforms:raise ValueError(f"no platform configuration for {chosen['family']}")
         for layer in (base,platforms.get(chosen['family'],{}),chips.get(chosen['soc'],{})):
-            explicit_build|='dtype' in layer.get('build',{});explicit_reference|='dtype' in layer.get('reference',{})
             config=merge(config,layer)
     config['target']=chosen
     if config['source']['kind']=='onnx':
         config['model'].setdefault('adapter_file','core/native_onnx.py')
-        if not explicit_build:config['build']['dtype']='preserve'
-        if not explicit_reference:config['reference']['dtype']='preserve'
     validate(config)
     config['_root']=str(ROOT)
     config['work_dir']=resolve(ROOT,config.get('work_dir',f"work/{config['model']['name']}"))
     if not Path(config['work_dir']).is_relative_to(ROOT) or Path(config['work_dir'])==ROOT:raise ValueError('work_dir must be a subdirectory of the project')
     config['model']['adapter_file']=resolve(ROOT,config['model']['adapter_file'])
     if config['data'].get('script'):config['data']['script']=resolve(ROOT,config['data']['script'])
+    if config['verification'].get('script'):config['verification']['script']=resolve(ROOT,config['verification']['script'])
     config['data'].setdefault('directory',str(Path(config['work_dir'])/'inputs'))
     if 'directory' in config['data']:
         config['data']['directory']=resolve(ROOT,config['data']['directory'])
         if not Path(config['data']['directory']).is_relative_to(ROOT) or Path(config['data']['directory'])==ROOT:raise ValueError('data.directory must be a subdirectory of the project')
-    for key in (('ref','path') if source_paths else ()):
-        if key in config['source']:config['source'][key]=resolve(ROOT,expand_source_path(config['source'][key],f'source.{key}'))
+    if source_paths and 'ref' in config['source']:
+        config['source']['ref']=resolve(ROOT,expand_source_path(config['source']['ref'],'source.ref'))
     if source_paths and 'files' in config['source']:config['source']['files']=[resolve(ROOT,expand_source_path(p,'source.files')) for p in config['source']['files']]
     for entries in config['dependencies'].values():
         for entry in entries:

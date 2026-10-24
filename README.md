@@ -93,9 +93,19 @@ Qwen 原始输入位于 models/qwen2.5-0.5b/io/inputs，每个 case 一个目录
 
 图位于 work/<模型名>/build。具名 IO 信息直接写入 AIR 图属性或 ONNX metadata，GE 运行从图读取，不生成 cases.json、build.json、lock.json、io.json 或交付清单。ATC 路径保留导出图和 model.om；运行 OM 时从旁边的导出图读取相同 IO。原始模型、模型参数或输入编码改变后显式重跑 data/build；框架不自动判断旧图是否可复用。
 
+源模型位置统一使用 `source.ref`：ONNX 指向模型文件，Transformers 指向模型目录，并通过 `source.loader` 指定加载类。两者均支持 `${环境变量}`，相对路径均以项目根目录解析；infer/bench/compare 等独立步骤不解析或读取原始模型位置。ONNX 的加载方式由 `kind: onnx` 确定，无需重复指定 loader。
+
 baseline 和 infer 分别在 work/<模型名> 保存 golden.npz、outputs.npz，只包含本次选择的 case；每个 case 保留业务输出与对齐信息。compare 要求为所有实际业务输出配置策略，缺失、多余或未配置的输出直接报错；不允许空策略绕过精度比较。compare 只读取这两个数据文件，无需输入目录、NPU、原始模型或依赖安装目录。精度和性能结果、日志、requests.csv 位于 work/<模型名>/results/<run>。测量过程中执行失败时仍保存已完成调用、失败调用和部分统计，并将本次结果标为 failed；初始化失败不生成虚假的性能值。内部传输使用的 inputs.bin/outputs.bin 在执行结束删除。
 
+模型可通过 `verification.script` 增加外部业务基准校验，参数放在 `verification.params`。脚本提供 `compare(config, outputs)`，接收所选 case 的标准输出行，返回以相同 case ID 为键、包含布尔 `passed` 的报告。compare 在 CPU golden 比较后调用脚本，业务报告写入各 case 的 `business` 字段，任一检查失败都会使流程失败。此时 compare 还会读取脚本指定的外部基准文件。BGE 默认使用提供的 5 条业务样例，并直接校验 `expected_outputs.json` 的 Top-10 ID、顺序和分数。
+
 每次命令读取当前 YAML。修改实例数直接重跑 bench；GE Session 限核在加载 AIR 时设置，ATC 限核在编译 OM 时设置，因此 ATC 编译参数改变需要显式重新 build。修改依赖源码后显式 prepare。没有自动缓存命中或兼容旧接口的分支。
+
+GE Session 默认使用推理模式（`graph_run_mode=0`），模型 YAML 无需重复配置该选项。
+
+`reference.dtype` 和 `build.dtype` 必须使用具体、规范的类型名称，省略时均使用 `float32`。框架根据 NumPy 类型定义和原生张量 IO 能力检查数值及布尔类型，支持 `float64` 等类型，BF16 由原生后端单独支持；不接受自动选择类型的标记、含糊别名，以及当前 IO 无法表示的对象、字符串、复数或扩展精度类型。
+
+类型还须符合源模型的使用方式：Torch/Transformers 用它转换模型参数，因此要求浮点类型；ONNX 保留原图类型，浮点声明检查浮点输入，整数/布尔声明须匹配实际输入，其他输入各自的类型保持不变。声明类型不会隐式转换或量化 ONNX，具体算子和设备是否支持由实际构建、运行验证。
 
 ## Profiling 与平台
 

@@ -77,7 +77,7 @@ int main(int argc,char **argv) {
         if(graph.backend=="ge_session") {
             GeSessionOptions opt;opt.device=graph.device;opt.bench=bench;opt.pool=&pool;
             opt.seed=plan.at("seed").get<uint64_t>();
-            opt.graph_run_mode=options.value("graph_run_mode",1);
+            opt.graph_run_mode=options.value("graph_run_mode",opt.graph_run_mode);
             opt.precision_mode=options.value("precision_mode",std::string("force_fp16"));
             opt.aicore_num=options.value("aicore_num",std::string());
             opt.profiling.enabled=profile;opt.profiling.outputPath=output+"/"+mode+"-profiling";

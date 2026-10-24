@@ -3,6 +3,7 @@
 
 #include <acl/acl.h>
 #include <ge/ge_api.h>
+#include <ge/ge_graph_compile_summary.h>
 #include <graph/graph.h>
 #include <exe_graph/runtime/tensor.h>
 
@@ -83,14 +84,21 @@ struct GeContext {
     std::vector<void *> inPtrs;
     std::vector<size_t> inSizes;      // 每输入分配字节 (池模式 = pool 内最大)
     std::vector<gert::Tensor> devOutputs;
+    std::vector<void *> staticOutputPtrs;
     std::set<void *> outAddrs;
     bool warnedAddrGrowth = false;
     double loadMs = 0.0;              // 本实例 LoadGraph 耗时 (CompileGraph 在 Init 里, 另报)
 };
 
+struct CompiledOutputs {
+    bool callerAllocated = false;
+    std::vector<TensorPlan> plans;
+    std::vector<ge::DataType> dtypes;
+};
+
 class GeRunner {
 public:
-    explicit GeRunner(const GeSessionOptions &opt) : opt_(opt) {}
+    GeRunner(const GeSessionOptions &opt, const IoSpec &spec) : opt_(opt), spec_(spec) {}
 
     ~GeRunner() { Destroy(); }
 
@@ -104,6 +112,7 @@ public:
              ge::AscendString(std::to_string(opt_.device).c_str())},
         };
         std::string aicore = AicoreSpec(opt_.aicore_num);
+        std::cout << "[INFO] GEInitialize ge.graphRunMode=" << opt_.graph_run_mode << std::endl;
         if (!aicore.empty()) {
             globalOptions.emplace(ge::AscendString(ge::ir_option::AICORE_NUM),
                                   ge::AscendString(aicore.c_str()));
@@ -167,9 +176,51 @@ public:
             }
             st = session_->CompileGraph(gid);
             if (st != ge::SUCCESS) {
-                fprintf(stderr, "[ERROR] CompileGraph(gid=%u) failed, ret=%d\n", gid, st);
+                fprintf(stderr, "[ERROR] CompileGraph(gid=%u) failed, ret=%d: %s\n",
+                        gid, st, ge::GEGetErrorMsg().c_str());
                 return false;
             }
+            auto summary = session_->GetCompiledGraphSummary(gid);
+            if (summary == nullptr) {
+                fprintf(stderr, "[ERROR] GetCompiledGraphSummary(gid=%u) failed\n", gid);
+                return false;
+            }
+            CompiledOutputs outputs;
+            outputs.callerAllocated = summary->IsStatic();
+            if (outputs.callerAllocated) {
+                std::vector<ge::Shape> shapes;
+                if (summary->GetOutputShapes(shapes) != ge::SUCCESS ||
+                    summary->GetOutputDtypes(outputs.dtypes) != ge::SUCCESS ||
+                    shapes.size() != spec_.outputs.size() || shapes.size() != outputs.dtypes.size()) {
+                    fprintf(stderr, "[ERROR] Invalid compiled output metadata (gid=%u)\n", gid);
+                    return false;
+                }
+                for (size_t i = 0; i < shapes.size(); ++i) {
+                    TensorPlan plan;
+                    plan.logical = spec_.outputs[i].logical;
+                    plan.dtype = FromGeDtype(outputs.dtypes[i]);
+                    plan.format = "ND";
+                    plan.shape = shapes[i].GetDims();
+                    if (plan.dtype != spec_.outputs[i].dtype ||
+                        plan.shape.size() != spec_.outputs[i].shape.size()) {
+                        fprintf(stderr, "[ERROR] Compiled output contract mismatch: %s\n", plan.logical.c_str());
+                        return false;
+                    }
+                    for (size_t dim = 0; dim < plan.shape.size(); ++dim) {
+                        auto expected = spec_.outputs[i].shape[dim];
+                        if (expected != -1 && expected != plan.shape[dim]) {
+                            fprintf(stderr, "[ERROR] Compiled output shape mismatch: %s\n", plan.logical.c_str());
+                            return false;
+                        }
+                    }
+                    plan.Bytes();  // Reject unresolved shapes or byte-size overflow before allocation.
+                    outputs.plans.push_back(std::move(plan));
+                }
+            }
+            std::cout << "[INFO] Graph " << gid << " output allocation="
+                      << (outputs.callerAllocated ? "caller (static compiled)" : "GE (dynamic compiled)")
+                      << std::endl;
+            compiledOutputs_.emplace(gid, std::move(outputs));
             std::cout << "[INFO] CompileGraph ok (gid=" << gid << "/" << numGraphs_ << "), cost "
                       << ElapsedMs(t0, Clock::now()) << " ms" << std::endl;
         }
@@ -241,6 +292,38 @@ public:
             ctx->inPtrs.push_back(dev);
             ctx->inSizes.push_back(bytes);
 
+        }
+
+        const auto &outputs = compiledOutputs_.at(ctx->graphId);
+        if (outputs.callerAllocated) {
+            if (pool_->maxOutputBytes.size() != outputs.plans.size()) {
+                fprintf(stderr, "[ERROR] Output capacity count differs from compiled outputs\n");
+                ReleaseContext(*ctx);
+                return false;
+            }
+            for (size_t i = 0; i < outputs.plans.size(); ++i) {
+                const auto &plan = outputs.plans[i];
+                size_t bytes = plan.Bytes();
+                if (bytes > pool_->maxOutputBytes[i]) {
+                    fprintf(stderr, "[ERROR] Compiled output '%s' requires %zu bytes > declared capacity %zu\n",
+                            plan.logical.c_str(), bytes, pool_->maxOutputBytes[i]);
+                    ReleaseContext(*ctx);
+                    return false;
+                }
+                void *dev = nullptr;
+                ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
+                if (ret != ACL_SUCCESS || dev == nullptr) {
+                    fprintf(stderr, "[ERROR] Output aclrtMalloc(%zu) failed (tid=%d, output=%zu), ret=%d\n",
+                            bytes, tid, i, ret);
+                    ReleaseContext(*ctx);
+                    return false;
+                }
+                ctx->staticOutputPtrs.push_back(dev);
+                ctx->outAddrs.insert(dev);
+                std::cout << "[INFO] Allocated output[" << i << "] '" << plan.logical << "' shape="
+                          << ShapeToString(plan.shape) << " dtype=" << plan.dtype << " bytes=" << bytes
+                          << " (tid=" << tid << ")" << std::endl;
+            }
         }
 
         ctx->loadMs = ElapsedMs(t0, Clock::now());
@@ -318,10 +401,18 @@ public:
             return false;
         }
         ctx->devOutputs.clear();
+        const auto &outputs = compiledOutputs_.at(ctx->graphId);
+        if (outputs.callerAllocated) {
+            for (size_t i = 0; i < outputs.plans.size(); ++i) {
+                const auto &plan = outputs.plans[i];
+                MakeTensor(ctx->devOutputs, ctx->staticOutputPtrs[i], plan.Bytes(), plan.shape, outputs.dtypes[i]);
+            }
+        }
         ge::Status st = session_->ExecuteGraphWithStreamAsync(ctx->graphId, ctx->stream,
                                                              ctx->devInputs, ctx->devOutputs);
         if (st != ge::SUCCESS) {
-            fprintf(stderr, "[ERROR] ExecuteGraphWithStreamAsync failed (tid=%d), ret=%d\n", tid, st);
+            fprintf(stderr, "[ERROR] ExecuteGraphWithStreamAsync failed (tid=%d), ret=%d: %s\n",
+                    tid, st, ge::GEGetErrorMsg().c_str());
             return false;
         }
         aclError ret = aclrtSynchronizeStream(ctx->stream);
@@ -329,7 +420,16 @@ public:
             fprintf(stderr, "[ERROR] aclrtSynchronizeStream failed (tid=%d), ret=%d\n", tid, ret);
             return false;
         }
-        for (auto &t : ctx->devOutputs) {
+        if (ctx->devOutputs.size() != spec_.outputs.size()) {
+            fprintf(stderr, "[ERROR] Runtime output count differs from graph IO\n");
+            return false;
+        }
+        for (size_t i = 0; i < ctx->devOutputs.size(); ++i) {
+            auto &t = ctx->devOutputs[i];
+            if (outputs.callerAllocated && t.GetAddr() != ctx->staticOutputPtrs[i]) {
+                fprintf(stderr, "[ERROR] GE replaced caller-owned output buffer (output=%zu)\n", i);
+                return false;
+            }
             if (t.GetAddr() != nullptr) {
                 ctx->outAddrs.insert(t.GetAddr());
             }
@@ -413,6 +513,7 @@ private:
         ctx.inPtrs.clear();
         ctx.devInputs.clear();
         ctx.devOutputs.clear();
+        ctx.staticOutputPtrs.clear();
         for (void *p : ctx.outAddrs) {
             if (p != nullptr) {
                 aclrtFree(p);
@@ -446,6 +547,7 @@ private:
     }
 
     GeSessionOptions opt_;
+    const IoSpec &spec_;
     int numGraphs_ = 1;
     double compileMs_ = 0.0;
     bool geInited_ = false;
@@ -456,6 +558,7 @@ private:
     std::vector<ge::DataType> dtypes_;
     const RequestPool *pool_ = nullptr;
     std::map<int, std::unique_ptr<GeContext>> ctxs_;
+    std::map<uint32_t, CompiledOutputs> compiledOutputs_;
 };
 
 }  // namespace
@@ -464,7 +567,7 @@ bool RunGeSessionBackend(const ModelGraph &graph, const IoSpec &spec,
                    const GeSessionOptions &opt, PerfResult *perf) {
     if(!opt.pool || opt.pool->Empty()) { fprintf(stderr,"[ERROR] request pool is required\n");return false; }
     if(graph.graph_path.empty()) { fprintf(stderr,"[ERROR] missing graph path\n");return false; }
-    GeRunner runner(opt);
+    GeRunner runner(opt, spec);
     if(!runner.Init(graph.graph_path,graph.graph_format,std::max(1,opt.bench.threads))) return false;
     // ---- 变长负载: 请求池回放 (单 Session 多图, 每实例一份 graphId+stream) ----
     if (!runner.UsePool(opt.pool)) {

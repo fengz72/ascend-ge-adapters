@@ -2,14 +2,14 @@ model:
   name: onnx-ranker
 source:
   kind: onnx
-  path: work/examples/ranker.onnx
+  ref: work/examples/ranker.onnx
 reference:
   device: cpu
-  dtype: preserve
+  dtype: float32
 target: Ascend950PR_958b
 build:
   backend: ge_session
-  dtype: preserve
+  dtype: float32
   options:
     precision_mode: must_keep_origin_dtype
 verification:
