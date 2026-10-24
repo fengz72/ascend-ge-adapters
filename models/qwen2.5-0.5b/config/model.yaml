@@ -89,7 +89,11 @@ platforms:
           build_script: models/qwen2.5-0.5b/scripts/build_prefix_a5.sh
           python_imports:
             - prefix_attn_torch
-      ge_passes: []
+      ge_passes:
+        - id: weight_nz
+          source: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
+          revision: fba9f846cc31792fb155cb8c5653b06a74ea4137
+          build_script: models/qwen2.5-0.5b/scripts/build_nz_pass.sh
       parser_plugins: []
 
 # Measured defaults for the exact A3/A5 SoCs; see the tuning records.
@@ -103,6 +107,7 @@ chips:
         batch_size: 16
     benchmark:
       instances: 5
+  # A5 NZ 推荐最优配置：16|32、batch16、3实例，依据当前已完成的扫描结果。
   Ascend950PR_958b:
     build:
       options:
