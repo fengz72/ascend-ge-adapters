@@ -4,6 +4,284 @@
 
 本文按日期和输入范围保留验证结果。历史“当前”“未验证”及“尚未修复”均指所在实验时点；不同 batch、阈值、依赖版本的结论不能互相替代。
 
+## 上游合入后的依赖统一（2026-10-27）
+
+`custom_development_code` 子模块来源改为
+`https://gitcode.com/CharmanderFang/custom_development_code.git`，跟踪 `main`，
+固定提交为 `8e08d0d20275558aefac1bbb35019e6b52f1073a`。
+该上游已合入 Prefix Attention（!35）及 WeightNZ/MatMulV3（!34）。
+A3/A5 的 Prefix 算子与 WeightNZ pass 四项依赖的 source 均位于该子模块，
+revision 统一为该提交；原个人 fork 迁移分支保留，`ascend-ops` 继续用于历史对照。
+
+已通过 Git 目录差异检查：上游 Prefix Attention 与 `c6b18c8` 完全一致，
+上游 WeightNZ/MatMulV3 pass 与 `fba9f846` 完全一致。因此恢复的是此前设备验证过的
+算子和 pass 源码组合；下方历史记录中的提交号继续保留，不改写原实验事实。
+这次仅切换仓库来源和固定版本，没有修改算子/pass 实现或 GE 系统库，
+A5 默认 GE 输出缓冲区扩容问题的限制仍适用。
+
+99 / hejun-cann9-qwen25 与 850-a5 / hejun-cann920-cannbotdsl 两处主仓工作区
+均已同步来源、配置、子模块提交与本文记录。99 使用 CANN 9.0.0，A5 使用 CANN 9.3.0；
+A5 验证沿用下文记录的进程级输出扩容修复库环境。
+
+| 检查 | A3（99） | A5（850-a5） |
+|---|---|---|
+| A3/A5 配置解析及实际源码检查 | 四项依赖均来自上游，revision 与 HEAD 一致 | 同左 |
+| prepare | Prefix Attention 与 WeightNZ pass 重新构建、安装通过 | 通过 |
+| Python 框架回归 | 60/60 通过 | 60/60 通过 |
+| Runtime CTest | 1/1 通过 | 1/1 通过 |
+| 上游 WeightNZ host 回归 | 开启 `NZ_WEIGHT_PASS_BUILD_TESTS` 构建，CTest 1/1 通过 | 同左 |
+
+两处测试日志均位于各自工作区的 `work/custom-upstream-20261027/`；
+prepare 的正式运行记录位于 `work/qwen2.5-0.5b/results/`。
+本次未重新执行完整模型精度或性能测试；此前设备验证范围及 GE 环境限制仍按下文记录。
+
+## 迁移分支整理（2026-10-27）
+
+按要求将 `codex/migrate-prefix-attention` 重建到上游基线
+`ddca283e1f3d0488c4b1c4ce7672fb9bb128a83c`，当前迁移提交为
+`c6b18c8d6bbb1f3bd93b624258ca0ad654307b8e`。分支历史不包含
+`fba9f846cc31792fb155cb8c5653b06a74ea4137`，也不包含其WeightNZ/MatMulV3改动；
+相对上游仅保留Prefix Attention迁入及相关README改动。
+
+已核对Prefix Attention目录及迁移README与原提交 `dc21a7a7f10661ee49af75c9519832103b2d6db9`
+逐字节一致，模型配置中两项Prefix依赖revision已同步。下文A3/A5设备验证仍按实际
+运行时的原提交记录；该时点包含独立WeightNZ提交，不能据此宣称移除该提交后的
+完整模型组合已经重新验证。WeightNZ依赖的独立版本声明本次未调整。
+
+## Prefix Attention 归档迁移验证（2026-10-27）
+
+Prefix Attention 从 `third_party/ascend-ops/prefix-attention/` 迁入
+`third_party/custom_development_code/custom_op/prefix-attention/`，目标仓库分支为
+`codex/migrate-prefix-attention`，迁移提交为 `dc21a7a7f10661ee49af75c9519832103b2d6db9`；
+源提交为 `fbf0400872079046c1b494188c5d8bd2749d868a`。模型 YAML 的 A3/A5 source
+与对应 revision 已更新。原 ascend-ops 子模块及其引用保持不变，先保留用于迁移对照。
+
+导入源提交跟踪的159个文件；除3份 README 外，156个源码与构建文件逐字节一致，
+执行权限全部保留。新增局部 .gitignore 排除普通构建、缓存和日志产物；
+A5 codegen、AICPU 源码及 artifacts.h 仍作为构建输入签入。
+来源、版本与构建入口见[算子说明](../../third_party/custom_development_code/custom_op/prefix-attention/README.md)。
+
+实测环境：99机器、hejun-cann9-qwen25容器、CANN9.0.0、Python3.11.15、
+Ascend910_9382，设备6。重新 prepare 后核对 CMakeCache，源码目录确认为迁入后的 ascendc。
+
+| 检查 | 范围 | 结果 |
+|---|---|---|
+| 配置解析 | Ascend910_9382、Ascend950PR_958b 的依赖目录、构建脚本及迁移提交 | 通过 |
+| Python / Shell 语法 | 迁入工程的 Python 源码及两个构建入口 | 通过 |
+| 框架回归 | Python 60项；CTest 1/1 | 全部通过 |
+| A3 prepare | 新目录全新构建 AscendC OPP 包并安装 Torch binding | 通过 |
+| A3 算子独立测试 | eager 对 FP32参考；tensor/default接口；GE整图及复用 | 全部通过；最大参考误差1.150668e-4，其余对照逐值一致 |
+| A3 Qwen build / infer / compare | 重新导出AIR；batch16，全100组/1600样本 | 全部通过；最小cosine=0.998909550002，最大relative L2=0.046848644966 |
+| 迁移前后输出对照 | 已归档旧输出与新输出；既有golden的SHA256 | 数值数组变化0项，最大差异0；golden未修改 |
+| A5 设备构建与执行 | 850-a5 / hejun-cann920-cannbotdsl 补充验证 | 构建及算子测试通过；全量精度在进程级加载输出扩容修复库后通过，详见下节 |
+
+本次复用已有 golden，没有重新生成数据或修改精度阈值，也没有执行性能压测。
+上述表格的A3结论适用于所列A3环境；A5补充验证见下节。当前继续保留 ascend-ops 子模块。
+
+| 步骤 | run_id |
+|---|---|
+| prepare | 20261027T062007-3365ad90 |
+| build | 20261027T062211-1933a54a |
+| infer --case-ids all | 20261027T062439-a8d01f6f |
+| compare --case-ids all | 20261027T062512-dafeb903 |
+
+运行记录位于 `work/qwen2.5-0.5b/results/<run_id>/`；迁移清单、配置检查、
+测试日志及精度摘要位于 `work/prefix-migration-20261027/`。
+原图、outputs和golden副本归档于该目录的 `previous-main/`；
+新的模型图及输出保留在默认work目录。
+
+## A5 Prefix Attention 迁移补充验证（2026-10-27）
+
+使用850-a5机器、hejun-cann920-cannbotdsl容器、
+`/home/h00909914/ascend-ge-adapters`、逻辑设备7。
+迁入分支及提交仍为 `codex/migrate-prefix-attention` /
+`dc21a7a7f10661ee49af75c9519832103b2d6db9`，未修改算子实现或精度阈值。
+CANN工具包为9.3.0 B140，Python3.12.14，Torch2.10.0+cpu、
+TorchNPU2.10.0.post2，Transformers5.10.1。
+
+**结论：迁移构建及算子测试通过；默认GE的全量精度未通过，
+进程级加载既有输出扩容修复库后，全100组/1600样本通过，输出与迁移前逐值一致。**
+这不是对该容器默认GE全量精度的通过声明。
+
+| 检查 | 结果 |
+|---|---|
+| 源码与版本 | 159个导入文件哈希与99机器一致；两个子仓库工作区干净，旧子模块未改动 |
+| A5 prepare / runtime build / AIR导出 | 从新路径重新构建、安装并导出成功 |
+| Planner | frozen golden、8线程同步、深队列及同bounds并发测试全部通过 |
+| 独立Attention | T=128/2048/4096、batch=1/16/32，FP32参考最大绝对误差1.1202693e-4 |
+| 框架回归 | Python60项、CTest1/1通过；复验包含进程级修复库环境 |
+| 默认GE全量执行 | infer执行成功；compare有23组失败，77组与旧输出逐值一致 |
+| 加载扩容修复库后的全量执行 | 100组/1600样本全部通过，最小cosine=0.999475201977，最大relative L2=0.034481627722 |
+| 迁移前后输出 | 200个NPZ数组全部逐值一致，数值最大差异0 |
+| CPU参考来源 | 复用99机器的完整FP32 golden；权重、模型配置及300个NPY输入文件哈希一致；参考文件未改写 |
+
+原A5 golden仅含case-0000，已归档；本次用已核验来源的完整CPU FP32参考进行全量比较。
+原A5单case参考与该完整参考的重叠分数最大绝对差为2.25007534e-5。
+不重新生成输入、不调整阈值、不使用设备输出替代golden，未进行性能压测。
+
+### GE环境差异与复现
+
+默认GE的失败输入均位于首轮容量之外的较大shape范围，符合算子文档中已记录的
+`EagerOpExecutionContext::MallocOutputTensor`输出缓冲区扩容问题。
+同一AIR、算子二进制、输入、golden和阈值保持不变，仅加载已有修复版
+`liblowering.so`后，全部输出恢复为迁移前数值。修复库来自已有GE源码提交
+`cec5518fe3eb39dd7eec7b1fd124280b2ff6eaf2`的构建产物，
+SHA256为 `df205905bd630bfdd7391f5f28c86417ff9cf95451662723bb27e64885530eb6`。
+
+本次对照仅验证该进程级修复在当前Qwen工作负载中的效果；
+正式运行环境应使用包含该修复、版本匹配的GE Compiler / Executor。
+未替换系统CANN或GE库。曾尝试在work内组合完整GE、Runtime和头文件，
+但遇到组件及内置GatherV2形状推导兼容问题；这些实验未作为通过环境。
+已恢复原CANN头文件/库对应的运行器和依赖，实验日志保留于work。
+
+#### 修复来源与适用环境
+
+扩容修复位于 GE 提交
+[`3bc5821ebe7c93720842dbd5989bbab82a745ef9`](https://gitcode.com/cann/ge/commit/3bc5821ebe7c93720842dbd5989bbab82a745ef9)，
+修改 `graph_metadef/exe_graph/runtime/` 下 Eager / HostCPU 的输出缓冲区容量检查。
+本实验使用的构建源码为公开 GE `9.3.0-beta.1` 分支中的
+`cec5518fe3eb39dd7eec7b1fd124280b2ff6eaf2`，包含上述修复；
+`graph_metadef` 已包含在该 GE 仓库中，无需另取子模块。
+
+| 项目 | 本次已验证值 |
+|---|---|
+| 主机环境 | aarch64，openEuler 24.03 LTS-SP4，glibc 2.38 |
+| CANN | 9.3.0 B140，`/usr/local/Ascend/cann-9.3.0` |
+| 构建工具 | GCC 12.3.1，CMake 3.31.12，C++11 ABI=0 |
+| Python | 3.12.14，前缀 `/usr/local/python3.12.14` |
+| GE 构建目标 | `ge-executor` 配置下的 `lowering` |
+| 原实验产物 | `/home/h00909914/ge/build/ge-executor/graph_metadef/exe_graph/liblowering.so` |
+| 原实验 SHA256 | `df205905bd630bfdd7391f5f28c86417ff9cf95451662723bb27e64885530eb6` |
+
+下列命令在新环境的项目根目录执行。先安装项目依赖、准备匹配的 CANN/驱动和模型输入、
+FP32 golden；根据实际位置设置 `CANN_ROOT` 和 Python 前缀。本次单库预加载仅在上表组合验证，
+不表示可跨 CANN、CPU 架构或系统 ABI 混用。完整 GE 部署仍需配套 Compiler / Executor。
+
+```bash
+export GE_ADAPTER_ROOT="$PWD"
+export CANN_ROOT=/usr/local/Ascend/cann-9.3.0
+export GE_FIX_PYTHON_PREFIX=/usr/local/python3.12.14
+export GE_FIX_DIR="$GE_ADAPTER_ROOT/work/a5-runtime-fix"
+mkdir -p "$GE_FIX_DIR"
+```
+
+#### 方式一：获取原实验二进制
+
+如果新环境或 Linux 中转机能通过 SSH 别名 `850-a5` 访问原容器，可直接取回已验证文件；
+经过中转时，将文件传到新环境的 `$GE_FIX_DIR` 后再次校验。这里不依赖原 `work/` 环境脚本。
+
+```bash
+ssh 850-a5 'docker exec hejun-cann920-cannbotdsl cat /home/h00909914/ascend-ge-adapters/work/prefix-migration-20261027/runtime-fix/liblowering.so' > "$GE_FIX_DIR/liblowering.so.download"
+printf '%s  %s\n' \
+  df205905bd630bfdd7391f5f28c86417ff9cf95451662723bb27e64885530eb6 \
+  "$GE_FIX_DIR/liblowering.so.download" | sha256sum --check - &&
+  mv "$GE_FIX_DIR/liblowering.so.download" "$GE_FIX_DIR/liblowering.so"
+```
+
+#### 方式二：从固定源码重建
+
+无需访问原实验机器。按固定提交的
+[GE 构建说明](https://gitcode.com/cann/ge/blob/cec5518fe3eb39dd7eec7b1fd124280b2ff6eaf2/docs/zh/build.md)
+安装系统编译依赖，包括 GCC/G++、CMake、make、patch、autoconf、automake 和 libtool；离线环境先按该提交的
+[离线编译说明](https://gitcode.com/cann/ge/blob/cec5518fe3eb39dd7eec7b1fd124280b2ff6eaf2/docs/zh/user_guides/offline_compile.md)
+准备第三方源码，放到 GE 的 `output/third_party/`。使用新的源码/构建目录，避免继承旧 SDK 缓存。
+
+```bash
+(
+set -e
+source "$CANN_ROOT/set_env.sh"
+export PYTHONHOME="$GE_FIX_PYTHON_PREFIX"
+export PATH="$PYTHONHOME/bin:$PATH"
+export LD_LIBRARY_PATH="$PYTHONHOME/lib:${LD_LIBRARY_PATH:-}"
+export GE_FIX_SRC="$GE_ADAPTER_ROOT/work/ge-output-growth-src"
+git clone --single-branch --branch 9.3.0-beta.1 https://gitcode.com/cann/ge.git "$GE_FIX_SRC"
+git -C "$GE_FIX_SRC" checkout --detach cec5518fe3eb39dd7eec7b1fd124280b2ff6eaf2
+git -C "$GE_FIX_SRC" merge-base --is-ancestor 3bc5821ebe7c93720842dbd5989bbab82a745ef9 HEAD
+# 使用当前构建 Python；requirements.txt 包含 pybind11>=2.13.6,<3.0.0。
+python3 -m pip install -r "$GE_FIX_SRC/requirements.txt"
+cmake -S "$GE_FIX_SRC" -B "$GE_FIX_SRC/build/ge-executor" \
+  -DBUILD_OPEN_PROJECT=ON -DENABLE_OPEN_SRC=ON -DBUILD_METADEF=ON \
+  -DCANN_PACKAGES=ge-executor -DCMAKE_BUILD_TYPE=Release \
+  -DENABLE_BUILD_DEVICE=ON -DUSE_CXX11_ABI=0 \
+  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  -DASCEND_INSTALL_PATH="$(readlink -f "$CANN_ROOT")" \
+  -DCANN_3RD_LIB_PATH="$GE_FIX_SRC/output/third_party" \
+  -DHI_PYTHON="$(command -v python3)"
+cmake --build "$GE_FIX_SRC/build/ge-executor" --target lowering --parallel 2
+install -m 644 "$GE_FIX_SRC/build/ge-executor/graph_metadef/exe_graph/liblowering.so" "$GE_FIX_DIR/liblowering.so"
+(cd "$GE_FIX_DIR" && sha256sum liblowering.so > SHA256SUMS)
+)
+```
+
+该目标构建不执行 GE 安装，不覆盖系统库。重新编译的 SHA256 可能因工具链和构建环境不同而变化，
+不能直接用原实验哈希作为通过依据，须记录自己的哈希并完成下述验收。
+本次补充文档时已在原 GE 构建目录执行 `lowering` 增量构建，产物哈希仍与原实验一致；
+未重新进行全新源码目录及第三方依赖的完整构建；本容器的新目录配置检查发现缺少系统工具
+`patch`，因此不能把既有构建缓存可增量编译等同于全新环境依赖已齐全。
+
+#### 进程级加载与验收
+
+在项目根目录启动以下子 Shell；Python 前缀按新环境实际安装位置修改。
+这里直接给出完整环境设置，替代旧的 `source work/.../a5-output-growth-fix-env.sh`。
+Python 启动后先检查 `/proc/self/maps`，确认修复库确实已映射；
+随后重新 prepare 并执行全100组精度比较，不修改 golden 或阈值。
+
+```bash
+(
+  set -e
+  cd "$GE_ADAPTER_ROOT"
+  source "$CANN_ROOT/set_env.sh"
+  export PYTHONHOME="$GE_FIX_PYTHON_PREFIX"
+  export PATH="$PYTHONHOME/bin:$PATH"
+  export LD_LIBRARY_PATH="$PYTHONHOME/lib:${LD_LIBRARY_PATH:-}"
+  test -r "$GE_FIX_DIR/liblowering.so"
+  export LD_PRELOAD="$GE_FIX_DIR/liblowering.so"
+  export OPENBLAS_NUM_THREADS=8 OMP_NUM_THREADS=8 MKL_NUM_THREADS=8
+  export TMPDIR="$GE_ADAPTER_ROOT/work/tmp"
+  mkdir -p "$TMPDIR"
+  python3 - <<'PY'
+import hashlib
+import os
+from pathlib import Path
+library = (Path(os.environ['GE_FIX_DIR']) / 'liblowering.so').resolve()
+mapped = {line.split()[-1] for line in Path('/proc/self/maps').read_text().splitlines()}
+assert str(library) in mapped, f'修复库未加载: {library}'
+print('loaded:', library)
+print('sha256:', hashlib.sha256(library.read_bytes()).hexdigest())
+PY
+  : "${QWEN_MODEL_DIR:?请先设置模型权重目录，例如 /home/h00909914/Qwen2.5-0.5B}"
+  python3 -m core.pipeline prepare --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b
+  python3 -m core.pipeline build --config models/qwen2.5-0.5b/config/model.yaml --device 7
+  python3 -m core.pipeline infer --config models/qwen2.5-0.5b/config/model.yaml --device 7 --case-ids all
+  python3 -m core.pipeline compare --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b --case-ids all
+)
+```
+
+逻辑设备7按实际空闲设备调整；执行前在外层设置 `export QWEN_MODEL_DIR=/实际模型路径`。
+输入与 FP32 golden 的准备使用项目七步流程中的 data / baseline。
+只有100组全部通过才算该新环境验收通过；库成功加载不能替代精度验收。
+子 Shell 结束后，外层 Shell 的 `LD_PRELOAD` 等变量保持原值；
+若之前在外层加载过旧环境脚本，需在外层显式执行 `unset LD_PRELOAD` 才会回到默认 GE。
+
+原 `work/prefix-migration-20261027/a5-output-growth-fix-env.sh` 仅作为历史实验记录保留，
+新环境不再依赖它。原实验缺少的 ONNX 依赖使用项目锁定的 onnx1.17.0、onnxruntime1.20.1、
+protobuf5.29.5离线包补齐，首次缺依赖失败日志同时保留。
+
+
+| 步骤 | run_id |
+|---|---|
+| 新路径默认环境prepare | 20261027T064136-ebf2cdab |
+| 新路径AIR导出 | 20261027T064458-d5015d3a |
+| 默认GE全量infer / compare | 20261027T064724-5c6c9c5b / 20261027T064914-930f4d0a |
+| 扩容修复库对照infer / compare | 20261027T071705-e9038339 / 20261027T071737-b05641c8 |
+| 恢复运行器后最终infer / compare | 20261027T071952-4a549fd0 / 20261027T072023-e8ad8772 |
+
+原始记录在A5项目的 `work/qwen2.5-0.5b/results/<run_id>/`；
+测试脚本、日志、环境及摘要在 `work/prefix-migration-20261027/`。
+原A5图、依赖、golden和输出保存在该目录的 `previous-a5/`。
+在99主工作区的同名work目录下归档了A5验证日志与摘要。
+`ascend-ops`子模块继续保留，本次未提交或推送主仓库变更。
+
 ## 适配器精简回归（2026-10-24）
 
 本次只调整共享 NumPy 编码、初始化时绑定算子入口、统一 PATCHES 清单和测试侧 CPU 算子注入；A3/A5 默认配置及算子实现未改动。

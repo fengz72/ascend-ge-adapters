@@ -25,6 +25,8 @@ source models/qwen2.5-0.5b/scripts/env_a3.sh
 
 配置统一维护在 [config/model.yaml](config/model.yaml)：公共段配置共用参数，`platforms.a3/a5` 配置平台算子、依赖、核数预算和实例数，不再使用 `chips` 覆盖层。`--device` 自动识别芯片，离线步骤使用 `--target`。输出评分列由 [config/target_tokens.json](config/target_tokens.json) 定义。
 
+Prefix Attention 与 WeightNZ/MatMulV3 pass 统一使用[上游 custom_development_code](https://gitcode.com/CharmanderFang/custom_development_code)；当前 A3/A5 的四项依赖 revision 与子模块提交均为 `8e08d0d20275558aefac1bbb35019e6b52f1073a`。Prefix Attention 源码统一维护在 [custom_op/prefix-attention](../../third_party/custom_development_code/custom_op/prefix-attention/README.md)：A3 使用 `ascendc/`，A5 使用 `cannbot-dsl/ge/`。原 `ascend-ops` 子模块暂时保留用于迁移对照；当前 YAML 已改用新路径。迁移或切换源码路径后，应先归档并清理对应依赖的旧 CMake 构建缓存，再显式执行 `prepare`。
+
 七个步骤可独立执行，命令见[项目流程](../../README.md#七个独立步骤)。已有图、输入及依赖后，可以直接覆盖实例数运行性能：
 
 ```bash
@@ -36,7 +38,7 @@ python3 -m core.pipeline bench --config models/qwen2.5-0.5b/config/model.yaml --
 ## 使用限制
 
 - 面向标准全注意力、SiLU、默认 RoPE 的推理，不支持训练、HF `generate()`、KV-cache 或滑动窗口注意力。
-- A5 Prefix 需要 CANN 9.3.0 及以上的辅流接口；当前交付支持 FP16、14/2 个 Q/KV heads、head dim 64。A3/A5 的实际版本、硬件及验收范围见[验证记录](../../docs/qwen2.5-0.5b/validation.md)，其他 SoC 需要单独验证。
+- A5 Prefix 需要 CANN 9.3.0 及以上的辅流接口；动态 shape 还要求 GE 包含输出缓冲区扩容修复并使用版本匹配的 Compiler / Executor；当前交付支持 FP16、14/2 个 Q/KV heads、head dim 64。A3/A5 的实际版本、硬件及验收范围见[验证记录](../../docs/qwen2.5-0.5b/validation.md)，其他 SoC 需要单独验证。
 - Patch 影响当前进程中的 HF Qwen2 类。原始 golden 与候选模型必须在独立进程中执行，且不能重复适配已裁剪模型。部署使用导出的 AIR 及平台算子运行库。
 - 已有输入池的实际 batch 必须与 YAML 一致；修改输入参数后显式执行 data。修改模型或依赖后按项目流程重新 build 或 prepare。
 - 默认使用 FP16。BF16 输出的运行期容量计算仍存在已知问题；GE Session dump 尚不支持，ATC 的历史验证范围见验证记录。

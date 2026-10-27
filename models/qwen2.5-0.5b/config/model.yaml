@@ -63,15 +63,15 @@ platforms:
     dependencies:
       custom_ops:
         - id: prefix_attention_910
-          source: third_party/ascend-ops/prefix-attention/ascendc
-          revision: fbf0400872079046c1b494188c5d8bd2749d868a
+          source: third_party/custom_development_code/custom_op/prefix-attention/ascendc
+          revision: 8e08d0d20275558aefac1bbb35019e6b52f1073a
           build_script: models/qwen2.5-0.5b/scripts/build_prefix_910.sh
           python_imports:
             - npu_prefix_infer_attention_score
       ge_passes:
         - id: weight_nz
           source: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
-          revision: fba9f846cc31792fb155cb8c5653b06a74ea4137
+          revision: 8e08d0d20275558aefac1bbb35019e6b52f1073a
           build_script: models/qwen2.5-0.5b/scripts/build_nz_pass.sh
       parser_plugins: []
   a5:
@@ -87,14 +87,14 @@ platforms:
     dependencies:
       custom_ops:
         - id: prefix_attention_a5
-          source: third_party/ascend-ops/prefix-attention/cannbot-dsl/ge
-          revision: fbf0400872079046c1b494188c5d8bd2749d868a
+          source: third_party/custom_development_code/custom_op/prefix-attention/cannbot-dsl/ge
+          revision: 8e08d0d20275558aefac1bbb35019e6b52f1073a
           build_script: models/qwen2.5-0.5b/scripts/build_prefix_a5.sh
           python_imports:
             - prefix_attn_torch
       ge_passes:
         - id: weight_nz
           source: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
-          revision: fba9f846cc31792fb155cb8c5653b06a74ea4137
+          revision: 8e08d0d20275558aefac1bbb35019e6b52f1073a
           build_script: models/qwen2.5-0.5b/scripts/build_nz_pass.sh
       parser_plugins: []

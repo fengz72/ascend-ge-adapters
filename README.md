@@ -101,7 +101,7 @@ baseline 和 infer 分别在 work/<模型名> 保存 golden.npz、outputs.npz，
 
 infer、bench 或 run 可传 --profiling，也可使用 YAML 的 observability.profiling。采集复用当前图，普通 bench 的随机负载也支持采集；性能结果会标明 profiling_enabled，带采集开销的结果单独看待。GE Session dump 尚不支持。
 
---device 指定本次设备；识别精确 SoC 后，按平台选择模型 YAML 的 platforms。离线步骤用 --target 指定精确 SoC。核数预算、batch 和实例数统一由模型 YAML 的公共段及 platforms 定义，实测依据见[模型文档索引](docs/qwen2.5-0.5b/README.md)。核预算不表示独占绑核。依赖由所选模型配置声明。依赖脚本接收 GE_SRC_DIR、GE_BUILD_DIR、GE_INSTALL_DIR、GE_PYTHON；依赖交付件保存在 work 下，NZ Pass 同时安装到 ${ASCEND_OPP_PATH}/vendors/custom_nz_pass/custom_fusion_passes/，由 GE 自动加载。
+--device 指定本次设备；识别精确 SoC 后，按平台选择模型 YAML 的 platforms。离线步骤用 --target 指定精确 SoC。核数预算、batch 和实例数统一由模型 YAML 的公共段及 platforms 定义，实测依据见[模型文档索引](docs/qwen2.5-0.5b/README.md)。核预算不表示独占绑核。依赖由所选模型配置声明。`custom_development_code` 子模块跟踪[上游仓库](https://gitcode.com/CharmanderFang/custom_development_code)的 `main` 分支；Prefix Attention 算子与 WeightNZ/MatMulV3 pass 均使用该子模块的固定提交，由模型 YAML 的 revision 记录。Prefix Attention 的 A3/A5 源码位于 `third_party/custom_development_code/custom_op/prefix-attention/`，使用说明见[算子文档](third_party/custom_development_code/custom_op/prefix-attention/README.md)。原 `ascend-ops` 子模块暂时保留用于迁移对照。依赖脚本接收 GE_SRC_DIR、GE_BUILD_DIR、GE_INSTALL_DIR、GE_PYTHON；依赖交付件保存在 work 下，NZ Pass 同时安装到 ${ASCEND_OPP_PATH}/vendors/custom_nz_pass/custom_fusion_passes/，由 GE 自动加载。
 
 ```text
 models/       模型适配、数据脚本、唯一模型 YAML、构建脚本和原始输入
