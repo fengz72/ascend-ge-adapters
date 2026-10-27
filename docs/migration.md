@@ -2,7 +2,7 @@
 
 命令入口统一为 python3 -m core.pipeline。core/cli.py 已删除；现有命令、脚本和 Skills 中的旧模块入口需要直接替换，不提供兼容入口。Python 调用改为 from core.pipeline import execute，并传入模型 YAML 路径，例如 execute("bench", "models/qwen2.5-0.5b/config/model.yaml", device=6, instances=4)；不再先 load_authoring 后传字典。平台选择与参数覆盖全部由 execute 完成。
 
-唯一模型 YAML 保留 source、model.params、data、build、verification、benchmark、dependencies、observability、platforms/chips。只支持容器 Python，不生成清单或兼容旧命令。
+唯一模型 YAML 保留 source、model.params、data、build、verification、benchmark、dependencies、observability、platforms。原 `chips` 中的模型参数并入对应 `platforms.a3/a5`，不再保留单独芯片覆盖层。只支持容器 Python，不生成清单或兼容旧命令。
 
 | 原操作 | 现在的行为 |
 |---|---|

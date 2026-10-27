@@ -106,22 +106,21 @@ def load_authoring(paths, *, target=None, device=None, catalog=CATALOG, source_p
     for path in paths:
         if Path(path).suffix.lower() not in ('.yaml','.yml'):raise ValueError('commands require YAML --config')
         layer=yaml.safe_load(Path(path).read_text())
-        exact_keys(layer,set(SECTIONS)|{'target','dependencies','work_dir','platforms','chips'},str(path))
-        base={k:v for k,v in layer.items() if k not in ('platforms','chips')}
-        common=merge(common,base);layers.append((base,layer.get('platforms',{}),layer.get('chips',{})))
+        exact_keys(layer,set(SECTIONS)|{'target','dependencies','work_dir','platforms'},str(path))
+        base={k:v for k,v in layer.items() if k != 'platforms'}
+        common=merge(common,base);layers.append((base,layer.get('platforms',{})))
     if not layers:raise ValueError('at least one YAML is required')
     chosen=select_target(target if target is not None else common.get('target','auto'),device=device,catalog=catalog)
     config=copy.deepcopy(DEFAULTS)
-    for base,platforms,chips in layers:
-        for name,branches in (('platforms',platforms),('chips',chips)):
-            if not isinstance(branches,dict):raise ValueError(f'{name} must be a mapping')
-            for key,branch in branches.items():
-                exact_keys(branch,(set(SECTIONS)-{'target'})|{'dependencies','work_dir'},f'{name}.{key}')
-                probe=merge(common,branch);probe['target']=chosen
-                if probe['source'].get('kind')=='onnx':probe['model'].setdefault('adapter_file','core/native_onnx.py')
-                validate(probe)
+    for base,platforms in layers:
+        if not isinstance(platforms,dict):raise ValueError('platforms must be a mapping')
+        for family,branch in platforms.items():
+            exact_keys(branch,(set(SECTIONS)-{'target'})|{'dependencies','work_dir'},f'platforms.{family}')
+            probe=merge(common,branch);probe['target']=chosen
+            if probe['source'].get('kind')=='onnx':probe['model'].setdefault('adapter_file','core/native_onnx.py')
+            validate(probe)
         if platforms and chosen['family'] not in platforms:raise ValueError(f"no platform configuration for {chosen['family']}")
-        for layer in (base,platforms.get(chosen['family'],{}),chips.get(chosen['soc'],{})):
+        for layer in (base,platforms.get(chosen['family'],{})):
             config=merge(config,layer)
     config['target']=chosen
     if config['source']['kind']=='onnx':

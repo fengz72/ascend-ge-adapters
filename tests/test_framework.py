@@ -27,7 +27,7 @@ class Framework(unittest.TestCase):
     def setUp(self):self.enterContext(patch.dict(os.environ,{'QWEN_MODEL_DIR':'/weights/Qwen'}))
     def qwen(self,**kwargs):return load_authoring(QWEN,target=SOC,**kwargs)
 
-    def test_qwen_exact_chip_defaults(self):
+    def test_qwen_platform_defaults(self):
         for soc,attention,cores,instances in (
             ('Ascend910_9382','prefix_910','8|16',5),
             ('Ascend950PR_958b','prefix_a5','16|32',3),
@@ -43,7 +43,7 @@ class Framework(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory,'model.yaml')
             authoring=yaml.safe_load(QWEN.read_text())
-            authoring.setdefault('chips',{}).setdefault(SOC,{})['benchmark']={'instances':1}
+            authoring['platforms']['a5']['benchmark']={'instances':1}
             path.write_text(yaml.safe_dump(authoring,sort_keys=False))
             first=load_authoring(path,target=SOC)
             path.write_text(path.read_text().replace('instances: 1','instances: 8'))
@@ -347,8 +347,17 @@ class Framework(unittest.TestCase):
         self.assertNotIn('device',a5['target']);self.assertNotIn('artifacts',a5)
 
     def test_explicit_and_detected_chip_select_same_config(self):
-        with patch('core.targets.inspect_device_isolated',return_value=HW):
-            self.assertEqual(self.qwen(),load_authoring(QWEN,device=6))
+        for soc,device,capacity in [('Ascend910_9382',1,{'aic':24,'aiv':48}),
+                                    (SOC,6,HW['capacity'])]:
+            hardware={'device':device,'soc':soc,'capacity':capacity}
+            with self.subTest(soc=soc),patch('core.targets.inspect_device_isolated',return_value=hardware):
+                self.assertEqual(load_authoring(QWEN,target=soc),load_authoring(QWEN,device=device))
+
+    def test_chip_override_section_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory,'old.yaml')
+            path.write_text(QWEN.read_text()+'\nchips: {}\n')
+            with self.assertRaisesRegex(ValueError,'chips'):load_authoring(path,target=SOC)
 
     def test_platform_and_device_mismatch_fails(self):
         with patch('core.targets.inspect_device_isolated',return_value=HW):
