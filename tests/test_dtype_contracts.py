@@ -72,23 +72,25 @@ class DtypeConfiguration(unittest.TestCase):
                         with self.assertRaisesRegex(ValueError, "cannot cast Torch model parameters"):
                             self.load(authored)
 
-    def test_inactive_platform_and_chip_dtypes_are_also_validated(self):
+    def test_inactive_platform_dtypes_are_also_validated(self):
         for section in ("build", "reference"):
-            for layer in ("platforms", "chips"):
-                with self.subTest(section=section, layer=layer):
-                    authored = self.config()
-                    if layer == "platforms":
-                        authored[layer] = {"a3": {}, "a5": {section: {"dtype": "preserve"}}}
-                    else:
-                        authored[layer] = {"Ascend950PR_958b": {section: {"dtype": "preserve"}}}
-                    with self.assertRaisesRegex(ValueError, rf"{section}\.dtype"):
-                        self.load(authored)
+            with self.subTest(section=section):
+                authored = self.config()
+                authored["platforms"] = {"a3": {}, "a5": {section: {"dtype": "preserve"}}}
+                with self.assertRaisesRegex(ValueError, rf"{section}\.dtype"):
+                    self.load(authored)
+
+    def test_removed_chip_override_is_rejected(self):
+        authored = self.config()
+        authored["chips"] = {"Ascend910_9382": {"build": {"dtype": "float16"}}}
+        with self.assertRaisesRegex(ValueError, "unknown=.*chips"):
+            self.load(authored)
 
     def test_explicit_dtype_overrides_are_retained(self):
         authored = self.config()
         authored.update(build={"dtype": "float16"}, reference={"dtype": "float32"},
-                        platforms={"a3": {"build": {"dtype": "float32"}}},
-                        chips={"Ascend910_9382": {"reference": {"dtype": "bfloat16"}}})
+                        platforms={"a3": {"build": {"dtype": "float32"},
+                                          "reference": {"dtype": "bfloat16"}}})
         config = self.load(authored)
         self.assertEqual(config["build"]["dtype"], "float32")
         self.assertEqual(config["reference"]["dtype"], "bfloat16")
