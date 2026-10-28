@@ -25,7 +25,7 @@ source models/qwen2.5-0.5b/scripts/env_a3.sh
 
 配置统一维护在 [config/model.yaml](config/model.yaml)：公共段配置共用参数，`platforms.a3/a5` 配置平台算子、依赖、核数预算和实例数，不再使用 `chips` 覆盖层。`--device` 自动识别芯片，离线步骤使用 `--target`。输出评分列由 [config/target_tokens.json](config/target_tokens.json) 定义。
 
-Prefix Attention 与 WeightNZ/MatMulV3 pass 统一使用[上游 custom_development_code](https://gitcode.com/CharmanderFang/custom_development_code)；当前 A3/A5 的四项依赖 revision 与子模块提交均为 `8e08d0d20275558aefac1bbb35019e6b52f1073a`。Prefix Attention 源码统一维护在 [custom_op/prefix-attention](../../third_party/custom_development_code/custom_op/prefix-attention/README.md)：A3 使用 `ascendc/`，A5 使用 `cannbot-dsl/ge/`。原 `ascend-ops` 子模块暂时保留用于迁移对照；当前 YAML 已改用新路径。迁移或切换源码路径后，应先归档并清理对应依赖的旧 CMake 构建缓存，再显式执行 `prepare`。
+Prefix Attention 与 WeightNZ/MatMulV3 pass 的来源仓库、固定版本与构建入口统一维护在 [config/model.yaml](config/model.yaml)；Prefix Attention 源码见 [custom_op/prefix-attention](../../third_party/custom_development_code/custom_op/prefix-attention/README.md)（A3 用 `ascendc/`，A5 用 `cannbot-dsl/ge/`）。
 
 七个步骤可独立执行，命令见[项目流程](../../README.md#七个独立步骤)。已有图、输入及依赖后，可以直接覆盖实例数运行性能：
 
@@ -33,7 +33,18 @@ Prefix Attention 与 WeightNZ/MatMulV3 pass 统一使用[上游 custom_developme
 python3 -m core.pipeline bench --config models/qwen2.5-0.5b/config/model.yaml --device 6 --instances 3
 ```
 
-原始权重用于 data、baseline、build、run；infer、compare、bench、prepare 无需设置 `QWEN_MODEL_DIR`。默认精度 case、全量验收选择及性能测量口径见项目流程和模型 YAML。当前参数的实测依据见[文档索引](../../docs/qwen2.5-0.5b/README.md)，性能历史不在本页重复维护。
+原始权重用于 data、baseline、build、run；infer、compare、bench、prepare 无需设置 `QWEN_MODEL_DIR`。默认精度 case、全量验收选择及性能测量口径见项目流程和模型 YAML。
+
+## 性能表现
+
+默认配置实测，batch16、同一 100 组变长输入池、seed42；P99 含 H2D、描述符、执行与同步，不含编译、预热和服务排队。
+
+| 平台 | 核数/实例 | 业务 QPS | P99 |
+|---|---|---:|---:|
+| A3（Ascend910_9382） | 8\|16、5 实例 | 2172.093（三轮各 10000 次调用的中位） | 41.266 ms（三轮最差） |
+| A5（Ascend950PR_958b） | 16\|32、3 实例 | 2768.499 | 19.475 ms |
+
+A5 为单轮 1000 次调用扫描值，未做三轮长窗口确认。完整测量口径、验证边界及受干扰记录见[文档索引](../../docs/qwen2.5-0.5b/README.md)。
 
 ## 使用限制
 

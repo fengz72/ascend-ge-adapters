@@ -3,8 +3,6 @@ model:
   adapter_file: models/qwen2.5-0.5b/qwen_npu_adapter.py
   params:
     score_token_ids_file: config/target_tokens.json
-    attention: fia
-    operators: npu
     prune_output: true
     max_seq_len: 2048
 source:
@@ -73,7 +71,6 @@ platforms:
           source: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
           revision: 8e08d0d20275558aefac1bbb35019e6b52f1073a
           build_script: models/qwen2.5-0.5b/scripts/build_nz_pass.sh
-      parser_plugins: []
   a5:
     # A5 Prefix 使用同一历史变长池；batch 由实际 case 的请求数量确定。
     model:
@@ -97,4 +94,3 @@ platforms:
           source: third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass
           revision: 8e08d0d20275558aefac1bbb35019e6b52f1073a
           build_script: models/qwen2.5-0.5b/scripts/build_nz_pass.sh
-      parser_plugins: []

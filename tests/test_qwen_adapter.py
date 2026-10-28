@@ -66,7 +66,7 @@ class QwenPatches(unittest.TestCase):
                 intermediate_size=64, num_hidden_layers=2, num_attention_heads=4,
                 num_key_value_heads=2, max_position_embeddings=64)).eval()
         self.config = {'model': {'params': {'score_token_ids_file': 'config/target_tokens.json',
-                                   'operators': 'npu', 'attention': 'fia',
+                                   'attention': 'fia',
                                    'prune_output': True, 'max_seq_len': 64}},
                        'target': {'family': 'a3'}}
         generator_spec = importlib.util.spec_from_file_location('qwen_case_generator', PATH.parent/'generate_cases.py')
@@ -133,7 +133,7 @@ class QwenPatches(unittest.TestCase):
 
     def test_prefix_encoding_and_export_allow_varying_batch_tokens_prefix_and_bounds(self):
         config = copy.deepcopy(self.config)
-        config['model']['params'].update(attention='prefix_a5', operators='npu')
+        config['model']['params'].update(attention='prefix_a5')
         handle = self.adapter.Handle(self.raw, config, True)
         cases = copy.deepcopy(self.cases)
         cases[1]['payload']['prefix'].append(5)

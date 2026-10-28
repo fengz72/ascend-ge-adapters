@@ -83,6 +83,4 @@ python3 -m core.pipeline data --config models/qwen2.5-0.5b/config/model.yaml --t
 
 A3 使用 `prefix_910`，A5 使用 `prefix_a5`，具体依赖版本以模型 YAML 为准。A5 支持变长 T、prefix、bounds 和实际 batch，当前交付的 dtype、头数与 CANN 接口要求见模型 README。
 
-早期 A5 eager 桥接修复 `b4b30cd` 将 `getCurrentNPUStream().stream(false)` 改为 `stream()`，先提交 TorchNPU 主机队列中的 Q/K/V 工作，再提交 ACL 自定义算子；该修复没有增加逐算子设备同步。之后的辅流 planner、int32 bounds 和同步调整以[逐算子 profiling 报告](qwen2.5-0.5b-a3-a5-profiling.md)中的对应实验为准，不能将早期桥接实现视为所有后续版本的同步方式。
-
 CANN 辅流接口核验分别见 [9.1.0](../cann-9.1.0-eager-attached-stream-support.md)、[9.2.0](../cann-9.2.0-eager-attached-stream-support.md)、[9.3.0](../cann-9.3.0-eager-attached-stream-support.md)。

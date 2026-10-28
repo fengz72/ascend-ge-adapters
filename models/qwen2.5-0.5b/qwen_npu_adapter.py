@@ -15,15 +15,13 @@ from transformers.models.qwen2 import modeling_qwen2 as hf
 
 
 def _params(config):
-    params = {"attention": "fia", "operators": "npu", "prune_output": False,
+    params = {"attention": "fia", "prune_output": False,
               **config["model"]["params"]}
-    allowed = {"score_token_ids_file", "attention", "operators", "prune_output", "max_seq_len"}
+    allowed = {"score_token_ids_file", "attention", "prune_output", "max_seq_len"}
     if set(params) - allowed:
         raise ValueError(f"unknown Qwen model.params: {set(params)-allowed}")
     if params["attention"] not in ("fia", "prefix_910", "prefix_a5"):
         raise ValueError(f"unknown attention implementation: {params['attention']}")
-    if params["operators"] != "npu":
-        raise ValueError("Qwen adaptation requires NPU operators; CPU oracles belong in tests")
     if type(params.get("max_seq_len")) is not int or params["max_seq_len"] < 1:
         raise ValueError("max_seq_len must be a positive integer")
     return params
@@ -275,9 +273,6 @@ class Handle(RuntimeHandle):
 
     def encode(self, case):
         values = _encode_inputs(case, self.params, padded=not self.candidate)
-        if self.candidate and (values["input_ids"].min() < 0 or
-                               values["input_ids"].max() >= self.model.model.embed_tokens.num_embeddings):
-            raise ValueError("input token outside vocabulary")
         return {name: torch.tensor(value, device=self.device) for name, value in values.items()}
 
     def run(self, inputs):
