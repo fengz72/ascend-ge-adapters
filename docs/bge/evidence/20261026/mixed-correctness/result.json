@@ -1,0 +1,109 @@
+{
+  "returncode": 0,
+  "elapsed_seconds": 80.85035167215392,
+  "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/mixed-correctness.json",
+  "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime",
+  "runtime": {
+    "backend": "ge_session",
+    "events": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/mixed-correctness/events.jsonl",
+    "manifest": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/mixed-correctness/manifest.jsonl",
+    "mode": "bench",
+    "performance": {
+      "arrival_model": "closed_loop",
+      "capture_enabled": true,
+      "cohort_qps": 149.11039530367626,
+      "cohort_successes": 2000,
+      "d2h_ms": {
+        "avg": 0.04168587999999994
+      },
+      "distinct_shapes": 4,
+      "drain_ms": 0.0,
+      "e2e_ms": {
+        "avg": 6.665083777499995,
+        "max": 110.831688,
+        "min": 5.874932,
+        "p50": 6.487858,
+        "p99": 8.287356
+      },
+      "errors": 0,
+      "exec_ms": {
+        "avg": 6.470508504500001,
+        "p99": 8.111575
+      },
+      "hbm_mb": {
+        "after_setup": 1942.7734375,
+        "base": 579.37890625
+      },
+      "in_flight_at_end": 0,
+      "instances": [
+        {
+          "desc_ms": {
+            "avg": 0.0009899999999999493
+          },
+          "distinct_shapes": 4,
+          "e2e_ms": {
+            "avg": 6.665083777499995,
+            "max": 110.831688,
+            "min": 5.874932,
+            "p50": 6.487858,
+            "p99": 8.287356
+          },
+          "errors": 0,
+          "exec_ms": {
+            "avg": 6.470508504500001,
+            "p99": 8.111575
+          },
+          "h2d_ms": {
+            "avg": 0.1490305000000005
+          },
+          "load_ms": 3952.324,
+          "name": "instance_0",
+          "qps": 149.11039530367626,
+          "requests": 2000,
+          "specialize_ms": 0.0
+        }
+      ],
+      "last_completed_ns": 2323071919224255,
+      "latency_scope": "h2d_desc_execute_sync_d2h",
+      "profiling_enabled": false,
+      "qps": 149.11039530367626,
+      "requests": 2000,
+      "run_id": "mixed-correctness",
+      "samples": {
+        "avg": 1.0,
+        "max": 1.0,
+        "min": 1.0,
+        "p50": 1.0,
+        "p99": 1.0
+      },
+      "samples_per_second": 149.11039530367626,
+      "sampling": {
+        "order": "global_request_index",
+        "pool_size": 5,
+        "replacement": true,
+        "seed": 42
+      },
+      "schema": "ge-performance/1",
+      "slo_status": "not_defined",
+      "statistics_sufficient": true,
+      "wall_ms": 13412.88108,
+      "warmup": {
+        "ms": 537.984504,
+        "runs": 50
+      },
+      "window_end_ns": 2323071919264035,
+      "window_start_ns": 2323058506382955,
+      "window_successes": 2000
+    },
+    "replay": {
+      "capture_outputs": true,
+      "max_requests": 2000000,
+      "max_seconds": 180,
+      "min_requests": 2000,
+      "min_seconds": 2,
+      "run_id": "mixed-correctness",
+      "warmup_per_case": 10
+    },
+    "status": "success"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-26T02:51:06.252198+00:00",
+  "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+  "plan_sha256": "ec6278b681a7a9abc2cb3983987c20c8d90467809e70cd901dfbaad89cf4f2a2",
+  "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/fp16-correctness.json",
+  "device": 10,
+  "pci": "0000:89:00.0",
+  "env": [
+    "DUMP_GE_GRAPH=2",
+    "DUMP_GRAPH_LEVEL=3",
+    "DUMP_GRAPH_PATH=/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/fp16-graph-dump"
+  ],
+  "charged_before_seconds": 371.397362
+}

@@ -1,0 +1,280 @@
+{
+  "op_info": {
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-nn.json": {
+      "attr": {
+        "list": "scale,fixed_triu_mask"
+      },
+      "attr_fixed_triu_mask": {
+        "defaultValue": "false",
+        "paramType": "optional",
+        "type": "bool",
+        "value": "all"
+      },
+      "attr_scale": {
+        "defaultValue": "1",
+        "paramType": "optional",
+        "type": "float",
+        "value": "all"
+      },
+      "coreType": {
+        "value": "AiCore"
+      },
+      "dynamicCompileStatic": {
+        "flag": "true"
+      },
+      "dynamicFormat": {
+        "flag": "true"
+      },
+      "dynamicRankSupport": {
+        "flag": "true"
+      },
+      "dynamicShapeSupport": {
+        "flag": "true"
+      },
+      "input0": {
+        "dtype": "float32,float16,bfloat16",
+        "format": "ND,ND,ND",
+        "name": "x",
+        "paramType": "required",
+        "shape": "all",
+        "unknownshape_format": "ND,ND,ND"
+      },
+      "input1": {
+        "dtype": "bool,bool,bool",
+        "format": "ND,ND,ND",
+        "name": "mask",
+        "paramType": "optional",
+        "shape": "all",
+        "unknownshape_format": "ND,ND,ND"
+      },
+      "needCheckSupport": {
+        "flag": "false"
+      },
+      "opFile": {
+        "value": "scaled_masked_softmax_v2"
+      },
+      "opInterface": {
+        "value": "scaled_masked_softmax_v2"
+      },
+      "output0": {
+        "dtype": "float32,float16,bfloat16",
+        "format": "ND,ND,ND",
+        "name": "y",
+        "paramType": "required",
+        "shape": "all",
+        "unknownshape_format": "ND,ND,ND"
+      },
+      "prebuildPattern": {
+        "value": "Opaque"
+      },
+      "precision_reduce": {
+        "flag": "true"
+      }
+    }
+  },
+  "schema": {},
+  "impl": {
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/impl/ops_nn/dynamic/scaled_masked_softmax_v2.py": "#!/usr/bin/env python\n# -*- coding: UTF-8 -*-\n\"\"\"\nCopyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.\n\"\"\"\n\nimport os, sys\nimport ctypes\nimport json\nimport shutil\nfrom asc_op_compile_base.common.platform import get_soc_spec\nfrom asc_op_compile_base.common.utils import para_check\nfrom asc_op_compile_base.asc_op_compiler import compile_op, replay_op, check_op_cap, generalize_op_params, get_code_channel, OpInfo\nfrom asc_op_compile_base.common.buildcfg import get_default_build_config\nfrom asc_op_compile_base.common.buildcfg import get_current_build_config\nfrom asc_op_compile_base.common import register as tbe_register\nPYF_PATH = os.path.dirname(os.path.realpath(__file__))\n\n__version__ = '2.0.0'\n\nDTYPE_MAP = {\"float32\": [\"DT_FLOAT\", \"float\"],\n    \"float16\": [\"DT_FLOAT16\", \"half\"],\n    \"int8\": [\"DT_INT8\", \"int8_t\"],\n    \"int16\": [\"DT_INT16\", \"int16_t\"],\n    \"int32\": [\"DT_INT32\", \"int32_t\"],\n    \"int64\": [\"DT_INT64\", \"int64_t\"],\n    \"uint1\": [\"DT_UINT1\", \"uint1b_t\"],\n    \"uint8\": [\"DT_UINT8\", \"uint8_t\"],\n    \"uint16\": [\"DT_UINT16\", \"uint16_t\"],\n    \"uint32\": [\"DT_UINT32\", \"uint32_t\"],\n    \"uint64\": [\"DT_UINT64\", \"uint64_t\"],\n    \"bool\": [\"DT_BOOL\", \"bool\"],\n    \"double\": [\"DT_DOUBLE\", \"double\"],\n    \"dual\": [\"DT_DUAL\", \"unknown\"],\n    \"dual_sub_int8\": [\"DT_DUAL_SUB_INT8\", \"unknown\"],\n    \"dual_sub_uint8\": [\"DT_DUAL_SUB_UINT8\", \"unknown\"],\n    \"string\": [\"DT_STRING\", \"unknown\"],\n    \"complex32\": [\"DT_COMPLEX32\", \"complex32\"],\n    \"complex64\": [\"DT_COMPLEX64\", \"complex64\"],\n    \"complex128\": [\"DT_COMPLEX128\", \"unknown\"],\n    \"qint8\": [\"DT_QINT8\", \"unknown\"],\n    \"qint16\": [\"DT_QINT16\", \"unknown\"],\n    \"qint32\": [\"DT_QINT32\", \"unknown\"],\n    \"quint8\": [\"DT_QUINT8\", \"unknown\"],\n    \"quint16\": [\"DT_QUINT16\", \"unknown\"],\n    \"resource\": [\"DT_RESOURCE\", \"unknown\"],\n    \"string_ref\": [\"DT_STRING_REF\", \"unknown\"],\n    \"int4\": [\"DT_INT4\", \"int4b_t\"],\n    \"bfloat16\": [\"DT_BF16\", \"bfloat16_t\"],\n    \"float8_e5m2\": [\"DT_FLOAT8_E5M2\", \"fp8_e5m2_t\"],\n    \"float8_e4m3fn\": [\"DT_FLOAT8_E4M3FN\", \"fp8_e4m3fn_t\"],\n    \"hifloat8\":[\"DT_HIFLOAT8\", \"hifloat8_t\"],\n    \"float8_e8m0\":[\"DT_FLOAT8_E8M0\", \"fp8_e8m0_t\"],\n    \"float4_e2m1\":[\"DT_FLOAT4_E2M1\", \"fp4x2_e2m1_t\"],\n    \"float4_e1m2\":[\"DT_FLOAT4_E1M2\", \"fp4x2_e1m2_t\"],\n    \"int2\": [\"DT_INT2\", \"int2b_t\"]}\n\ndef add_dtype_fmt_option_single(x, x_n, is_ref: bool = False):\n    options = []\n    x_fmt = x.get(\"format\")\n    x_dtype = x.get(\"dtype\")\n    x_n_in_kernel = x_n + '_REF' if is_ref else x_n\n    options.append(\"-DDTYPE_{n}={t}\".format(n=x_n_in_kernel, t=DTYPE_MAP.get(x_dtype)[1]))\n    options.append(\"-DORIG_DTYPE_{n}={ot}\".format(n=x_n_in_kernel, ot=DTYPE_MAP.get(x_dtype)[0]))\n    options.append(\"-DFORMAT_{n}=FORMAT_{f}\".format(n=x_n_in_kernel, f=x_fmt))\n    return options\n\ndef get_dtype_fmt_options(__inputs__, __outputs__):\n    options = []\n    input_names = ['x', 'mask']\n    output_names = ['y']\n    unique_param_name_set = set()\n    for idx, x in enumerate(__inputs__):\n        if x is None:\n            continue\n        x_n = input_names[idx].upper()\n        unique_param_name_set.add(x_n)\n        options += add_dtype_fmt_option_single(x, x_n)\n\n    for idx, x in enumerate(__outputs__):\n        if x is None:\n            continue\n        x_n = output_names[idx].upper()\n        if x_n in unique_param_name_set:\n            options += add_dtype_fmt_option_single(x, x_n, True)\n        else:\n            options += add_dtype_fmt_option_single(x, x_n)\n    return options\n\ndef load_dso(so_path):\n    try:\n        ctypes.CDLL(so_path)\n    except OSError as error :\n        print(error)\n        raise RuntimeError(\"cannot open %s\" %(so_path))\n    else:\n        print(\"load so succ \", so_path)\n\ndef get_shortsoc_compile_option(compile_option_list: list, shortsoc:str):\n    compile_options = []\n    if shortsoc in compile_option_list:\n        compile_options.extend(compile_option_list[shortsoc])\n    if '__ALLSOC__' in compile_option_list:\n        compile_options.extend(compile_option_list['__ALLSOC__'])\n    return compile_options\n\ndef get_kernel_source(src_file, dir_snake, dir_ex):\n    src_ex = os.path.join(PYF_PATH, \"..\", \"ascendc\", dir_ex, src_file)\n    if os.path.exists(src_ex):\n        return src_ex\n    src = os.environ.get('BUILD_KERNEL_SRC')\n    if src and os.path.exists(src):\n        return src\n    src = os.path.join(PYF_PATH, \"..\", \"ascendc\", dir_snake, src_file)\n    if os.path.exists(src):\n        return src\n    src = os.path.join(PYF_PATH, src_file)\n    if os.path.exists(src):\n        return src\n    src = os.path.join(PYF_PATH, \"..\", \"ascendc\", dir_snake, dir_snake + \".cpp\")\n    if os.path.exists(src):\n        return src\n    src = os.path.join(PYF_PATH, \"..\", \"ascendc\", dir_ex, dir_ex + \".cpp\")\n    if os.path.exists(src):\n        return src\n    src = os.path.join(PYF_PATH, \"..\", \"ascendc\", os.path.splitext(src_file)[0], src_file)\n    if os.path.exists(src):\n        return src\n    return src_ex\n\ndef _build_args(x_in__, mask_in__, y_out_, scale, fixed_triu_mask):\n    __inputs__ = []\n    for arg in [x_in__, mask_in__]:\n        if arg != None:\n            if isinstance(arg, (list, tuple)):\n                if len(arg) == 0:\n                    continue\n                __inputs__.append(arg[0])\n            else:\n                __inputs__.append(arg)\n        else:\n            __inputs__.append(arg)\n    __outputs__ = []\n    for arg in [y_out_]:\n        if arg != None:\n            if isinstance(arg, (list, tuple)):\n                if len(arg) == 0:\n                    continue\n                __outputs__.append(arg[0])\n            else:\n                __outputs__.append(arg)\n        else:\n            __outputs__.append(arg)\n    __attrs__ = []\n    if scale != None:\n        attr = {}\n        attr[\"name\"] = \"scale\"\n        attr[\"dtype\"] = \"float\"\n        attr[\"value\"] = scale\n        __attrs__.append(attr)\n    if fixed_triu_mask != None:\n        attr = {}\n        attr[\"name\"] = \"fixed_triu_mask\"\n        attr[\"dtype\"] = \"bool\"\n        attr[\"value\"] = fixed_triu_mask\n        __attrs__.append(attr)\n    return __inputs__, __outputs__, __attrs__\n\n@tbe_register.register_operator(\"ScaledMaskedSoftmaxV2\", trans_bool_to_s8=False)\n@para_check.check_op_params(para_check.REQUIRED_INPUT, para_check.OPTION_INPUT, para_check.REQUIRED_OUTPUT, para_check.OPTION_ATTR_FLOAT, para_check.OPTION_ATTR_BOOL, para_check.KERNEL_NAME)\ndef scaled_masked_softmax_v2(x_in__, mask_in__=None, y_out_=None, scale=1, fixed_triu_mask=False, kernel_name=\"scaled_masked_softmax_v2\", impl_mode=\"\"):\n    # do ascendc build step\n    if get_current_build_config(\"enable_op_prebuild\"):\n        return\n    __inputs__, __outputs__, __attrs__ = _build_args(x_in__, mask_in__, y_out_, scale, fixed_triu_mask)\n    options = get_dtype_fmt_options(__inputs__, __outputs__)\n    options += [\"-x\", \"cce\"]\n    bisheng = os.environ.get('BISHENG_REAL_PATH')\n    if bisheng is None:\n        bisheng = shutil.which(\"bisheng\")\n    if bisheng != None:\n        bisheng_path = os.path.dirname(bisheng)\n        tikcpp_path = os.path.realpath(os.path.join(bisheng_path, \"..\", \"..\", \"tikcpp\"))\n    else:\n        tikcpp_path = os.path.realpath(\"/usr/local/Ascend/cann/compiler/tikcpp\")\n    options.append(\"-I\" + tikcpp_path)\n    options.append(\"-I\" + os.path.join(tikcpp_path, \"..\", \"..\", \"include\"))\n    options.append(\"-I\" + os.path.join(tikcpp_path, \"tikcfw\"))\n    options.append(\"-I\" + os.path.join(tikcpp_path, \"tikcfw\", \"impl\"))\n    options.append(\"-I\" + os.path.join(tikcpp_path, \"tikcfw\", \"interface\"))\n    options.append(\"-I\" + os.path.join(tikcpp_path, \n        \"..\", \"..\", \"..\", \"latest\", os.uname().machine+\"-linux\", \"asc\", \"atcos\"))\n    options.append(\"-I\" + os.path.join(PYF_PATH, \"..\", \"ascendc\", \"common\"))\n\n    ascend_home_path = os.environ.get('ASCEND_HOME_PATH')\n    if ascend_home_path is None:\n        ascend_home_path = os.path.realpath(\"/usr/local/Ascend/cann\")\n    options.append(\"-I\" + os.path.join(ascend_home_path, \"pkg_inc\", \"op_common\"))\n\n    if impl_mode == \"high_performance\":\n        options.append(\"-DHIGH_PERFORMANCE=1\")\n    elif impl_mode == \"high_precision\":\n        options.append(\"-DHIGH_PRECISION=1\")\n    if get_current_build_config(\"enable_deterministic_mode\") == 1:\n        options.append(\"-DDETERMINISTIC_MODE=1\")\n    else:\n        options.append(\"-DDETERMINISTIC_MODE=0\")\n\n    custom_compile_options = {},\n    custom_all_compile_options = {},\n    soc_version = get_soc_spec(\"SOC_VERSION\")\n    soc_short = get_soc_spec(\"SHORT_SOC_VERSION\").lower()\n    custom_compile_options_soc = get_shortsoc_compile_option(custom_compile_options[0], soc_short)\n    custom_all_compile_options_soc = get_shortsoc_compile_option(custom_all_compile_options[0], soc_short)\n    options += custom_all_compile_options_soc\n    options += custom_compile_options_soc\n\n    origin_func_name = \"scaled_masked_softmax_v2\"\n    ascendc_src_dir_ex = \"scaled_masked_softmax_v2\"\n    ascendc_src_dir = \"scaled_masked_softmax_v2\"\n    ascendc_src_file = \"scaled_masked_softmax_v2.cpp\"\n    src = get_kernel_source(ascendc_src_file, ascendc_src_dir, ascendc_src_dir_ex)\n\n    print(\"start compile Ascend C operator ScaledMaskedSoftmaxV2. kernel name is \" + kernel_name)\n    op_type = \"ScaledMaskedSoftmaxV2\"\n    code_channel = get_code_channel(src, kernel_name, op_type, options)\n    op_info = OpInfo(kernel_name = kernel_name, op_type = op_type, inputs = __inputs__, outputs = __outputs__,\\\n        attrs = __attrs__, impl_mode = impl_mode, origin_inputs=[x_in__, mask_in__], origin_outputs = [y_out_],\\\n                param_type_dynamic = False, mc2_ctx = [], param_type_list = ['required', 'optional', 'required'], init_value_list = [None],\\\n                output_shape_depend_on_compute = [])\n    compile_op(src, origin_func_name, op_info, options, code_channel, '{}')\n\ndef op_select_format(x_in__, mask_in__=None, y_out_=None, scale=1, fixed_triu_mask=False, impl_mode=\"\"):\n    __inputs__, __outputs__, __attrs__ = _build_args(x_in__, mask_in__, y_out_, scale, fixed_triu_mask)\n    result = check_op_cap(\"op_select_format\", \"ScaledMaskedSoftmaxV2\", __inputs__, __outputs__, __attrs__)\n    return result.decode(\"utf-8\")\n\ndef get_op_specific_info(x_in__, mask_in__=None, y_out_=None, scale=1, fixed_triu_mask=False, impl_mode=\"\"):\n    __inputs__, __outputs__, __attrs__ = _build_args(x_in__, mask_in__, y_out_, scale, fixed_triu_mask)\n    result = check_op_cap(\"get_op_specific_info\", \"ScaledMaskedSoftmaxV2\", __inputs__, __outputs__, __attrs__)\n    return result.decode(\"utf-8\")\n"
+  },
+  "kernel": {
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/scaled_masked_softmax_v2.json": {
+      "binList": [
+        {
+          "implMode": "high_performance",
+          "int64Mode": false,
+          "simplifiedKeyMode": 0,
+          "simplifiedKey": [
+            "ScaledMaskedSoftmaxV2/d=0,p=1/27,2/27,2",
+            "ScaledMaskedSoftmaxV2/d=0,p=0/27,2/27,2",
+            "ScaledMaskedSoftmaxV2/d=1,p=1/27,2/27,2",
+            "ScaledMaskedSoftmaxV2/d=1,p=0/27,2/27,2"
+          ],
+          "optionalInputMode": "gen_placeholder",
+          "optionalOutputMode": "gen_placeholder",
+          "staticKey": "d10ff9fad003b3df89e21c46009dc62bbb82682359131c4a9f472e02ff6df1c0,b8396c8db680189ee7b4ec037d9603568142f92560d8784df01ce37fbce422c8",
+          "inputs": [
+            {
+              "name": "x",
+              "index": 0,
+              "dtype": "bfloat16",
+              "format": "ND",
+              "paramType": "required",
+              "shape": [
+                -2
+              ]
+            },
+            {
+              "name": "mask",
+              "index": 1,
+              "dtype": "bool",
+              "format": "ND",
+              "paramType": "optional",
+              "shape": [
+                -2
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "name": "y",
+              "index": 0,
+              "dtype": "bfloat16",
+              "format": "ND",
+              "paramType": "required",
+              "shape": [
+                -2
+              ]
+            }
+          ],
+          "attrs": [
+            {
+              "name": "scale",
+              "dtype": "float",
+              "value": null
+            },
+            {
+              "name": "fixed_triu_mask",
+              "dtype": "bool",
+              "value": false
+            }
+          ],
+          "opMode": "dynamic",
+          "deterministic": "ignore",
+          "binInfo": {
+            "jsonFilePath": "ascend910_93/scaled_masked_softmax_v2/ScaledMaskedSoftmaxV2_bf16_nd_false_high_performance.json"
+          }
+        },
+        {
+          "implMode": "high_performance",
+          "int64Mode": false,
+          "simplifiedKeyMode": 0,
+          "simplifiedKey": [
+            "ScaledMaskedSoftmaxV2/d=0,p=1/1,2/1,2",
+            "ScaledMaskedSoftmaxV2/d=0,p=0/1,2/1,2",
+            "ScaledMaskedSoftmaxV2/d=1,p=1/1,2/1,2",
+            "ScaledMaskedSoftmaxV2/d=1,p=0/1,2/1,2"
+          ],
+          "optionalInputMode": "gen_placeholder",
+          "optionalOutputMode": "gen_placeholder",
+          "staticKey": "bb62f693901544b27661121e9ad530da15886d63ac921c43e2b60de3d0380aa8,b3a734d013e5d1f3670d4da487982a7485829e6fbcc3d1ced9c8dd496fa5c653",
+          "inputs": [
+            {
+              "name": "x",
+              "index": 0,
+              "dtype": "float16",
+              "format": "ND",
+              "paramType": "required",
+              "shape": [
+                -2
+              ]
+            },
+            {
+              "name": "mask",
+              "index": 1,
+              "dtype": "bool",
+              "format": "ND",
+              "paramType": "optional",
+              "shape": [
+                -2
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "name": "y",
+              "index": 0,
+              "dtype": "float16",
+              "format": "ND",
+              "paramType": "required",
+              "shape": [
+                -2
+              ]
+            }
+          ],
+          "attrs": [
+            {
+              "name": "scale",
+              "dtype": "float",
+              "value": null
+            },
+            {
+              "name": "fixed_triu_mask",
+              "dtype": "bool",
+              "value": false
+            }
+          ],
+          "opMode": "dynamic",
+          "deterministic": "ignore",
+          "binInfo": {
+            "jsonFilePath": "ascend910_93/scaled_masked_softmax_v2/ScaledMaskedSoftmaxV2_fp16_nd_false_high_performance.json"
+          }
+        },
+        {
+          "implMode": "high_performance",
+          "int64Mode": false,
+          "simplifiedKeyMode": 0,
+          "simplifiedKey": [
+            "ScaledMaskedSoftmaxV2/d=0,p=1/0,2/0,2",
+            "ScaledMaskedSoftmaxV2/d=0,p=0/0,2/0,2",
+            "ScaledMaskedSoftmaxV2/d=1,p=1/0,2/0,2",
+            "ScaledMaskedSoftmaxV2/d=1,p=0/0,2/0,2"
+          ],
+          "optionalInputMode": "gen_placeholder",
+          "optionalOutputMode": "gen_placeholder",
+          "staticKey": "44efcd28e0866342eaee1393087c6ff264e16892e1cefbc867077c781c3029d0,82c176cce19ad88f5a6917f763c44fe7c8594959540ad9e99d137582c0154d70",
+          "inputs": [
+            {
+              "name": "x",
+              "index": 0,
+              "dtype": "float32",
+              "format": "ND",
+              "paramType": "required",
+              "shape": [
+                -2
+              ]
+            },
+            {
+              "name": "mask",
+              "index": 1,
+              "dtype": "bool",
+              "format": "ND",
+              "paramType": "optional",
+              "shape": [
+                -2
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "name": "y",
+              "index": 0,
+              "dtype": "float32",
+              "format": "ND",
+              "paramType": "required",
+              "shape": [
+                -2
+              ]
+            }
+          ],
+          "attrs": [
+            {
+              "name": "scale",
+              "dtype": "float",
+              "value": null
+            },
+            {
+              "name": "fixed_triu_mask",
+              "dtype": "bool",
+              "value": false
+            }
+          ],
+          "opMode": "dynamic",
+          "deterministic": "ignore",
+          "binInfo": {
+            "jsonFilePath": "ascend910_93/scaled_masked_softmax_v2/ScaledMaskedSoftmaxV2_fp32_nd_false_high_performance.json"
+          }
+        }
+      ]
+    }
+  }
+}

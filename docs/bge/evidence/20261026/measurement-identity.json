@@ -1,0 +1,12 @@
+{
+  "runtime/bench.h": "b99d77fc18f5056edaf76f1cae08302b66353d7b3b6c5c3b0e338cecae94c579",
+  "runtime/bench.cpp": "b990f0d9de1b38f662d9acca91576dd65ffa1710d8b097f1e34fb99bdfa0bbe9",
+  "runtime/replay.cpp": "c07092b6674a9e894ae3a34eb673bb75ab548a4f8a6f49371e0b4d0476da5f22",
+  "runtime/main.cpp": "3c43f7397c42f393345a325bfa909d240d15ac4b2a5f6579d2a04eecdb81e0b0",
+  "runtime/backends/gesession_backend.h": "7f27af2f1c24f3fd5488821d9c141edc10802e6ea18b7b50459109d0cc1608f7",
+  "runtime/backends/gesession_backend.cpp": "15fd094b4b8bde59080de49f551dab79f3aa8c150f2f047b771df7f76f67159b",
+  "runtime/CMakeLists.txt": "2185870a9908f0a43d5b0550b0a9988199c7d8a88f4b10642668ea13ccc7666e",
+  "tests/runtime_contracts.cpp": "9d54c9a7652c70caa7ab2337738c5b8317eff7cfd95a88ed84986fda5649d627",
+  "runtime/build/ge_runtime": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+  "patch_sha256": "b0190bb626f9a808d66ff5d4c19d3df638ed34be5b87257c62e4c013021b0c15"
+}

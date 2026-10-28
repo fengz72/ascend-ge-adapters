@@ -1,0 +1,85 @@
+{
+  "passed": true,
+  "plans": {
+    "multi8-correctness.json": {
+      "passed": true,
+      "instances": 8,
+      "device": 10,
+      "original_fp32_mode0_full_core": true,
+      "capture_outputs": true,
+      "replay": {
+        "run_id": "multi8-correctness",
+        "min_seconds": 2,
+        "max_seconds": 180,
+        "min_requests": 2000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": true
+      }
+    },
+    "multi8-round1.json": {
+      "passed": true,
+      "instances": 8,
+      "device": 10,
+      "original_fp32_mode0_full_core": true,
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi8-round1",
+        "min_seconds": 60,
+        "max_seconds": 300,
+        "min_requests": 10000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    },
+    "multi8-round2.json": {
+      "passed": true,
+      "instances": 8,
+      "device": 10,
+      "original_fp32_mode0_full_core": true,
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi8-round2",
+        "min_seconds": 60,
+        "max_seconds": 300,
+        "min_requests": 10000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    },
+    "multi8-round3.json": {
+      "passed": true,
+      "instances": 8,
+      "device": 10,
+      "original_fp32_mode0_full_core": true,
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi8-round3",
+        "min_seconds": 60,
+        "max_seconds": 300,
+        "min_requests": 10000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    },
+    "multi8-search.json": {
+      "passed": true,
+      "instances": 8,
+      "device": 10,
+      "original_fp32_mode0_full_core": true,
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi8-search",
+        "min_seconds": 30,
+        "max_seconds": 180,
+        "min_requests": 2000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    }
+  }
+}

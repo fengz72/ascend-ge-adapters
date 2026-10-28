@@ -1,0 +1,42 @@
+[
+  {
+    "path": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/cube-fp16in-fp32out.yaml",
+    "bytes": 983,
+    "sha256": "6a174a23050fbb5e96433351643b7bb31890854808b8851d013f65e03a4491ab"
+  },
+  {
+    "path": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/auto-mixed-fp16.yaml",
+    "bytes": 988,
+    "sha256": "96d7bb276eb0843d6cff4c87ffb2d04ba60b2db4403a0050f780b5e79b2b0082"
+  },
+  {
+    "path": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/add_layernorm_pass.cpp",
+    "bytes": 5662,
+    "sha256": "e4d2894adbd1a0684f240581d79a1d88f0d2f5bdcaed29477c31106834e2ceb5"
+  },
+  {
+    "path": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass.so",
+    "bytes": 89504,
+    "sha256": "8767095f04348ed6097c769d71909421409397cedef534c4c7650d61df6cfff5"
+  },
+  {
+    "path": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/test_add_layernorm_pass.cpp",
+    "bytes": 4512,
+    "sha256": "4ca200789f03d495a648da0cc57ca04fa75e87a5ce6ea8baf85c046e04cf01dd"
+  },
+  {
+    "path": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/test_add_layernorm_pass",
+    "bytes": 91448,
+    "sha256": "f9ef491897247afaac3c1554da8ac61083df5734bca567d95e76d81cc481f681"
+  },
+  {
+    "path": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/inspect_ge_precision.py",
+    "bytes": 3579,
+    "sha256": "b5f595b5dec78406f05859520727c8df22ae2c7cd74b1c6703ad7a329732f4d5"
+  },
+  {
+    "path": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/prepare_precision_candidates.py",
+    "bytes": 2422,
+    "sha256": "4eccfda3c00bb22b9c50b2a6187902eb1b9267b786108c0569849c287567c0f9"
+  }
+]

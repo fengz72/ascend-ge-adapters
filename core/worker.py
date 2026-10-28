@@ -100,7 +100,7 @@ def infer_or_bench(stage,config,cases,output,device):
 
 
 def compare_outputs(config):
-    from core.verify import compare
+    from core.verify import compare,compare_business
     directory=Path(config['work_dir']);policies=config['verification']['outputs'];reports={}
     if not policies:raise ValueError('verification.outputs must configure every business output')
     def case_ids(archive):
@@ -113,8 +113,14 @@ def compare_outputs(config):
             raise ValueError(f'golden/output case IDs differ: missing outputs={sorted(set(available)-actual)}, missing golden={sorted(actual-set(available))}')
         ids=available if selection=='all' else [case['id'] for case in select_cases([{'id':name} for name in available],selection)]
         if not ids:raise ValueError('golden contains no cases')
+        business_rows={}
         for case_id in ids:
-            reports[case_id]=compare(read_row(golden,case_id),read_row(outputs,case_id),policies)
+            candidate=read_row(outputs,case_id)
+            reports[case_id]=compare(read_row(golden,case_id),candidate,policies)
+            if config['verification'].get('script'):business_rows[case_id]=candidate
+        for case_id,business in compare_business(config,business_rows).items():
+            reports[case_id]['business']=business
+            reports[case_id]['passed']=reports[case_id]['passed'] and business['passed']
     passed=all(report['passed'] for report in reports.values())
     return {'status':'success' if passed else 'failed',
             'accuracy':{'status':'passed' if passed else 'failed','case_ids':ids,

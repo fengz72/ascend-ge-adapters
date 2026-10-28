@@ -1,0 +1,151 @@
+{
+  "schema": "bge100-independent-initial-execution/1",
+  "passed": true,
+  "npu_task_started": false,
+  "cpu_reference_recomputed": false,
+  "checks": [
+    {
+      "name": "input-base-pressure-d2",
+      "argv": [
+        "bash",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/env_run.sh",
+        "python3",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/checks/verify_plan_inputs.py",
+        "--plan",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/base-pressure-d2.json",
+        "--report",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/tester-initial/base-pressure-d2-inputs.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.2250365240033716
+    },
+    {
+      "name": "input-base-fixed-r1",
+      "argv": [
+        "bash",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/env_run.sh",
+        "python3",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/checks/verify_plan_inputs.py",
+        "--plan",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/base-fixed-r1.json",
+        "--report",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/tester-initial/base-fixed-r1-inputs.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.20904948702082038
+    },
+    {
+      "name": "input-base-random-r1",
+      "argv": [
+        "bash",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/env_run.sh",
+        "python3",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/checks/verify_plan_inputs.py",
+        "--plan",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/base-random-r1.json",
+        "--report",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/tester-initial/base-random-r1-inputs.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.22228163201361895
+    },
+    {
+      "name": "run-identity",
+      "argv": [
+        "bash",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/env_run.sh",
+        "python3",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/checks/validate_run_identity.py",
+        "--runs",
+        "base-pressure-d2",
+        "base-fixed-r1",
+        "base-random-r1",
+        "--identity-manifest",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/identity.json",
+        "--report",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/tester-initial/run-identity.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 3.5072401439538226
+    },
+    {
+      "name": "pressure",
+      "argv": [
+        "bash",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/env_run.sh",
+        "python3",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/checks/verify_outputs.py",
+        "pressure",
+        "--manifest",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-pressure-d2/manifest.jsonl",
+        "--binary",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-pressure-d2/outputs.bin",
+        "--events",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-pressure-d2/events.jsonl",
+        "--instances",
+        "1",
+        "--min-requests",
+        "2000",
+        "--min-per-case",
+        "20",
+        "--report",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/tester-initial/pressure-accuracy.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.9539241299498826
+    },
+    {
+      "name": "performance-base-fixed-r1",
+      "argv": [
+        "bash",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/env_run.sh",
+        "python3",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/checks/validate_performance.py",
+        "--performance",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-r1/result.json",
+        "--events",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-r1/events.jsonl",
+        "--plan",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/base-fixed-r1.json",
+        "--instances",
+        "1",
+        "--min-seconds",
+        "60",
+        "--min-requests",
+        "10000",
+        "--report",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/tester-initial/base-fixed-r1-performance.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.49047029798384756
+    },
+    {
+      "name": "performance-base-random-r1",
+      "argv": [
+        "bash",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/env_run.sh",
+        "python3",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/checks/validate_performance.py",
+        "--performance",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-random-r1/result.json",
+        "--events",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-random-r1/events.jsonl",
+        "--plan",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/base-random-r1.json",
+        "--instances",
+        "1",
+        "--min-seconds",
+        "60",
+        "--min-requests",
+        "10000",
+        "--report",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/tester-initial/base-random-r1-performance.json"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.5273876410210505
+    }
+  ],
+  "pressure_count_matches_runtime": true,
+  "pressure_complete_global_request_ids": true,
+  "active_jobs_after": []
+}

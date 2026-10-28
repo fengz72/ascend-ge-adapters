@@ -1,0 +1,44 @@
+37 /export/home/ext.hejun23/workspace/bge-opt-100/work/final-best-fixed-r3/runtime.log
+[INFO] GEInitialize ge.graphRunMode=0
+[INFO] GEInitialize ge.aicoreNum=12|24
+[INFO] Graph 1 output allocation=GE (dynamic compiled)
+[INFO] CompileGraph ok (gid=1/8), cost 7411.27 ms
+[INFO] Graph 2 output allocation=GE (dynamic compiled)
+[INFO] CompileGraph ok (gid=2/8), cost 6821.28 ms
+.[INFO] Graph 3 output allocation=GE (dynamic compiled)
+[INFO] CompileGraph ok (gid=3/8), cost 6948.21 ms
+[INFO] Graph 4 output allocation=GE (dynamic compiled)
+[INFO] CompileGraph ok (gid=4/8), cost 6787.66 ms
+.[INFO] Graph 5 output allocation=GE (dynamic compiled)
+[INFO] CompileGraph ok (gid=5/8), cost 6961.56 ms
+[INFO] Graph 6 output allocation=GE (dynamic compiled)
+[INFO] CompileGraph ok (gid=6/8), cost 6937.51 ms
+.[INFO] Graph 7 output allocation=GE (dynamic compiled)
+[INFO] CompileGraph ok (gid=7/8), cost 6883.3 ms
+[INFO] Graph 8 output allocation=GE (dynamic compiled)
+[INFO] CompileGraph ok (gid=8/8), cost 6891.44 ms
+[INFO] 8 份图实例编译总耗时 55653.5 ms (/export/home/ext.hejun23/workspace/bge-opt-100/materials/exported/model.onnx)
+[INFO] LoadGraph ok (gid=1, tid=0), cost 1643.22 ms
+[INFO] LoadGraph ok (gid=2, tid=1), cost 1784.66 ms
+[INFO] LoadGraph ok (gid=3, tid=2), cost 1834.09 ms
+[INFO] LoadGraph ok (gid=4, tid=3), cost 1692.71 ms
+[INFO] LoadGraph ok (gid=5, tid=4), cost 1741.81 ms
+[INFO] LoadGraph ok (gid=6, tid=5), cost 1721.43 ms
+[INFO] LoadGraph ok (gid=7, tid=6), cost 1836.44 ms
+[INFO] LoadGraph ok (gid=8, tid=7), cost 1763.23 ms
+[ERROR] TBE Subprocess[task_distribute] raise error[], main process disappeared!
+[ERROR] TBE Subprocess[task_distribute] raise error[], main process disappeared!
+[ERROR] TBE Subprocess[task_distribute] raise error[], main process disappeared!
+[ERROR] TBE Subprocess[task_distribute] raise error[], main process disappeared!
+[ERROR] TBE Subprocess[task_distribute] raise error[], main process disappeared!
+[ERROR] TBE Subprocess[task_distribute] raise error[], main process disappeared!
+[ERROR] TBE Subprocess[task_distribute] raise error[], main process disappeared!
+[ERROR] TBE Subprocess[task_distribute] raise error[], main process disappeared!
+/usr/local/python3.11.15/lib/python3.11/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 12 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+{
+  "returncode": -15,
+  "elapsed_seconds": 96.64865864592139,
+  "plan": "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/final-best-fixed-r3.json",
+  "binary": "/export/home/ext.hejun23/workspace/bge-opt-100/runner/runtime/build/ge_runtime"
+}

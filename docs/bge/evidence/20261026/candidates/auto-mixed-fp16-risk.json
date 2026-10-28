@@ -1,0 +1,62 @@
+{
+  "candidate": "allow_mix_precision_fp16",
+  "config": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/auto-mixed-fp16.yaml",
+  "source_onnx_unchanged": true,
+  "runner_change_required": false,
+  "external_io_contract": {
+    "int64": [
+      "input_ids",
+      "attention_mask",
+      "long_cid3_raw",
+      "long_action",
+      "long_time_bucket",
+      "stat_dense_raw",
+      "stat_count"
+    ],
+    "float32": [
+      "stat_ratio",
+      "scores"
+    ]
+  },
+  "target_policy_evidence": "CANN9 atc --help and ascend910_93 precision_reduce flags read locally",
+  "precision_reduce_true": [
+    "MatMul",
+    "MatMulV2",
+    "BatchMatMul",
+    "BatchMatMulV2",
+    "AddLayerNorm"
+  ],
+  "precision_reduce_false": [
+    "ReduceMeanD",
+    "ReduceSum"
+  ],
+  "gray_examples": [
+    "LayerNorm",
+    "LayerNormV3",
+    "GeluV2",
+    "SoftmaxV2",
+    "Sqrt",
+    "Div",
+    "Maximum",
+    "LpNormV2"
+  ],
+  "comparison_with_cube_fp16in_fp32out": {
+    "cube_matmuls_fp16in_fp32out": 199,
+    "cube_ln_fp32": 49,
+    "cube_softmax_fp32": 25,
+    "cube_l2_fp32": 5,
+    "cube_fp32_to_fp16_cast_nodes": 196,
+    "cast_count_is_not_per_request_launch_count": true
+  },
+  "required_checks": [
+    "Original source/checksum, original CPU reference and expected outputs stay fixed.",
+    "Final descriptors and kernel identity must prove actual mixed strategy.",
+    "LayerNorm epsilon is a float attribute, not automatically a half tensor; inspect actual kernel internal arithmetic before asserting underflow.",
+    "L2 floor is a 1e-12 floating tensor: if actually cast to FP16 it becomes zero.",
+    "Additive mask -FLT_MAX may become -Inf if lowered to FP16; all-masked semantics must remain acceptable.",
+    "Final score returned as FP32 cannot restore low-precision intermediate errors.",
+    "Top10 IDs=index+1, order exact, same score/full-vector thresholds.",
+    "Performance measured H2D+GE+D2H without graph dump/profiling."
+  ],
+  "status": "prepared only; no automatic-mixed NPU run launched by this subagent"
+}

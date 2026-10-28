@@ -16,7 +16,7 @@ def torch_device(config, reference=False, device=None):
 def load_source(config, reference=False, device=None):
     source = config["source"]
     if source["kind"] == "onnx":
-        path = Path(source["path"])
+        path = Path(source["ref"])
         if not path.is_file():
             raise FileNotFoundError(path)
         return str(path)

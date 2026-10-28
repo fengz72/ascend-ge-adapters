@@ -1,0 +1,271 @@
+{
+  "source_graph": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/fusion-graph-dump/pid_2005676_deviceid_10/ge_proto_00000000_graph_1_Build.txt",
+  "source_graph_sha256": "9d592707ab97ca2f563535765d48aa32be87609f61e8a74db95a4ce602aa566b",
+  "pass_reported_replacements": [
+    "48"
+  ],
+  "op_types": {
+    "Data": 1540,
+    "PartitionedCall": 3,
+    "NetOutput": 4,
+    "Const": 740,
+    "BatchMatMulV2": 55,
+    "LpNormV2": 5,
+    "Maximum": 7,
+    "Expand": 7,
+    "RealDiv": 31,
+    "ClipByValue": 6,
+    "Add": 31,
+    "LessEqual": 1,
+    "GreaterEqual": 1,
+    "Less": 3,
+    "GatherV2": 209,
+    "SqueezeV3": 2,
+    "Shape": 130,
+    "Fill": 2,
+    "SelectV2": 5,
+    "Sub": 3,
+    "Greater": 1,
+    "LogicalAnd": 2,
+    "Cast": 29,
+    "UnsqueezeV3": 5,
+    "ReduceSum": 4,
+    "Mul": 55,
+    "Reshape": 445,
+    "ConcatD": 101,
+    "StridedSliceV3": 6,
+    "Equal": 2,
+    "LayerNorm": 1,
+    "FlattenV2": 96,
+    "MatMulV2": 144,
+    "GatherShapes": 144,
+    "Transpose": 96,
+    "StridedSliceD": 24,
+    "Sqrt": 48,
+    "SoftmaxV2": 25,
+    "AddLayerNorm": 48,
+    "Gelu": 24
+  },
+  "add_layernorm_dtype_distribution": [
+    {
+      "input_dtypes": [
+        "DT_FLOAT",
+        "DT_FLOAT",
+        "DT_FLOAT",
+        "DT_FLOAT",
+        null
+      ],
+      "output_dtypes": [
+        "DT_FLOAT",
+        "DT_FLOAT",
+        "DT_FLOAT",
+        "DT_FLOAT"
+      ],
+      "count": 48
+    }
+  ],
+  "epsilon_distribution": {
+    "1e-12": 48
+  },
+  "examples": [
+    {
+      "name": "/encoder/backbone/encoder/layer.0/attention/output/LayerNorm/Add_1/LayerNorm/BgeAddLayerNorm",
+      "type": "AddLayerNorm",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.0/attention/output/dense/MatMul/Reshape:0",
+        "/encoder/backbone/embeddings/LayerNorm/Add_1/LayerNorm:0",
+        "domi_default_20261026110021_0_sub_2_unknow_Data_682:0",
+        "domi_default_20261026110021_0_sub_2_unknow_Data_683:0",
+        ""
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1024
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1024
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            1024
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            1024
+          ]
+        },
+        {
+          "dtype": null,
+          "dims": []
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1024
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1024
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.0/attention/output/LayerNorm/Add_1/LayerNorm/BgeAddLayerNorm_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.0/attention/output/LayerNorm/Add_1/LayerNorm/BgeAddLayerNorm_kernelname\"\n      value {\n        s: \"AddLayerNorm_normal_input_all_fp32_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"AddLayerNorm_normal_input_all_fp32_high_performancef69e6265c2d3b243a5d1fed3b049a7ba183f8c147361b06749dbfff7904fc837\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"AddLayerNorm_normal_input_all_fp32_high_performance_0\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"AddLayerNorm_normal_input_all_fp32_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_op_kernel_all_input_size": "    attr {\n      key: \"_op_kernel_all_input_size\"\n      value {\n        i: 5\n      }\n    }",
+        "_op_kernel_all_output_size": "    attr {\n      key: \"_op_kernel_all_output_size\"\n      value {\n        i: 4\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"AiCore\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 522456\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"AiCore\"\n      }\n    }",
+        "epsilon": "    attr {\n      key: \"epsilon\"\n      value {\n        f: 1e-12\n      }\n    }",
+        "supportSuperKernel": "    attr {\n      key: \"supportSuperKernel\"\n      value {\n        i: 1\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.0/output/LayerNorm/Add_1/LayerNorm/BgeAddLayerNorm",
+      "type": "AddLayerNorm",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.0/output/dense/MatMul/Reshape:0",
+        "/encoder/backbone/encoder/layer.0/attention/output/LayerNorm/Add_1/LayerNorm/BgeAddLayerNorm:0",
+        "domi_default_20261026110021_0_sub_2_unknow_Data_674:0",
+        "domi_default_20261026110021_0_sub_2_unknow_Data_675:0",
+        ""
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1024
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1024
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            1024
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            1024
+          ]
+        },
+        {
+          "dtype": null,
+          "dims": []
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1024
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            1024
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.0/output/LayerNorm/Add_1/LayerNorm/BgeAddLayerNorm_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.0/output/LayerNorm/Add_1/LayerNorm/BgeAddLayerNorm_kernelname\"\n      value {\n        s: \"AddLayerNorm_normal_input_all_fp32_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"AddLayerNorm_normal_input_all_fp32_high_performancef69e6265c2d3b243a5d1fed3b049a7ba183f8c147361b06749dbfff7904fc837\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"AddLayerNorm_normal_input_all_fp32_high_performance_0\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"AddLayerNorm_normal_input_all_fp32_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_op_kernel_all_input_size": "    attr {\n      key: \"_op_kernel_all_input_size\"\n      value {\n        i: 5\n      }\n    }",
+        "_op_kernel_all_output_size": "    attr {\n      key: \"_op_kernel_all_output_size\"\n      value {\n        i: 4\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"AiCore\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 522456\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"AiCore\"\n      }\n    }",
+        "epsilon": "    attr {\n      key: \"epsilon\"\n      value {\n        f: 1e-12\n      }\n    }",
+        "supportSuperKernel": "    attr {\n      key: \"supportSuperKernel\"\n      value {\n        i: 1\n      }\n    }"
+      }
+    }
+  ],
+  "warning_counts": {
+    "python_signal_type_error": 11
+  },
+  "limitations": [
+    "This is graph/operator evidence only, test agent owns numerical acceptance.",
+    "Run exact same process without dump/profiling for performance."
+  ]
+}

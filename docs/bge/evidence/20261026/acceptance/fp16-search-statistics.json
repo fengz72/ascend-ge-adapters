@@ -1,0 +1,234 @@
+{
+  "schema": "bge-independent-rounds/1",
+  "passed": true,
+  "runs": [
+    "fp16-search"
+  ],
+  "instances": 1,
+  "device": 10,
+  "rounds": [
+    {
+      "kind": "performance",
+      "passed": true,
+      "statistics_sufficient": true,
+      "errors": 0,
+      "minimum_seconds": 30.0,
+      "minimum_window_successes": 2000,
+      "window_seconds": 30.001687769,
+      "window_successes": 4719,
+      "cohort_successes": 4719,
+      "drain_ms": 0.0,
+      "qps": 157.29115096238104,
+      "p50_ms": 6.160764,
+      "p99_ms": 8.852352,
+      "max_ms": 11.134107,
+      "p99_limit": null,
+      "SLO_acceptance": "not_configured",
+      "per_case": {
+        "case-0001": {
+          "count": 971,
+          "p50_ms": 6.404957,
+          "p99_ms": 9.052584
+        },
+        "case-0004": {
+          "count": 873,
+          "p50_ms": 6.134914,
+          "p99_ms": 9.061745
+        },
+        "case-0000": {
+          "count": 983,
+          "p50_ms": 6.082713,
+          "p99_ms": 8.701821
+        },
+        "case-0002": {
+          "count": 944,
+          "p50_ms": 6.135284,
+          "p99_ms": 9.171665
+        },
+        "case-0003": {
+          "count": 948,
+          "p50_ms": 6.529128,
+          "p99_ms": 8.417018
+        }
+      },
+      "segments": {
+        "h2d_ms": {
+          "mean": 0.08913689340962067,
+          "p99": 0.109
+        },
+        "desc_ms": {
+          "mean": 0.0009379105742742107,
+          "p99": 0.001
+        },
+        "execute_ms": {
+          "mean": 6.23326476562831,
+          "p99": 8.663261
+        },
+        "d2h_ms": {
+          "mean": 0.030468944691671964,
+          "p99": 0.057091
+        },
+        "unattributed_host_ms": {
+          "mean": 0.003135673447764323,
+          "p99": 0.006090999999997848
+        }
+      },
+      "events_sha256": "891001b288334a72563fade699faf019ece8f24264462857310aebfdbce5bb69",
+      "performance_sha256": "8d6e5e19682cd99c02be7cbe7fa22cb2d65fcaeb3eb146f8dda070d09a38544d",
+      "run_id": "fp16-search",
+      "seed": 42,
+      "plan_sha256": "fd1c898400684bf01edb5833839ccb098057b68e726d29c483247287056a5c9e",
+      "per_case_counts": {
+        "case-0000": 983,
+        "case-0001": 971,
+        "case-0002": 944,
+        "case-0003": 948,
+        "case-0004": 873
+      },
+      "ten_second_windows": [
+        {
+          "start_seconds": 0,
+          "seconds": 10.0,
+          "successes": 1581,
+          "qps": 158.1
+        },
+        {
+          "start_seconds": 10,
+          "seconds": 10.0,
+          "successes": 1595,
+          "qps": 159.5
+        },
+        {
+          "start_seconds": 20,
+          "seconds": 10.0,
+          "successes": 1542,
+          "qps": 154.2
+        },
+        {
+          "start_seconds": 30,
+          "seconds": 0.0016877690000001166,
+          "successes": 1,
+          "qps": 592.498143999523
+        }
+      ]
+    }
+  ],
+  "median_qps": 157.29115096238104,
+  "min_qps": 157.29115096238104,
+  "max_qps": 157.29115096238104,
+  "qps_relative_range_percent": 0.0,
+  "merged_request_count": 4719,
+  "merged_p50_ms": 6.160764,
+  "merged_p99_ms": 8.852352,
+  "merged_per_case": {
+    "case-0000": {
+      "count": 983,
+      "p50_ms": 6.082713,
+      "p99_ms": 8.701821
+    },
+    "case-0001": {
+      "count": 971,
+      "p50_ms": 6.404957,
+      "p99_ms": 9.052584
+    },
+    "case-0002": {
+      "count": 944,
+      "p50_ms": 6.135284,
+      "p99_ms": 9.171665
+    },
+    "case-0003": {
+      "count": 948,
+      "p50_ms": 6.529128,
+      "p99_ms": 8.417018
+    },
+    "case-0004": {
+      "count": 873,
+      "p50_ms": 6.134914,
+      "p99_ms": 9.061745
+    }
+  },
+  "resource_evidence": {
+    "fp16-search": {
+      "sample_count": 6,
+      "device": 10,
+      "npu": 5,
+      "chip": 0,
+      "BDF": "0000:89:00.0",
+      "observed_host_pids": [
+        3182933
+      ],
+      "directly_witnessed_own_host_pids": [
+        3182933,
+        3185821
+      ],
+      "unmapped_host_pids": [],
+      "external_process_observed": false,
+      "identity_limitation": null,
+      "hbm_mb_min": 3171,
+      "hbm_mb_max": 5281,
+      "rss_kib_min": 2496,
+      "rss_kib_max": 6062208,
+      "resource_sha256": "d7c0b83d4b3f9d2dae17d7a01d3404b1b6dfe2856b7cd0ef01dd6f2105622fd6",
+      "samples": [
+        {
+          "monotonic_ns": 2322264883623033,
+          "runtime_container_pid": 2004939,
+          "device10_host_pids": []
+        },
+        {
+          "monotonic_ns": 2322276821254266,
+          "runtime_container_pid": 2004939,
+          "device10_host_pids": [
+            3182933
+          ]
+        },
+        {
+          "monotonic_ns": 2322288534983239,
+          "runtime_container_pid": 2004939,
+          "device10_host_pids": [
+            3182933
+          ]
+        },
+        {
+          "monotonic_ns": 2322300821127163,
+          "runtime_container_pid": 2004939,
+          "device10_host_pids": [
+            3182933
+          ]
+        },
+        {
+          "monotonic_ns": 2322312830441895,
+          "runtime_container_pid": 2004939,
+          "device10_host_pids": [
+            3182933
+          ]
+        },
+        {
+          "monotonic_ns": 2322325173042489,
+          "runtime_container_pid": 2004939,
+          "device10_host_pids": []
+        }
+      ]
+    }
+  },
+  "plan_identities": [
+    {
+      "run_id": "fp16-search",
+      "seed": 42,
+      "options": {
+        "precision_mode": "cube_fp16in_fp32out",
+        "graph_run_mode": 0
+      },
+      "graph": {
+        "format": "onnx",
+        "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+        "om_path": null
+      },
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d"
+    }
+  ],
+  "p99_limit": null,
+  "SLO_acceptance": "not_configured",
+  "resource_identity_limitations": []
+}

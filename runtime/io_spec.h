@@ -51,6 +51,7 @@ struct HostTensor {
 };
 
 size_t DtypeSize(const std::string &dtype);
+bool SameDtype(const std::string &left, const std::string &right);
 int64_t NumElements(const std::vector<int64_t> &shape);
 std::string ShapeToString(const std::vector<int64_t> &shape);
 bool ReadBinFile(const std::string &path, std::vector<char> &out);

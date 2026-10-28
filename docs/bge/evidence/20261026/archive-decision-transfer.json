@@ -1,0 +1,12 @@
+{
+  "verified_at": "2026-10-26T06:05:43.680004+00:00",
+  "destination": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters",
+  "files": {
+    "docs/bge/progress.md": "a8e0646cef1840e8b69575fa14325070d7135445b0b8799c8782aa3c63576642",
+    "docs/bge/acceptance.md": "8d6cf76a4977a3705f078215e009008200b6f8eaa3cee5474180d0fd4bad963b",
+    "docs/bge/experiments/OPT-009.md": "8ecd692658aa9d3ba85b030f2f2b8a087c7066228888cdc1adaa2c0643eea6b0",
+    "docs/bge/evidence/20261026/archive-decision.json": "ea9f695a98f560dc67b0c6f8b54d9a1641b315dfb92712f876a9c848cb225d51"
+  },
+  "hash_mismatches": [],
+  "device_jobs_started": false
+}

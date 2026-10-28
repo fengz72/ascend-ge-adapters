@@ -1,0 +1,57 @@
+{
+  "passed": true,
+  "independent_process_cycles": 3,
+  "runs": {
+    "base-round1": {
+      "passed": true,
+      "task_id": "119e811546974de39fe929582d9f6592",
+      "task_pid": 2000724,
+      "started_at": "2026-10-26T02:43:19.876294+00:00",
+      "finished_at": "2026-10-26T02:44:45.616959+00:00",
+      "outer_exit_code": 0,
+      "runtime_returncode": 0,
+      "process_group_stopped": true,
+      "before_device_empty": true,
+      "after_device_empty": true,
+      "status_sha256": "a8477bc59fdeb4e27e6849ecfdbb833cba81160f2b61154b1e826bd933d22643",
+      "before_gate_sha256": "a6763a399e387026438700c6a36c7005271da3f7982ab59ce8ac30b7bbde5b0e",
+      "after_gate_sha256": "06a35f91979bc0e178dcbc7ac298e531bcf17466615d50fe3af3b64225af91c7",
+      "identity_sha256": "81333295c9dd0aecf64371c0d5f10c51e0d1811776fc9d805aff9d01a1d86235",
+      "plan_sha256": "45a73c2bdcefe1a59cd1f7b08b11ee8ee3d1970f517e27267815efb11496dffb"
+    },
+    "base-round2": {
+      "passed": true,
+      "task_id": "a7fb14bdf8ff466a945e5fb24245b087",
+      "task_pid": 2001414,
+      "started_at": "2026-10-26T02:44:46.900050+00:00",
+      "finished_at": "2026-10-26T02:46:09.126348+00:00",
+      "outer_exit_code": 0,
+      "runtime_returncode": 0,
+      "process_group_stopped": true,
+      "before_device_empty": true,
+      "after_device_empty": true,
+      "status_sha256": "b976b6e637a6648f0a72e4e371d3ddee4a8735379bf731fb18153fc2d1b1e5fc",
+      "before_gate_sha256": "5013a0185e482e94fefaba9e7c5e9f817def029238628559e29bc7f47f77a879",
+      "after_gate_sha256": "40feef7f09eab9085bbd19e3477967297dc87d6f1ee0be11a3a93f20b3b5232d",
+      "identity_sha256": "3eae0d4586b55c0459451746b1e3670eb4abfa62689e3f3e0f4d6d9ae2cf88b5",
+      "plan_sha256": "b8837c0c980fa5edcefff76b570bbebac460b75bba44683e85a5c33ff0dec7b0"
+    },
+    "base-round3": {
+      "passed": true,
+      "task_id": "b16b4238b30749f3b95aa396b24c4114",
+      "task_pid": 2002086,
+      "started_at": "2026-10-26T02:46:10.441575+00:00",
+      "finished_at": "2026-10-26T02:47:31.711991+00:00",
+      "outer_exit_code": 0,
+      "runtime_returncode": 0,
+      "process_group_stopped": true,
+      "before_device_empty": true,
+      "after_device_empty": true,
+      "status_sha256": "c4d5c75a23d9c313034e185cf40101f30c82fae6f9527335090e9dd75e53b649",
+      "before_gate_sha256": "5db5299f6d066d9d660cc3ed579c6d86ee167977e0bc4c67a5a047979f06d6b8",
+      "after_gate_sha256": "b64309ea88e04e3ab609eb6d4e73b51f8d35cb6cd15d7d8d3c33deb6f5561bdd",
+      "identity_sha256": "1e6c07aaf0572456b06c73ed0d92931ae037ae89228b0bc7feeabcd9ac5252ad",
+      "plan_sha256": "e2ee07f5f76176636cd13f77e7fb2e62e410ab3c563d58d37de2ca1202eb8225"
+    }
+  }
+}

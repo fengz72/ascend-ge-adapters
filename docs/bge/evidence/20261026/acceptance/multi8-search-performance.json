@@ -1,0 +1,105 @@
+{
+  "kind": "performance",
+  "passed": true,
+  "statistics_sufficient": true,
+  "errors": 0,
+  "minimum_seconds": 30.0,
+  "minimum_window_successes": 2000,
+  "window_seconds": 30.002169569,
+  "window_successes": 13841,
+  "cohort_successes": 13848,
+  "drain_ms": 8.335497,
+  "qps": 461.3333035188673,
+  "p50_ms": 17.32875,
+  "p99_ms": 18.24347,
+  "max_ms": 24.545817,
+  "p99_limit": null,
+  "SLO_acceptance": "not_configured",
+  "per_case": {
+    "case-0001": {
+      "count": 2785,
+      "p50_ms": 17.469623,
+      "p99_ms": 18.28483
+    },
+    "case-0004": {
+      "count": 2703,
+      "p50_ms": 17.189489,
+      "p99_ms": 17.990427
+    },
+    "case-0000": {
+      "count": 2835,
+      "p50_ms": 17.199399,
+      "p99_ms": 18.023138
+    },
+    "case-0002": {
+      "count": 2779,
+      "p50_ms": 17.197789,
+      "p99_ms": 18.043698
+    },
+    "case-0003": {
+      "count": 2746,
+      "p50_ms": 17.607423,
+      "p99_ms": 18.416023
+    }
+  },
+  "segments": {
+    "h2d_ms": {
+      "mean": 0.10413142692085502,
+      "p99": 0.2
+    },
+    "desc_ms": {
+      "mean": 0.0010709127671865977,
+      "p99": 0.003
+    },
+    "execute_ms": {
+      "mean": 17.19095617677643,
+      "p99": 18.077748
+    },
+    "d2h_ms": {
+      "mean": 0.03412915554592721,
+      "p99": 0.06899
+    },
+    "unattributed_host_ms": {
+      "mean": 0.003732730213749158,
+      "p99": 0.007820999999999856
+    }
+  },
+  "events_sha256": "d780328346cf0d562b4397545ffff9a163a50eb3242f6e79142c3c22f2b405e3",
+  "performance_sha256": "9c7b8647954078c1f9cc13ba88385f651b8f41f0d59a314ff53f490f569f9663",
+  "run_id": "multi8-search",
+  "seed": 42,
+  "plan_sha256": "147baa7c7c09230be1af511ce9def5ab12bb78e993a8c0914cd891bba389338f",
+  "per_case_counts": {
+    "case-0000": 2835,
+    "case-0001": 2785,
+    "case-0002": 2779,
+    "case-0003": 2746,
+    "case-0004": 2703
+  },
+  "ten_second_windows": [
+    {
+      "start_seconds": 0,
+      "seconds": 10.0,
+      "successes": 4607,
+      "qps": 460.7
+    },
+    {
+      "start_seconds": 10,
+      "seconds": 10.0,
+      "successes": 4614,
+      "qps": 461.4
+    },
+    {
+      "start_seconds": 20,
+      "seconds": 10.0,
+      "successes": 4619,
+      "qps": 461.9
+    },
+    {
+      "start_seconds": 30,
+      "seconds": 0.002169568999999427,
+      "successes": 1,
+      "qps": 460.92104007766704
+    }
+  ]
+}

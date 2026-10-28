@@ -1,0 +1,250 @@
+{
+  "mode": "bench",
+  "backend": "ge_session",
+  "graph": {
+    "path": "/export/home/ext.hejun23/workspace/bge-opt-100/materials/exported/model.onnx",
+    "format": "onnx",
+    "om_path": null
+  },
+  "io": {
+    "schema": "ge-io/1",
+    "inputs": [
+      {
+        "name": "input_ids",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          -1
+        ],
+        "dynamic_dims": [
+          0,
+          1
+        ],
+        "node": "input_ids"
+      },
+      {
+        "name": "attention_mask",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          -1
+        ],
+        "dynamic_dims": [
+          0,
+          1
+        ],
+        "node": "attention_mask"
+      },
+      {
+        "name": "long_cid3_raw",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          -1
+        ],
+        "dynamic_dims": [
+          0,
+          1
+        ],
+        "node": "long_cid3_raw"
+      },
+      {
+        "name": "long_action",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          -1
+        ],
+        "dynamic_dims": [
+          0,
+          1
+        ],
+        "node": "long_action"
+      },
+      {
+        "name": "long_time_bucket",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          -1
+        ],
+        "dynamic_dims": [
+          0,
+          1
+        ],
+        "node": "long_time_bucket"
+      },
+      {
+        "name": "stat_dense_raw",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          20
+        ],
+        "dynamic_dims": [
+          0
+        ],
+        "node": "stat_dense_raw"
+      },
+      {
+        "name": "stat_ratio",
+        "dtype": "float32",
+        "shape": [
+          -1,
+          20
+        ],
+        "dynamic_dims": [
+          0
+        ],
+        "node": "stat_ratio"
+      },
+      {
+        "name": "stat_count",
+        "dtype": "int64",
+        "shape": [
+          -1
+        ],
+        "dynamic_dims": [
+          0
+        ],
+        "node": "stat_count"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "scores",
+        "dtype": "float32",
+        "shape": [
+          -1,
+          10112
+        ],
+        "dynamic_dims": [
+          0
+        ]
+      }
+    ]
+  },
+  "inputs": {
+    "file": "/export/home/ext.hejun23/workspace/bge-opt-100/work/prepared/base-fixed-profile/inputs.bin",
+    "cases": [
+      {
+        "id": "case-0002",
+        "samples": 1,
+        "tensors": [
+          {
+            "name": "input_ids",
+            "dtype": "int64",
+            "shape": [
+              1,
+              8
+            ],
+            "offset": 0,
+            "bytes": 64
+          },
+          {
+            "name": "attention_mask",
+            "dtype": "int64",
+            "shape": [
+              1,
+              8
+            ],
+            "offset": 64,
+            "bytes": 64
+          },
+          {
+            "name": "long_cid3_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 128,
+            "bytes": 1024
+          },
+          {
+            "name": "long_action",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 1152,
+            "bytes": 1024
+          },
+          {
+            "name": "long_time_bucket",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 2176,
+            "bytes": 1024
+          },
+          {
+            "name": "stat_dense_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 3200,
+            "bytes": 160
+          },
+          {
+            "name": "stat_ratio",
+            "dtype": "float32",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 3360,
+            "bytes": 80
+          },
+          {
+            "name": "stat_count",
+            "dtype": "int64",
+            "shape": [
+              1
+            ],
+            "offset": 3440,
+            "bytes": 8
+          }
+        ],
+        "output_capacities": {
+          "scores": 40448
+        }
+      }
+    ]
+  },
+  "device": 2,
+  "instances": 1,
+  "warmup": 0,
+  "iterations": 1,
+  "seed": 42,
+  "options": {
+    "precision_mode": "must_keep_origin_dtype",
+    "graph_run_mode": 0
+  },
+  "workload": {
+    "kind": "fixed_case",
+    "case_ids": [
+      "case-0002"
+    ],
+    "sampling": "fixed"
+  },
+  "observability": {
+    "profiling": true,
+    "dump": false
+  },
+  "output_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile",
+  "replay": {
+    "run_id": "base-fixed-profile",
+    "min_seconds": 0.1,
+    "max_seconds": 15.0,
+    "min_requests": 20,
+    "max_requests": 2000000,
+    "warmup_per_case": 10,
+    "capture_outputs": false
+  }
+}

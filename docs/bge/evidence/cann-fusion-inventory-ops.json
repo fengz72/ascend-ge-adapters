@@ -1,0 +1,2061 @@
+{
+  "base": "/usr/local/Ascend/cann-9.0.0",
+  "ops": {
+    "BatchMatMul": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "aclnnSupport": {
+          "value": "support_aclnn"
+        },
+        "async": {
+          "flag": "false"
+        },
+        "attr": {
+          "list": "adj_x1,adj_x2"
+        },
+        "attr_adj_x1": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_adj_x2": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "compute": {
+          "cost": "10"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "name": "x1",
+          "needCompile": "false",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input1": {
+          "name": "x2",
+          "needCompile": "false",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input2": {
+          "name": "bias",
+          "needCompile": "false",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "jitCompile": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "batch_matmul"
+        },
+        "opInterface": {
+          "value": "batch_matmul"
+        },
+        "output0": {
+          "name": "y",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "partial": {
+          "flag": "true"
+        },
+        "prebuildPattern": {
+          "value": "dynamic"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        },
+        "sgatKeyAttr": {
+          "list": "adj_x1,adj_x2"
+        },
+        "slicePattern": {
+          "value": "cubeMatmul"
+        }
+      }
+    },
+    "BatchMatMulV2": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "aclnnSupport": {
+          "value": "support_aclnn"
+        },
+        "async": {
+          "flag": "false"
+        },
+        "attr": {
+          "list": "adj_x1,adj_x2,offset_x"
+        },
+        "attr_adj_x1": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_adj_x2": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_offset_x": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "compute": {
+          "cost": "10"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "name": "x1",
+          "needCompile": "false",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input1": {
+          "name": "x2",
+          "needCompile": "false",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input2": {
+          "name": "bias",
+          "needCompile": "false",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input3": {
+          "name": "offset_w",
+          "needCompile": "false",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "jitCompile": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "batch_matmul_v2"
+        },
+        "opInterface": {
+          "value": "batch_matmul_v2"
+        },
+        "output0": {
+          "name": "y",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "partial": {
+          "flag": "true"
+        },
+        "prebuildPattern": {
+          "value": "dynamic"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        },
+        "sgatKeyAttr": {
+          "list": "adj_x1,adj_x2"
+        },
+        "slicePattern": {
+          "value": "cubeMatmul"
+        }
+      }
+    },
+    "FastGelu": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,float,bfloat16",
+          "name": "x",
+          "paramType": "required"
+        },
+        "op": {
+          "pattern": "formatAgnostic"
+        },
+        "output0": {
+          "dtype": "float16,float,bfloat16",
+          "name": "y",
+          "needCompile": "true",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "slicePattern": {
+          "value": "elemwise"
+        }
+      }
+    },
+    "FastGeluV2": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,float,bfloat16",
+          "name": "x",
+          "paramType": "required"
+        },
+        "op": {
+          "pattern": "formatAgnostic"
+        },
+        "output0": {
+          "dtype": "float16,float,bfloat16",
+          "name": "y",
+          "needCompile": "true",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "slicePattern": {
+          "value": "elemwise"
+        }
+      }
+    },
+    "Gelu": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "bfloat16,float16,float",
+          "name": "x",
+          "paramType": "required"
+        },
+        "op": {
+          "pattern": "formatAgnostic"
+        },
+        "output0": {
+          "dtype": "bfloat16,float16,float",
+          "name": "y",
+          "needCompile": "true",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "slicePattern": {
+          "value": "elemwise"
+        }
+      }
+    },
+    "GeluV2": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "attr": {
+          "list": "approximate"
+        },
+        "attr_approximate": {
+          "defaultValue": "none",
+          "paramType": "optional",
+          "type": "str",
+          "value": "none,tanh"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "bfloat16,float16,float",
+          "name": "x",
+          "paramType": "required"
+        },
+        "op": {
+          "pattern": "formatAgnostic"
+        },
+        "output0": {
+          "dtype": "bfloat16,float16,float",
+          "name": "y",
+          "needCompile": "true",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "slicePattern": {
+          "value": "elemwise"
+        }
+      }
+    },
+    "L2Normalize": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "attr": {
+          "list": "axis,eps"
+        },
+        "attr_axis": {
+          "paramType": "required",
+          "type": "listInt",
+          "value": "all"
+        },
+        "attr_eps": {
+          "paramType": "required",
+          "type": "float",
+          "value": "all"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,float",
+          "format": "ND,ND",
+          "name": "x",
+          "paramType": "required",
+          "reshapeType": "NC",
+          "unknownshape_format": "ND,ND"
+        },
+        "output0": {
+          "dtype": "float16,float",
+          "format": "ND,ND",
+          "name": "y",
+          "paramType": "required",
+          "reshapeType": "NC",
+          "shape": "all",
+          "unknownshape_format": "ND,ND"
+        },
+        "slicePattern": {
+          "value": "reduce"
+        }
+      }
+    },
+    "LayerNorm": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "attr": {
+          "list": "begin_norm_axis,begin_params_axis,epsilon"
+        },
+        "attr_begin_norm_axis": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_begin_params_axis": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_epsilon": {
+          "defaultValue": "1e-12",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "name": "x",
+          "paramType": "required"
+        },
+        "input1": {
+          "name": "gamma",
+          "paramType": "required"
+        },
+        "input2": {
+          "name": "beta",
+          "paramType": "required"
+        },
+        "needCheckSupport": {
+          "flag": "true"
+        },
+        "output0": {
+          "name": "y",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "output1": {
+          "name": "mean",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "output2": {
+          "name": "variance",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "prebuildPattern": {
+          "value": "undefined"
+        }
+      }
+    },
+    "LayerNormV3": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "attr": {
+          "list": "begin_norm_axis,begin_params_axis,epsilon"
+        },
+        "attr_begin_norm_axis": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_begin_params_axis": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_epsilon": {
+          "defaultValue": "1e-5",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "name": "x",
+          "paramType": "required"
+        },
+        "input1": {
+          "name": "gamma",
+          "paramType": "required"
+        },
+        "input2": {
+          "name": "beta",
+          "paramType": "required"
+        },
+        "output0": {
+          "name": "y",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "output1": {
+          "name": "mean",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "output2": {
+          "name": "rstd",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "prebuildPattern": {
+          "value": "undefined"
+        }
+      }
+    },
+    "MatMul": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "aclnnSupport": {
+          "value": "support_aclnn"
+        },
+        "async": {
+          "flag": "false"
+        },
+        "attr": {
+          "list": "transpose_x1,transpose_x2,offset_x"
+        },
+        "attr_offset_x": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_transpose_x1": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_transpose_x2": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "compute": {
+          "cost": "10"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "name": "x1",
+          "needCompile": "false",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input1": {
+          "name": "x2",
+          "needCompile": "false",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input2": {
+          "name": "bias",
+          "needCompile": "false",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input3": {
+          "name": "offset_w",
+          "needCompile": "false",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "jitCompile": {
+          "flag": "false"
+        },
+        "needCheckSupport": {
+          "flag": "true"
+        },
+        "opFile": {
+          "value": "mat_mul"
+        },
+        "opInterface": {
+          "value": "mat_mul"
+        },
+        "output0": {
+          "name": "y",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "partial": {
+          "flag": "true"
+        },
+        "prebuildPattern": {
+          "value": "dynamic"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        },
+        "sgatKeyAttr": {
+          "list": "transpose_x1,transpose_x2"
+        },
+        "slicePattern": {
+          "value": "cubeMatmul"
+        }
+      }
+    },
+    "MatMulV2": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "aclnnSupport": {
+          "value": "support_aclnn"
+        },
+        "async": {
+          "flag": "false"
+        },
+        "attr": {
+          "list": "transpose_x1,transpose_x2,offset_x"
+        },
+        "attr_offset_x": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_transpose_x1": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_transpose_x2": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "compute": {
+          "cost": "10"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "name": "x1",
+          "needCompile": "false",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input1": {
+          "name": "x2",
+          "needCompile": "false",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input2": {
+          "name": "bias",
+          "needCompile": "false",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input3": {
+          "name": "offset_w",
+          "needCompile": "false",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "jitCompile": {
+          "flag": "false"
+        },
+        "needCheckSupport": {
+          "flag": "true"
+        },
+        "opFile": {
+          "value": "mat_mul"
+        },
+        "opInterface": {
+          "value": "mat_mul"
+        },
+        "output0": {
+          "name": "y",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "partial": {
+          "flag": "true"
+        },
+        "prebuildPattern": {
+          "value": "dynamic"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        },
+        "sgatKeyAttr": {
+          "list": "transpose_x1,transpose_x2"
+        },
+        "slicePattern": {
+          "value": "cubeMatmul"
+        }
+      }
+    },
+    "ScaledMaskedSoftmax": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "attr": {
+          "list": "scale,fixed_triu_mask"
+        },
+        "attr_fixed_triu_mask": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "true,false"
+        },
+        "attr_scale": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,float,bfloat16,float16,float,bfloat16",
+          "format": "ND,ND,ND,FRACTAL_NZ,FRACTAL_NZ,FRACTAL_NZ",
+          "name": "x",
+          "paramType": "required"
+        },
+        "input1": {
+          "dtype": "bool,bool,bool,bool,bool,bool",
+          "format": "ND,ND,ND,FRACTAL_NZ,FRACTAL_NZ,FRACTAL_NZ",
+          "name": "mask",
+          "paramType": "optional"
+        },
+        "opFile": {
+          "value": "scaled_masked_softmax"
+        },
+        "opInterface": {
+          "value": "scaled_masked_softmax"
+        },
+        "output0": {
+          "dtype": "float16,float,bfloat16,float16,float,bfloat16",
+          "format": "ND,ND,ND,FRACTAL_NZ,FRACTAL_NZ,FRACTAL_NZ",
+          "name": "y",
+          "paramType": "required"
+        }
+      }
+    },
+    "SoftmaxV2": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "attr": {
+          "list": "axes,half_to_float"
+        },
+        "attr_axes": {
+          "defaultValue": "[-1]",
+          "paramType": "optional",
+          "type": "listInt",
+          "value": "all"
+        },
+        "attr_half_to_float": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "name": "x",
+          "paramType": "required",
+          "tuneformatSwitch": "true"
+        },
+        "needCheckSupport": {
+          "flag": "true"
+        },
+        "output0": {
+          "name": "y",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "prebuildPattern": {
+          "value": "undefined"
+        }
+      }
+    },
+    "AddLayerNorm": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-nn.json",
+      "info": {
+        "attr": {
+          "list": "epsilon,additional_output"
+        },
+        "attr_additional_output": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_epsilon": {
+          "defaultValue": "1e-05",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float32,float32,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "x1",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input1": {
+          "dtype": "float16,bfloat16,float32,float32,float16,bfloat16,float16,bfloat16,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "x2",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input2": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float16,bfloat16,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "gamma",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input3": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float16,bfloat16,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "beta",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input4": {
+          "dtype": "float32,float32,float32,float32,float16,bfloat16,float16,bfloat16,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "bias",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "needCheckSupport": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "add_layer_norm"
+        },
+        "opInterface": {
+          "value": "add_layer_norm"
+        },
+        "output0": {
+          "dtype": "float32,float32,float32,float32,float16,bfloat16,float16,bfloat16,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "y",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output1": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "mean",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output2": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "rstd",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output3": {
+          "dtype": "float32,float32,float32,float32,float16,bfloat16,float16,bfloat16,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "x",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        }
+      }
+    },
+    "LayerNormV4": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-nn.json",
+      "info": {
+        "attr": {
+          "list": "epsilon"
+        },
+        "attr_epsilon": {
+          "defaultValue": "1e-05",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float32,float16,float16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND",
+          "name": "x",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND"
+        },
+        "input1": {
+          "dtype": "int32,int32,int32,int32,int32",
+          "format": "ND,ND,ND,ND,ND",
+          "name": "normalized_shape",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND"
+        },
+        "input2": {
+          "dtype": "float32,float32,float16,float32,bfloat16",
+          "format": "ND,ND,ND,ND,ND",
+          "name": "gamma",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND"
+        },
+        "input3": {
+          "dtype": "float32,float32,float16,float32,bfloat16",
+          "format": "ND,ND,ND,ND,ND",
+          "name": "beta",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND"
+        },
+        "opFile": {
+          "value": "layer_norm_v4"
+        },
+        "opInterface": {
+          "value": "layer_norm_v4"
+        },
+        "output0": {
+          "dtype": "float32,float16,float16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND",
+          "name": "y",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND"
+        },
+        "output1": {
+          "dtype": "float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND",
+          "name": "mean",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND"
+        },
+        "output2": {
+          "dtype": "float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND",
+          "name": "rstd",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        }
+      }
+    },
+    "MatMulV3": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-nn.json",
+      "info": {
+        "attr": {
+          "list": "transpose_x1,transpose_x2,offset_x,opImplMode"
+        },
+        "attr_offset_x": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_opImplMode": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_transpose_x1": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_transpose_x2": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "false"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,float16,float32,bfloat16,float16,float16,float32,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "x1",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input1": {
+          "dtype": "float16,float16,float32,bfloat16,float16,float16,float32,bfloat16",
+          "format": "ND,ND,ND,ND,FRACTAL_NZ,FRACTAL_NZ,FRACTAL_NZ,FRACTAL_NZ",
+          "name": "x2",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,FRACTAL_NZ,FRACTAL_NZ,FRACTAL_NZ,FRACTAL_NZ"
+        },
+        "input2": {
+          "dtype": "float16,float32,float32,float32,float16,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "bias",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input3": {
+          "dtype": "int8,int8,int4,int8,int8,int8,int4,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "offset_w",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "needCheckSupport": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "mat_mul_v3"
+        },
+        "opInterface": {
+          "value": "mat_mul_v3"
+        },
+        "output0": {
+          "dtype": "float16,float16,float32,bfloat16,float16,float16,float32,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "y",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        },
+        "softsync": {
+          "flag": "true"
+        }
+      }
+    },
+    "FlashAttentionScore": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-transformer.json",
+      "info": {
+        "attr": {
+          "list": "scale_value,keep_prob,pre_tockens,next_tockens,head_num,input_layout,inner_precise,sparse_mode,pse_type,seed,offset,out_dtype,softmax_out_layout"
+        },
+        "attr_head_num": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_inner_precise": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_input_layout": {
+          "paramType": "required",
+          "type": "str",
+          "value": "all"
+        },
+        "attr_keep_prob": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_next_tockens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_offset": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_out_dtype": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pre_tockens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pse_type": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_scale_value": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_seed": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_softmax_out_layout": {
+          "defaultValue": "",
+          "paramType": "optional",
+          "type": "str",
+          "value": "all"
+        },
+        "attr_sparse_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input1": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input10": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "q_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input11": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "kv_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input12": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "d_scale_q",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input13": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "d_scale_k",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input14": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "d_scale_v",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input15": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query_rope",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input16": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_rope",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input17": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "sink",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input18": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "p_scale",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input2": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input3": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "real_shift",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input4": {
+          "dtype": "uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "drop_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input5": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "padding_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input6": {
+          "dtype": "uint8,uint8,bool,bool,uint8,uint8,bool,bool,uint8,bool",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "atten_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input7": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "prefix",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input8": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_qlen",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input9": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_kvlen",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "jitCompile": {
+          "flag": "static_false,dynamic_false"
+        },
+        "needCheckSupport": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "flash_attention_score"
+        },
+        "opInterface": {
+          "value": "flash_attention_score"
+        },
+        "output0": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_max",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output1": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_sum",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output2": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_out",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output3": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "attention_out",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        }
+      }
+    },
+    "FusedInferAttentionScore": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-transformer.json",
+      "info": {
+        "aclnnSupport": {
+          "value": "support_aclnn"
+        },
+        "attr": {
+          "list": "num_heads,scale,pre_tokens,next_tokens,input_layout,num_key_value_heads,sparse_mode,inner_precise,block_size,antiquant_mode,softmax_lse_flag,key_antiquant_mode,value_antiquant_mode,query_quant_mode,pse_type,out_dtype"
+        },
+        "attr_antiquant_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_block_size": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_inner_precise": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_input_layout": {
+          "defaultValue": "BSH",
+          "paramType": "optional",
+          "type": "str",
+          "value": "all"
+        },
+        "attr_key_antiquant_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_next_tokens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_num_heads": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_num_key_value_heads": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_out_dtype": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pre_tokens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pse_type": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_query_quant_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_scale": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_softmax_lse_flag": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_sparse_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_value_antiquant_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input1": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,int4,int4,int4,int4,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key",
+          "paramType": "dynamic",
+          "shape": "all"
+        },
+        "input10": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float16,float16,float16,float16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "quant_scale2",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input11": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float16,float16,float16,float16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "quant_offset2",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input12": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,bfloat16,bfloat16,float32,float32,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float32,float32,float16,float16,float16,float16,float16,float16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "antiquant_scale",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input13": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,bfloat16,bfloat16,float32,float32,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float32,float32,float16,float16,float16,float16,float16,float16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "antiquant_offset",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input14": {
+          "dtype": "int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "block_table",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input15": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query_padding_size",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input16": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "kv_padding_size",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input17": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float16,float16,float16,float16,float16,float16,float32,float32,float32,float32,float16,float16,bfloat16,bfloat16,float32,float32,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_antiquant_scale",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input18": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float16,float16,float16,float16,float16,float16,float32,float32,float32,float32,float16,float16,bfloat16,bfloat16,float32,float32,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_antiquant_offset",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input19": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value_antiquant_scale",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input2": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,int4,int4,int4,int4,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value",
+          "paramType": "dynamic",
+          "shape": "all"
+        },
+        "input20": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value_antiquant_offset",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input21": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,float16,float16,float32,float32,float16,float16,int4,int4,int4,int4,int4,int4,int4,int4,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_shared_prefix",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input22": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,float16,float16,float32,float32,float16,float16,int4,int4,int4,int4,int4,int4,int4,int4,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value_shared_prefix",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input23": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_shared_prefix_len",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input24": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query_rope",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input25": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,int4,int4,int4,int4,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,float16,float16,float16,float16,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_rope",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input26": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float16,float16,float16,float16,float16,float16,float32,float32,float32,float32,float16,float16,bfloat16,bfloat16,float32,float32,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_rope_antiquant_scale",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input27": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dequant_scale_query",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input28": {
+          "dtype": "bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "learnable_sink",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input29": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "q_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input3": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "pse_shift",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input30": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "kv_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input4": {
+          "dtype": "float16,float16,bool,bool,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,float16,float16,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,float16,float16,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,int8,int8,bool,bool,float16,float16,bool,bool,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,float16,float16,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,float16,float16,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,int8,int8,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,int8,int8,int8,int8,bool,bool,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,int8,int8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,int8,int8,uint8,uint8,uint8,uint8,int8,int8,uint8,uint8,int8,int8,int8,int8,uint8,uint8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "atten_mask",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input5": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_lengths",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input6": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_lengths_kv",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input7": {
+          "dtype": "uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,float32,float32,float32,float32,uint64,uint64,uint64,uint64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dequant_scale1",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input8": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "quant_scale1",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input9": {
+          "dtype": "uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,float32,float32,float32,float32,uint64,uint64,uint64,uint64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dequant_scale2",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "jitCompile": {
+          "flag": "static_false,dynamic_false"
+        },
+        "needCheckSupport": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "fused_infer_attention_score"
+        },
+        "opInterface": {
+          "value": "fused_infer_attention_score"
+        },
+        "output0": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,int8,int8,float16,float16,int8,int8,bfloat16,bfloat16,int8,int8,bfloat16,bfloat16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,int8,int8,float16,float16,int8,int8,bfloat16,bfloat16,int8,int8,bfloat16,bfloat16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "attention_out",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "output1": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_lse",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        }
+      }
+    },
+    "PromptFlashAttention": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-transformer.json",
+      "info": {
+        "aclnnSupport": {
+          "value": "support_aclnn"
+        },
+        "attr": {
+          "list": "num_heads,scale_value,pre_tokens,next_tokens,input_layout,num_key_value_heads,sparse_mode,inner_precise"
+        },
+        "attr_inner_precise": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_input_layout": {
+          "defaultValue": "BSH",
+          "paramType": "optional",
+          "type": "str",
+          "value": "all"
+        },
+        "attr_next_tokens": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_num_heads": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_num_key_value_heads": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pre_tokens": {
+          "defaultValue": "214748647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_scale_value": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_sparse_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,float16,bfloat16,int8,int8,bfloat16,int8,int8,bfloat16,int8,int8,float16,float16,float16,float16,float16,bfloat16,int8,int8,bfloat16,int8,int8,bfloat16,int8,int8,float16,float16,float16,bfloat16,bfloat16,float16,float16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input1": {
+          "dtype": "float16,float16,bfloat16,int8,int8,bfloat16,int8,int8,bfloat16,int8,int8,float16,float16,float16,float16,float16,bfloat16,int8,int8,bfloat16,int8,int8,bfloat16,int8,int8,float16,float16,float16,bfloat16,bfloat16,float16,float16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input10": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "quant_scale2",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input11": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "quant_offset2",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input2": {
+          "dtype": "float16,float16,bfloat16,int8,int8,bfloat16,int8,int8,bfloat16,int8,int8,float16,float16,float16,float16,float16,bfloat16,int8,int8,bfloat16,int8,int8,bfloat16,int8,int8,float16,float16,float16,bfloat16,bfloat16,float16,float16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input3": {
+          "dtype": "float16,float16,bfloat16,float16,float16,bfloat16,float16,float16,bfloat16,float16,float16,float16,float16,float16,float16,float16,bfloat16,float16,float16,bfloat16,float16,float16,bfloat16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "pse_shift",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input4": {
+          "dtype": "float16,bool,bool,bool,bool,int8,int8,int8,uint8,uint8,uint8,bool,int8,uint8,float16,bool,bool,bool,bool,int8,int8,int8,uint8,uint8,uint8,bool,int8,uint8,bool,bool,int8,uint8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "atten_mask",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input5": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_lengths",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input6": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_lengths_kv",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input7": {
+          "dtype": "uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "deq_scale1",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input8": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "quant_scale1",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input9": {
+          "dtype": "uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "deq_scale2",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "jitCompile": {
+          "flag": "static_false,dynamic_false"
+        },
+        "needCheckSupport": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "prompt_flash_attention"
+        },
+        "opInterface": {
+          "value": "prompt_flash_attention"
+        },
+        "output0": {
+          "dtype": "float16,int8,bfloat16,float16,int8,bfloat16,float16,int8,bfloat16,float16,int8,float16,float16,float16,float16,int8,bfloat16,float16,int8,bfloat16,float16,int8,bfloat16,float16,int8,float16,float16,float16,int8,int8,int8,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "attention_out",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        }
+      }
+    }
+  },
+  "config_files": [
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-cv.json",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-math.json",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-nn.json",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-oam.json",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-transformer.json"
+  ],
+  "kernel_files": {
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/axpy_with_softmax_and_drop_out_do_mask.json": 4107,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/drop_out_with_muls_and_softmax_grad.json": 3681,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/fast_gelu.json": 6208,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/fast_gelu_grad.json": 30987,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/fast_gelu_v2.json": 6862,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/gelu.json": 6670,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/gelu_grad.json": 26844,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/gelu_grad_v2.json": 52347,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/gelu_v2.json": 15563,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/layer_norm.json": 26859,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/layer_norm_beta_gamma_backprop_v2.json": 30430,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/layer_norm_quant.json": 4551,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/layer_norm_v3.json": 33669,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/layer_norm_x_backprop_v2.json": 8319,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/layer_norm_x_backprop_v3.json": 14522,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/log_softmax_v2.json": 7180,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/log_softmax_grad.json": 3906,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/mat_mul.json": 219593,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/post_layer_norm.json": 4276,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/scaled_masked_softmax.json": 17721,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/scaled_masked_softmax_grad.json": 20673,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/softmax_cross_entropy_with_logits.json": 9608,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/softmax_grad.json": 20303,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_legacy/softmax_v2.json": 10679,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/ada_layer_norm.json": 6682,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/ada_layer_norm_quant.json": 5417,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/ada_layer_norm_v2.json": 8075,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/add_layer_norm.json": 31065,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/add_layer_norm_grad.json": 9107,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/add_layer_norm_quant.json": 15009,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/batch_mat_mul_v3.json": 20626,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/dua_quantize_add_layer_norm.json": 4554,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/fused_quant_mat_mul.json": 18317,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/gelu_mul.json": 4018,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/gelu_quant.json": 6844,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/inplace_add_layer_norm.json": 10528,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/layer_norm_grad_v3.json": 13676,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/layer_norm_quant.json": 5183,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/layer_norm_v4.json": 13798,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/masked_softmax_with_rel_pos_bias.json": 6628,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/mat_mul_v3.json": 47775,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/multi_scale_deformable_attention_grad.json": 3024,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/quantize_add_layer_norm.json": 11133,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/scaled_masked_softmax_grad_v2.json": 5877,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/scaled_masked_softmax_v2.json": 5110,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_nn/transpose_batch_mat_mul.json": 21463,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_oam/detect_flash_attention_score.json": 18351,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_oam/detect_flash_attention_score_grad.json": 22327,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_oam/detect_mat_mul.json": 7671,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/allto_all_all_gather_batch_mat_mul.json": 6836,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/allto_allv_grouped_mat_mul.json": 27504,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/attention_to_ffn.json": 7812,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/attention_update.json": 6670,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/attention_worker_combine.json": 5100,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/batch_mat_mul_reduce_scatter_allto_all.json": 5228,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/block_sparse_attention.json": 9640,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/block_sparse_attention_grad.json": 10877,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/dense_lightning_indexer_softmax_lse.json": 13002,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/ffn_to_attention.json": 6234,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/flash_attention_score.json": 24885,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/flash_attention_score_grad.json": 33563,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/fused_floyd_attention.json": 10272,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/fused_floyd_attention_grad.json": 15115,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/fused_infer_attention_score.json": 150019,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/grouped_mat_mul_all_reduce.json": 5628,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/grouped_mat_mul_allto_allv.json": 7271,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/incre_flash_attention.json": 46959,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/kv_quant_sparse_flash_attention.json": 9925,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/moe_gating_top_k_softmax.json": 6850,
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93/ops_transformer/moe_gating_top_k_softmax_v2.json": 7519
+  }
+}

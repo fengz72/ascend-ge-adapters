@@ -1,0 +1,25 @@
+{
+  "at": "2026-10-26T04:05:19.010835+00:00",
+  "materials": {
+    "model.onnx": {
+      "bytes": 1345962755,
+      "sha256": "2080f8762d9f8de50f8ec22f6a560453d3052d13012ea6fe7c199197962b3ba0",
+      "unchanged": true
+    },
+    "sample_inputs.json": {
+      "bytes": 27675,
+      "sha256": "66571de2fa8c6a97e52a196a957801ab09b429751ba9cfb94712bb32c660b194",
+      "unchanged": true
+    },
+    "expected_outputs.json": {
+      "bytes": 2526,
+      "sha256": "4765cc2b9dac9d2f523f9a684a81082d3b943caaff1fd2c4db90cfdf1b375384",
+      "unchanged": true
+    }
+  },
+  "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+  "diff_check_exit": 0,
+  "git_status": " M models/bge/README.md\n M runtime/CMakeLists.txt\n M runtime/backends/gesession_backend.cpp\n M runtime/backends/gesession_backend.h\n M runtime/bench.cpp\n M runtime/bench.h\n M runtime/main.cpp\n M tests/runtime_contracts.cpp\n?? docs/bge/\n?? models/bge/replay.py\n?? runtime/replay.cpp\n?? tests/test_bge_replay_cli.py\n",
+  "diff_stat": " models/bge/README.md                   | 89 ++++++++++++++++++++++++++++++++--\n runtime/CMakeLists.txt                 |  3 +-\n runtime/backends/gesession_backend.cpp | 24 +++++++--\n runtime/backends/gesession_backend.h   |  1 +\n runtime/bench.cpp                      | 23 +++++++--\n runtime/bench.h                        | 29 ++++++++++-\n runtime/main.cpp                       | 51 ++++++++++++++++++-\n tests/runtime_contracts.cpp            | 58 ++++++++++++++++++++++\n 8 files changed, 263 insertions(+), 15 deletions(-)\n",
+  "commit_push_performed": false
+}

@@ -1,0 +1,93 @@
+{
+  "observed_at": "2026-10-26T03:11:28.688038+00:00",
+  "job_status": {
+    "task_id": "e2aa16318100476b9d669d34511dbd78",
+    "host": "A03-R40-I191-99-4100006.JD.LOCAL",
+    "supervisor": {
+      "pid": 2006334,
+      "linux_start_ticks": "232279613",
+      "linux_boot_id": "f0591928-db84-4529-a570-0cecb5b946dc"
+    },
+    "cwd": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner",
+    "argv": [
+      "bash",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/env_run.sh",
+      "env",
+      "LD_PRELOAD=/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass.so",
+      "/usr/local/python3.11.15/bin/python3",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/run_runtime.py",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/fusion-search.json"
+    ],
+    "devices": [
+      "A03-R40-I191-99-4100006.JD.LOCAL/0000:89:00.0"
+    ],
+    "lock_root": "/export/home/ext.hejun23/workspace/bge/.npu-workflow-locks",
+    "started_at": "2026-10-26T03:04:04.355838+00:00",
+    "device_release_checked": false,
+    "state": "finished",
+    "updated_at": "2026-10-26T03:05:08.433814+00:00",
+    "task": {
+      "pid": 2006335,
+      "linux_start_ticks": "232279617",
+      "linux_boot_id": "f0591928-db84-4529-a570-0cecb5b946dc"
+    },
+    "pgid": 2006335,
+    "reason": "background_children",
+    "remaining_pids": [
+      2006543,
+      2006544
+    ],
+    "exit_code": 125,
+    "task_returncode": 0,
+    "process_group_stopped": true,
+    "finished_at": "2026-10-26T03:05:08.433793+00:00",
+    "locks_released_at": "2026-10-26T03:05:08.433807+00:00"
+  },
+  "request": {
+    "task_id": "e2aa16318100476b9d669d34511dbd78",
+    "created_at": "2026-10-26T03:04:04.311784+00:00",
+    "cwd": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner",
+    "argv": [
+      "bash",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/env_run.sh",
+      "env",
+      "LD_PRELOAD=/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass.so",
+      "/usr/local/python3.11.15/bin/python3",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/run_runtime.py",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/fusion-search.json"
+    ],
+    "devices": [
+      "A03-R40-I191-99-4100006.JD.LOCAL/0000:89:00.0"
+    ],
+    "timeout": 650.0,
+    "grace": 5.0,
+    "lock_root": "/export/home/ext.hejun23/workspace/bge/.npu-workflow-locks"
+  },
+  "python_signal_type_errors": 11,
+  "task_log_excerpt": "EXECUTING /export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime /export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/fusion-search.json\n{\"returncode\": 0, \"elapsed_seconds\": 63.61299269692972, \"plan\": \"/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/fusion-search.json\", \"binary\": \"/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime\"}\nLOG_TAIL ============================================================\nGeSession \u53d8\u957f\u8d1f\u8f7d (\u8bf7\u6c42\u6c60\u56de\u653e)\n============================================================\n  instances: 1   requests: 4872   errors: 0\n  wall:      30004.743 ms\n  QPS:       162.37 req/s\n  e2e  ms:   avg 6.158  min 5.571  p50 6.127  p99 6.704  max 7.701\n  exec ms:   avg 6.029  p99 6.570  (execute+sync, \u4e0d\u542b h2d/desc)\n  samples:    avg 1.0  min 1  p50 1  p99 1  max 1  (\u6bcf\u6b21\u8c03\u7528\u7684\u4e1a\u52a1\u6837\u672c\u6570)\n  warmup:    50 \u6b21 / 500.9 ms   distinct shapes: 4\n  HBM:       558 \u2192 1846 MB (\u5b9e\u4f8b\u5360 1287 MB)\n  ---- \u6bcf\u5b9e\u4f8b ----\n  instance_0: req=4872 qps=162.37 e2e avg=6.158 p99=6.704 | exec avg=6.029 p99=6.570 | h2d=0.089 desc=0.001 | load=1882.2ms shapes=4 \u7279\u5316=0.0ms err=0\n=====================================================",
+  "remaining_pid_current_observations": [
+    {
+      "pid": 2006543,
+      "present_now": false,
+      "attribution": "Supervisor had stopped the process group; original cmdline was not saved."
+    },
+    {
+      "pid": 2006544,
+      "present_now": false,
+      "attribution": "Supervisor had stopped the process group; original cmdline was not saved."
+    }
+  ],
+  "facts": [
+    "LD_PRELOAD was present in the Python launcher argv, before native binary startup.",
+    "The supervised task returned 0, but supervisor returned 125 for background_children.",
+    "Supervisor recorded two remaining PIDs and process_group_stopped=true.",
+    "The current artifacts do not establish the original cmdline/type of those remaining processes."
+  ],
+  "hypothesis": "Preloading GE-bearing plugin into launcher/compiler Python may disturb signal initialization and leave multiprocessing helpers; not established as sole root cause.",
+  "v2_scope": "Native ge_runtime removes only its already-loaded plugin from future LD_PRELOAD inheritance; launcher must also use native-only runtime_env.",
+  "original_so_sha256_now": "8767095f04348ed6097c769d71909421409397cedef534c4c7650d61df6cfff5",
+  "v2_so_sha256": "76ea9fb0f1800369b023e22d71298e508dcfaa6f69f34bcf952af4a1b5fa48ed",
+  "performance_acceptance": "fusion-search is invalid for acceptance despite native runtime statistics; retry needed."
+}

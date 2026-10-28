@@ -1,0 +1,25 @@
+{
+  "copied_utc": "2026-10-24T08:21:13.841289+00:00",
+  "host_alias": "99",
+  "container": "hejun-cann9-bge",
+  "destination": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/docs/bge",
+  "file_sha256": {
+    "analysis/design-final-review.md": "48bfa684a0de36752e20e37d6a124a13074a8b6943e16d575fab801678642a10",
+    "analysis/development-plan.md": "3d6df7229f0569b72b3e4d109a4c8f25da19a1d346269982c5df9aacfc48c0eb",
+    "analysis/se-design-review.md": "11491c23207b798af3903d81b7a508b3938b8bfd4ad8a88e2906984b181b16a4",
+    "analysis/test-contract-audit.md": "8f988f60033c207be71b504d3a39ec4c0395be7ddecad61a88490ce8b7e22116",
+    "brief.md": "14dfe9deacac0c09e810c0f5617d3c3e373c253d26b9f73e0349481191220f4b",
+    "design.md": "e427ab085481254899e88538674fe58474db441af89c1c84b3dbe49697fb842d",
+    "evidence/design-validation.json": "a65fe23bc88c61c39d2033cf615ae7d06fa0df09dfd1c09f3fe7f29f739dd856",
+    "evidence/preflight.json": "65ffd0f5b164a24493d5be01631f6bd141c391ca114028904046fecc090b3a33",
+    "evidence/runner-source-441b245.txt": "8be024eba0800e7ef4e3ec9c601256550d7132d3b594c5569e18eee931833b12",
+    "progress.md": "4bd2052def16b91354f00181c626fbbe2e4284c476d18535e0d6c6cfcad19f34"
+  },
+  "file_count": 10,
+  "npu_execution": "NOT_RUN",
+  "markdown_links": {
+    "checked": 20,
+    "missing": []
+  },
+  "git_status": "## codex/seven-stage-framework...origin/codex/seven-stage-framework [ahead 1]\n?? docs/bge/\n"
+}

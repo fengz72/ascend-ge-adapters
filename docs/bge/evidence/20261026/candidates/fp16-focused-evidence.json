@@ -1,0 +1,2018 @@
+{
+  "source_final_graph": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/fp16-graph-dump/pid_2002863_deviceid_10/ge_proto_00000000_graph_1_Build.txt",
+  "external_io_nodes": [
+    {
+      "name": "input_ids",
+      "type": "Data",
+      "input_refs": [
+        ""
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "attention_mask",
+      "type": "Data",
+      "input_refs": [
+        ""
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "long_cid3_raw",
+      "type": "Data",
+      "input_refs": [
+        ""
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "long_action",
+      "type": "Data",
+      "input_refs": [
+        ""
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "long_time_bucket",
+      "type": "Data",
+      "input_refs": [
+        ""
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "stat_dense_raw",
+      "type": "Data",
+      "input_refs": [
+        ""
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            20
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            20
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "stat_ratio",
+      "type": "Data",
+      "input_refs": [
+        ""
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            20
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            20
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "stat_count",
+      "type": "Data",
+      "input_refs": [
+        ""
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_GE_LOCAL_OP_STORE\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "Node_Output",
+      "type": "NetOutput",
+      "input_refs": [
+        "domi_default_20261026105116_0_sub_2_unknow_PartitionedCall_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            10112
+          ]
+        }
+      ],
+      "outputs": [],
+      "selected_attrs": {
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_RTS_OP_STORE\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"DNN_VM_RTS_OP_STORE\"\n      }\n    }"
+      }
+    }
+  ],
+  "mask_path_nodes": [
+    {
+      "name": "/encoder/backbone/Cast",
+      "type": "Cast",
+      "input_refs": [
+        "/encoder/backbone/Unsqueeze_4:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_INT64",
+          "dims": [
+            -1,
+            1,
+            1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1,
+            1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/Cast_kernelname": "    attr {\n      key: \"/encoder/backbone/Cast_kernelname\"\n      value {\n        s: \"Cast_5d7a6db974148d68ac34e2b880c60222_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Cast_5d7a6db974148d68ac34e2b880c60222_high_performance10a9573f8edfe34b4af6565173942d1bcad6aeef3bd59a19b195bedbb443c583\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Cast_5d7a6db974148d68ac34e2b880c60222_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Cast_5d7a6db974148d68ac34e2b880c60222_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 6768\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }",
+        "dst_type": "    attr {\n      key: \"dst_type\"\n      value {\n        i: 0\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/Sub",
+      "type": "Sub",
+      "input_refs": [
+        "domi_default_20261026105116_0_sub_2_unknow_Data_751:0",
+        "/encoder/backbone/Expand_1:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": []
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/Sub_kernelname": "    attr {\n      key: \"/encoder/backbone/Sub_kernelname\"\n      value {\n        s: \"Sub_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Sub_ee98c6628030785f610b924ab1557b31_high_performanceeb8c2e4db0a279a3a745d3d49a9c9a3e80daaaaf770805f21f96ea8ec6c5a071\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Sub_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Sub_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 262632\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/Cast_1",
+      "type": "Cast",
+      "input_refs": [
+        "/encoder/backbone/Sub:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_BOOL",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/Cast_1_kernelname": "    attr {\n      key: \"/encoder/backbone/Cast_1_kernelname\"\n      value {\n        s: \"Cast_1ae7d0da2cb3d6d5f03a7ee4e75165b8_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Cast_1ae7d0da2cb3d6d5f03a7ee4e75165b8_high_performance3e193790d6ee263e0006a2ed0f543dc09f8be4391c79d095dbfe53dd846aa8b1\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Cast_1ae7d0da2cb3d6d5f03a7ee4e75165b8_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Cast_1ae7d0da2cb3d6d5f03a7ee4e75165b8_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 10552\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }",
+        "dst_type": "    attr {\n      key: \"dst_type\"\n      value {\n        i: 12\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/Where_2",
+      "type": "SelectV2",
+      "input_refs": [
+        "/encoder/backbone/Cast_1:0",
+        "domi_default_20261026105116_0_sub_2_unknow_Data_750:0",
+        "/encoder/backbone/Sub:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_BOOL",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": []
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/Where_2_kernelname": "    attr {\n      key: \"/encoder/backbone/Where_2_kernelname\"\n      value {\n        s: \"SelectV2_bad39ec50a3854a750466c42b6ef8078_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"SelectV2_bad39ec50a3854a750466c42b6ef8078_high_performance8d0cb35c6feaaa1b8c8fc86f1b1f40bebf66309c14ccc76691db78205887fce5\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"SelectV2_bad39ec50a3854a750466c42b6ef8078_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"SelectV2_bad39ec50a3854a750466c42b6ef8078_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 471944\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.0/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.0/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.0/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.0/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.1/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.1/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.1/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.1/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.2/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.2/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.2/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.2/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.3/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.3/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.3/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.3/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.4/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.4/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.4/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.4/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.5/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.5/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.5/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.5/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.6/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.6/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.6/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.6/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.7/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.7/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.7/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.7/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.8/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.8/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.8/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.8/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.9/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.9/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.9/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.9/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.10/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.10/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.10/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.10/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.11/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.11/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.11/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.11/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.12/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.12/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.12/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.12/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.13/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.13/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.13/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.13/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.14/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.14/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.14/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.14/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.15/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.15/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.15/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.15/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.16/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.16/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.16/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.16/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.17/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.17/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.17/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.17/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.18/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.18/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.18/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.18/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.19/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.19/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.19/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.19/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.20/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.20/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.20/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.20/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.21/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.21/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.21/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.21/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.22/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.22/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.22/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.22/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/encoder/backbone/encoder/layer.23/attention/self/Add",
+      "type": "Add",
+      "input_refs": [
+        "/encoder/backbone/encoder/layer.23/attention/self/MatMul:0",
+        "/encoder/backbone/Where_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/encoder/backbone/encoder/layer.23/attention/self/Add_kernelname": "    attr {\n      key: \"/encoder/backbone/encoder/layer.23/attention/self/Add_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performancec3bc8d17ac35cd83fa038454843459107fd65ba9ca97219a058b65fa361c0542\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Add_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 282248\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    }
+  ],
+  "layernorm_count": 49,
+  "epsilon_attribute_distribution": {
+    "1e-12": 49
+  },
+  "l2_floor_nodes": [
+    {
+      "name": "/Clip",
+      "type": "Maximum",
+      "input_refs": [
+        "/ReduceL2:0",
+        "domi_default_20261026105116_0_sub_1_know_Data_1:0",
+        "domi_default_20261026105116_0_sub_1_know_atomic_memset0_11:-1"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            10112,
+            1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": []
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            10112,
+            1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/Clip_kernelname": "    attr {\n      key: \"/Clip_kernelname\"\n      value {\n        s: \"te_maximum_c76a2486ef34763d6a750aed9a58adb36d4ebc238c453cdace1fd65d664bf769__kernel0\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"te_maximum_c76a2486ef34763d6a750aed9a58adb36d4ebc238c453cdace1fd65d664bf76985dd448abf8f30a36dbc2e91d4afcc9f31696e790d11badceffa4c59096ae78e\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"te_maximum_c76a2486ef34763d6a750aed9a58adb36d4ebc238c453cdace1fd65d664bf769__kernel0\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 2112\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/Clip_6",
+      "type": "Maximum",
+      "input_refs": [
+        "/ReduceSum:0",
+        "domi_default_20261026105116_0_sub_2_unknow_Data_4:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": []
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/Clip_6_kernelname": "    attr {\n      key: \"/Clip_6_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance18607c2f68b0c47874d83005f754246187b60df8b042cc54a60d71ac6b4f39dc\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 263312\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/Clip_10",
+      "type": "Maximum",
+      "input_refs": [
+        "/ReduceSum_2:0",
+        "domi_default_20261026105116_0_sub_2_unknow_Data_51:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": []
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/Clip_10_kernelname": "    attr {\n      key: \"/Clip_10_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance18607c2f68b0c47874d83005f754246187b60df8b042cc54a60d71ac6b4f39dc\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 263312\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/Clip_11",
+      "type": "Maximum",
+      "input_refs": [
+        "/ReduceL2_3:0",
+        "domi_default_20261026105116_0_sub_2_unknow_Data_35:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": []
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/Clip_11_kernelname": "    attr {\n      key: \"/Clip_11_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance18607c2f68b0c47874d83005f754246187b60df8b042cc54a60d71ac6b4f39dc\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 263312\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/Clip_7",
+      "type": "Maximum",
+      "input_refs": [
+        "/ReduceL2_2:0",
+        "domi_default_20261026105116_0_sub_2_unknow_Data_2:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": []
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/Clip_7_kernelname": "    attr {\n      key: \"/Clip_7_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance18607c2f68b0c47874d83005f754246187b60df8b042cc54a60d71ac6b4f39dc\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 263312\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/Clip_1",
+      "type": "Maximum",
+      "input_refs": [
+        "/ReduceL2_1:0",
+        "domi_default_20261026105116_0_sub_2_unknow_Data_72:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": []
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/Clip_1_kernelname": "    attr {\n      key: \"/Clip_1_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance18607c2f68b0c47874d83005f754246187b60df8b042cc54a60d71ac6b4f39dc\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 263312\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    },
+    {
+      "name": "/Clip_12",
+      "type": "Maximum",
+      "input_refs": [
+        "/ReduceL2_4:0",
+        "domi_default_20261026105116_0_sub_2_unknow_Data_1:0"
+      ],
+      "inputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        },
+        {
+          "dtype": "DT_FLOAT",
+          "dims": []
+        }
+      ],
+      "outputs": [
+        {
+          "dtype": "DT_FLOAT",
+          "dims": [
+            -1,
+            1
+          ]
+        }
+      ],
+      "selected_attrs": {
+        "/Clip_12_kernelname": "    attr {\n      key: \"/Clip_12_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_composite_engine_kernel_lib_name": "    attr {\n      key: \"_composite_engine_kernel_lib_name\"\n      value {\n        s: \"ffts_plus\"\n      }\n    }",
+        "_cube_vector_core_type": "    attr {\n      key: \"_cube_vector_core_type\"\n      value {\n        s: \"AIV\"\n      }\n    }",
+        "_ge_attr_op_kernel_lib_name": "    attr {\n      key: \"_ge_attr_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_kernel_bin_id": "    attr {\n      key: \"_kernel_bin_id\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance18607c2f68b0c47874d83005f754246187b60df8b042cc54a60d71ac6b4f39dc\"\n      }\n    }",
+        "_kernel_list_first_name": "    attr {\n      key: \"_kernel_list_first_name\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance_2147483647\"\n      }\n    }",
+        "_kernelname": "    attr {\n      key: \"_kernelname\"\n      value {\n        s: \"Maximum_ee98c6628030785f610b924ab1557b31_high_performance\"\n      }\n    }",
+        "_lxfusion_op_kernel_lib_name": "    attr {\n      key: \"_lxfusion_op_kernel_lib_name\"\n      value {\n        s: \"AIcoreEngine\"\n      }\n    }",
+        "_sgt_cube_vector_core_type": "    attr {\n      key: \"_sgt_cube_vector_core_type\"\n      value {\n        s: \"\"\n      }\n    }",
+        "_tbeKernelSize": "    attr {\n      key: \"_tbeKernelSize\"\n      value {\n        i: 263312\n      }\n    }",
+        "core_type_value": "    attr {\n      key: \"core_type_value\"\n      value {\n        s: \"\"\n      }\n    }"
+      }
+    }
+  ],
+  "fp16_to_fp32_casts": 0,
+  "fp32_to_fp16_casts": 196,
+  "combination": {
+    "descriptor_compatible": true,
+    "reason": "cube policy keeps FP32 residual Add and LayerNorm; AddLayerNorm plugin strict FP32 guards remain compatible.",
+    "must_validate": "No combined NPU execution or accuracy/performance conclusion follows from descriptor compatibility."
+  }
+}

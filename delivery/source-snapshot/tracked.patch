@@ -1,0 +1,696 @@
+diff --git a/.gitignore b/.gitignore
+index 58b8262..12dd521 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -41,3 +41,8 @@ session-ses_*.md
+ 
+ # Machine-local generated models, dependencies and execution results
+ /work/
++
++# Historical CPU test build output in BGE evidence
++/docs/bge/evidence/**/measurement-cpu-build/
++# macOS transfer metadata
++**/._*
+diff --git a/README.md b/README.md
+index 45e7fe0..627773f 100644
+--- a/README.md
++++ b/README.md
+@@ -1,5 +1,13 @@
+ # Ascend GE model adapters
+ 
++## BGE 当前适配交付（100 机器）
++
++当前用户指定配置是原始 ONNX、GE Session mode=0、内部 `force_fp16`、10 实例、每算子核上限 `12|24`；外部浮点输入输出保持 FP32。请从 [BGE 文件索引](docs/bge/README.md) 和 [交付报告](docs/bge/delivery-100.md) 开始；[交接清单](delivery/manifest.json) 保存模型、二进制和源码身份。项目根的 `materials/` 与 `work/` 分别保存大模型和原始作业证据，`delivery/project-tools/` 是项目根 `tools/` 的交接副本。
++
++2026-10-27 在 100 机器逻辑设备 2 上，无 profiling、包含 H2D/GE 同步/全量 D2H 的正式三轮复测：固定 `case-0000` 的 8/10/12 实例 QPS 中位数为 **807.326 / 884.177 / 851.169**；五例随机回放为 **861.592 / 903.582 / 862.495**。10 实例固定场景比 8 实例高 9.519%，超过本批波动门槛；随机场景 10 实例有一轮仅 730.640 QPS，不能确认吞吐收益。12 实例没有稳定优势，维持用户指定的 10 实例。逐轮 QPS、p99、资源与门禁见 [8/10/12 实例复测](docs/bge/analysis/100-fp16-scale-recompare-20261027.md)；模型入口说明见 [BGE README](models/bge/README.md)。
++
++2026-10-28 修复输出 dtype 别名与材料/交付路径后重建了 runtime。上述三轮中位数属于旧二进制；新构建已通过五例全量输出及固定/随机各一轮性能检查，稳定吞吐尚待三轮复核。证据和两个二进制的 SHA256 见 [runner 修复报告](docs/bge/analysis/100-runner-review-fix-20261028.md)。
++
+ 一个模型一份 YAML，模型改动集中在独立适配文件。框架提供运行能力，优化策略交给 Skills。
+ 
+ ## 环境
+diff --git a/models/bge/README.md b/models/bge/README.md
+index e600250..965c522 100644
+--- a/models/bge/README.md
++++ b/models/bge/README.md
+@@ -1,14 +1,75 @@
+ # BGE business ONNX on GE Session
+ 
+-This adapter runs the ONNX file selected by `BGE_MODEL_PATH`. The
+-source file is left unchanged. Its eight inputs include text, behavior history,
+-and category statistics; the business output is `scores: [batch_size, 10112]`.
+-The source location is declared as `source.ref`, the same field used by
+-Transformers model directories.
++This adapter runs the ONNX file declared by `source.ref`; the current configuration
++uses `../materials/model.onnx` relative to the `runner/` root. Keep `runner/` and
++`materials/` as sibling directories when moving the project.
++Earlier 99-machine configurations used `BGE_MODEL_PATH` in that field. The source
++file is left unchanged. Its eight inputs include text, behavior history, and
++category statistics; the business output is `scores: [batch_size, 10112]`.
++
++## Current 100-machine configuration and performance
++
++The YAML selects GE Session prediction mode (`graph_run_mode=0`), internal
++`force_fp16`, 10 instances, and the `12|24` AIC/AIV per-operator limit.
++The external floating input/output contract remains FP32. The original ONNX
++keeps all 30 Slice nodes; no Slice-to-Gather rewrite or custom fusion plugin is
++used. The user-selected 10-instance configuration passed 2009 full-output
++five-case requests and a 600-second random-case stability run. These checks and
++the initial formal rounds are in the [10-instance acceptance report](../../docs/bge/analysis/100-fp16-ten-selection-20261027.md).
++
++The later 8/10/12-instance comparison used logical device 2 on the same
++100-machine container. Each cell below is the median of three formal 60-second
++rounds, including H2D, GE completion synchronization, and full D2H. All 18
++rounds had zero request errors and ran without profiling or output capture.
++These 2026-10-27 numbers belong to binary SHA256 `8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d`.
++
++| Instances | Fixed QPS | Fixed p99 (ms) | Five-case random QPS | Random p99 (ms) |
++|---:|---:|---:|---:|---:|
++| 8 | 807.326 | 19.718 | 861.592 | 13.505 |
++| **10 (current)** | **884.177** | **14.262** | **903.582** | **19.285** |
++| 12 | 851.169 | 33.053 | 862.495 | 35.958 |
++
++The 2026-10-28 dtype-alias fix rebuilt `ge_runtime` (SHA256
++`735a3532ecb131de203200a328835af0d58bcddf27f9572eb997b5d6808e43f4`).
++This build passed 22,274 five-case full-output requests with zero failures.
++Its one-round fixed/random checks yielded 849.606/861.960 QPS with p99
++24.404/22.948 ms. These single rounds do not replace the old three-round
++medians or establish the new build's stable throughput. See the
++[review-fix report](../../docs/bge/analysis/100-runner-review-fix-20261028.md).
++
++For the fixed case, 10 versus 8 instances gained 9.519%, above the 6.670%
++within-run variability threshold. In the random scenario, 10 instances had
++one valid low round at 730.640 QPS; its observed 4.874% median gain is below
++the 19.405% variability threshold. Twelve instances showed no stable gain and
++have not completed independent full-output and stability acceptance. Keep the
++user-selected 10 instances, without claiming that random-case or production
++traffic throughput is optimal. There is no business p99 limit. See the
++[per-round comparison](../../docs/bge/analysis/100-fp16-scale-recompare-20261027.md)
++for QPS, p99, resource samples, and the anomalous round.
++
++For a new managed fixed-case formal run, use a fresh job name in the **project
++root**; omit `--case-id case-0000` for five-case random replay:
+ 
+-## Reproduce
++```bash
++cd /export/home/ext.hejun23/workspace/bge-opt-100
++python3 tools/run_one.py --formal --config forcefp16-half10-dtypefix --timeout 500 \
++  my-fp16-fixed10 -- --instances 10 --cores '12|24' \
++  --precision-mode force_fp16 --seconds 60 --max-seconds 300 \
++  --requests 10000 --seed 2053 --case-id case-0000
++```
++
++`tools/run_one.py` prepares the plan, checks model and configuration identity,
++acquires the physical-device lock, checks occupancy before and after the run,
++and verifies the formal request statistics. The performance path does not
++capture every output; run full-output pressure verification separately before
++accepting a new instance count or model variant. The seven-stage `bench` scope
++is `h2d_desc_execute_sync` and omits per-request D2H, so it must not be
++compared with these full-transfer QPS values.
+ 
+-Validated location: machine `99`, container `hejun-cann9-bge`, repository
++## Historical seven-stage reproduction on machine 99
++
++The following commands describe the earlier 2026-10-22 validation on machine
++`99`, container `hejun-cann9-bge`, repository
+ `/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters`, branch
+ `codex/seven-stage-framework` based on commit `59050e3`.
+ 
+@@ -44,9 +105,10 @@ though the invoking Python has NumPy installed.
+ 
+ ## Configuration and compatibility repair
+ 
+-`config.yaml` selects `ge_session`, `Ascend910_9382`,
+-original FP32 graph/IO, `must_keep_origin_dtype`, one instance and a `4|8`
+-AIC/AIV budget. The budget
++`config.yaml` selects `ge_session`, `Ascend910_9382`, original FP32 graph/IO,
++`force_fp16` internally, 10 instances, and a `12|24` AIC/AIV budget. The replay
++CLI takes instances, precision and cores from this YAML unless explicitly
++overridden. Its warmup and time-window parameters remain separate. A core budget
+ does not provide exclusive access to the shared device.
+ Both `reference.dtype` and `build.dtype` explicitly specify `float32` for
+ floating-point data. Integer feature inputs retain their original INT64 types.
+@@ -80,7 +142,7 @@ that inherited an output pipe. Errors include the native process exit code.
+ 
+ ## Validation scope
+ 
+-The default input pool is imported from `../sample_inputs.json`; no random
++The default input pool is imported from `../materials/sample_inputs.json`; no random
+ features are generated. `query_token_ids` is bound to ONNX `input_ids`, every
+ sample receives a batch dimension, integer features are INT64 and `stat_ratio`
+ is FP32. The five supplied cases are:
+@@ -103,7 +165,7 @@ directories. Other stages read the persisted NPY files without regenerating them
+ 
+ - Full CPU/GE scores using the configured cosine, relative L2 and absolute error
+   thresholds.
+-- The current `../expected_outputs.json`, via `verification.script`. For every
++- The current `../materials/expected_outputs.json`, via `verification.script`. For every
+   selected case, the ten highest GE scores are sorted descending (stable ties),
+   their array indices are incremented by 1, and all IDs and their order must
+   match `top10_dense_id` exactly. Each score must satisfy absolute error <=
+@@ -120,10 +182,12 @@ Changing inputs requires rerunning `data`, `baseline` and `infer`. Changing only
+ the expected JSON or score tolerance requires rerunning `compare`; it reads the
+ current file directly and does not need the original model, input JSON or NPU.
+ 
+-These checks establish execution and numerical agreement on the supplied cases.
+-They do not establish business ranking quality, production performance, all input
+-shapes, FP16 behavior, or ATC/OM deployment. Benchmark defaults are deliberately
+-only a six-call smoke check on a shared NPU.
++The 2026-10-22 checks establish execution and numerical agreement on the
++supplied cases for the historical FP32 mode-0 run. They alone do not establish
++business ranking quality, production performance, all input shapes, FP16
++behavior, or ATC/OM deployment. The later 100-machine `force_fp16` pressure,
++stability, and performance results are linked above. The seven-stage `bench`
++default remains a six-call smoke check, not the formal full-transfer QPS test.
+ 
+ Imported inputs live under `models/bge/io/inputs`; the exported ONNX and its
+ external `weights.data`, CPU golden, GE outputs, per-stage logs and result JSON
+@@ -144,7 +208,8 @@ ctest --test-dir runtime/build --output-on-failure
+ 
+ Five opt-in device tests cover an original static rank-one Slice, repeated
+ execution and two instances, mixed float32/int64 outputs, dynamic batch, mode-1
+-compatibility, and insufficient output capacity. All five passed on device 0:
++compatibility, and insufficient output capacity. All five passed on device 0
++in the earlier 99-machine validation:
+ 
+ ```bash
+ export PYTHONHOME="$(python3 -c 'import sys; print(sys.base_prefix)')"
+@@ -209,3 +274,46 @@ contains `graph_integrity.json` and `infer-runtime.log`. Benchmark input pool
+ size is 5 (six smoke calls, zero execution errors). The ordinary Python suite
+ passed 88 tests and skipped five opt-in hardware probes; the C++ contract test
+ also passed.
++
++## Full-transfer replay plan preparation (100 machine)
++
++`replay.py` reads the five persisted BGE cases and an already exported ONNX
++with external `weights.data`. It creates a new `inputs.bin` and `plan.json`
++without using an NPU. The original inline-weight model is not loaded for this
++runtime-only step. Keep the small exported ONNX and `weights.data` together.
++The current YAML supplies 10 instances, `force_fp16`, and `12|24` unless the CLI
++explicitly overrides them. `--case-id case-0000` creates a real one-case pool;
++omitting it selects uniform five-case random replay with replacement. Each
++request still performs H2D, GE completion synchronization, and full D2H.
++
++From the 100-machine **project root**, an inspection-only preparation example
++is:
++
++```bash
++cd /export/home/ext.hejun23/workspace/bge-opt-100
++python3 runner/models/bge/replay.py --prepare-only \
++  --config runner/models/bge/config.yaml --device 2 \
++  --graph materials/exported/model.onnx \
++  --output-dir work/prepared/my-bge-fixed10-plan \
++  --instances 10 --aicore-num '12|24' --precision-mode force_fp16 \
++  --case-id case-0000 --min-seconds 60 --max-seconds 300 \
++  --min-requests 10000 --seed 2053
++```
++
++The preparation directory must be new. This command writes a plan for review;
++`tools/run_one.py` in the project root is the managed execution entry used for
++formal measurements. It creates its own plan, verifies original input and
++binary identities, locks the physical device, checks both chips before and
++after the run, and validates request events. Use a fresh job name for every
++run. Device 2 was empty during the 2026-10-27 comparison, but availability
++must be checked again before a new run. The per-job timeout remains finite;
++there is no current cumulative device-time limit.
++
++`--capture` records each request's full output and is for independent
++correctness pressure checks. Formal QPS runs disable capture and profiling.
++Any new instance count, precision strategy, graph, or fusion plugin needs its
++own full-output correctness and stability acceptance. The separate fixed and
++random workloads require separate baselines and reports; a case filtered from
++random-run logs is not a fixed-case benchmark. The accepted 10-instance
++pressure and stability checks and all 18 recent performance rounds are linked
++from the [BGE delivery index](../../docs/bge/README.md).
+diff --git a/models/bge/config.yaml b/models/bge/config.yaml
+index 1e5dffc..0780ca2 100644
+--- a/models/bge/config.yaml
++++ b/models/bge/config.yaml
+@@ -2,7 +2,7 @@ model:
+   name: bge
+ source:
+   kind: onnx
+-  ref: ${BGE_MODEL_PATH}
++  ref: ../materials/model.onnx
+ target: Ascend910_9382
+ reference:
+   device: cpu
+@@ -11,18 +11,18 @@ data:
+   script: models/bge/generate_cases.py
+   directory: models/bge/io/inputs
+   params:
+-    samples_file: ../sample_inputs.json
++    samples_file: ../materials/sample_inputs.json
+ build:
+   backend: ge_session
+   dtype: float32
+   options:
+-    precision_mode: must_keep_origin_dtype
+-    aicore_num: 4|8
++    precision_mode: force_fp16
++    aicore_num: 12|24
+ verification:
+   case_ids: all
+   script: models/bge/verify.py
+   params:
+-    expected_outputs: ../expected_outputs.json
++    expected_outputs: ../materials/expected_outputs.json
+     atol: 0.001
+   outputs:
+     scores:
+@@ -32,7 +32,7 @@ verification:
+       relative_l2_max: 0.001
+       max_abs_error: 0.001
+ benchmark:
+-  instances: 1
++  instances: 10
+   warmup: 1
+   iterations: 6
+   seed: 42
+diff --git a/runtime/CMakeLists.txt b/runtime/CMakeLists.txt
+index 39f1ca5..cbfe3b9 100644
+--- a/runtime/CMakeLists.txt
++++ b/runtime/CMakeLists.txt
+@@ -20,7 +20,7 @@ set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
+ 
+ include(CTest)
+ if(BUILD_TESTING)
+-    add_executable(runtime_contracts ../tests/runtime_contracts.cpp bench.cpp io_spec.cpp pool.cpp)
++    add_executable(runtime_contracts ../tests/runtime_contracts.cpp bench.cpp replay.cpp io_spec.cpp pool.cpp)
+     target_include_directories(runtime_contracts PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${THIRD_PARTY_DIR})
+     target_link_libraries(runtime_contracts PRIVATE pthread)
+     add_test(NAME runtime_contracts COMMAND runtime_contracts ${CMAKE_CURRENT_BINARY_DIR}/test-data)
+@@ -31,6 +31,7 @@ add_executable(ge_runtime
+     io_spec.cpp
+     pool.cpp
+     bench.cpp
++    replay.cpp
+     acl_json.cpp
+     backends/acl_backend.cpp
+     backends/gesession_backend.cpp
+diff --git a/runtime/backends/gesession_backend.cpp b/runtime/backends/gesession_backend.cpp
+index 48d9417..e747f1d 100644
+--- a/runtime/backends/gesession_backend.cpp
++++ b/runtime/backends/gesession_backend.cpp
+@@ -201,7 +201,7 @@ public:
+                     plan.dtype = FromGeDtype(outputs.dtypes[i]);
+                     plan.format = "ND";
+                     plan.shape = shapes[i].GetDims();
+-                    if (plan.dtype != spec_.outputs[i].dtype ||
++                    if (!SameDtype(plan.dtype, spec_.outputs[i].dtype) ||
+                         plan.shape.size() != spec_.outputs[i].shape.size()) {
+                         fprintf(stderr, "[ERROR] Compiled output contract mismatch: %s\n", plan.logical.c_str());
+                         return false;
+@@ -443,7 +443,7 @@ public:
+         return true;
+     }
+ 
+-    bool CollectOutputs(int tid, const IoSpec &spec, std::vector<HostTensor> &outputs) {
++    bool CollectOutputs(int tid, const IoSpec &spec, std::vector<HostTensor> &outputs, bool quiet = false) {
+         GeContext *ctx = FindContext(tid);
+         if (ctx == nullptr) {
+             fprintf(stderr, "[ERROR] tid=%d 无执行资源, 无法取输出\n", tid);
+@@ -463,6 +463,14 @@ public:
+             for (size_t d = 0; d < shape.GetDimNum(); d++) {
+                 out.shape.push_back(shape.GetDim(d));
+             }
++            if (i >= spec.outputs.size() || !SameDtype(out.dtype, spec.outputs[i].dtype) ||
++                out.shape.size() != spec.outputs[i].shape.size()) return false;
++            TensorPlan logical; logical.dtype=out.dtype; logical.shape=out.shape;
++            size_t logicalBytes=logical.Bytes();
++            for(size_t dim=0;dim<out.shape.size();++dim)
++                if(spec.outputs[i].shape[dim]!=-1 && spec.outputs[i].shape[dim]!=out.shape[dim]) return false;
++            if(logicalBytes>bytes || (logicalBytes && t.GetAddr()==nullptr)) return false;
++            bytes=logicalBytes;
+             out.data.resize(bytes);
+             if (bytes > 0 && t.GetAddr() != nullptr) {
+                 aclError ret = aclrtMemcpy(out.data.data(), bytes, t.GetAddr(), bytes,
+@@ -472,7 +480,7 @@ public:
+                     return false;
+                 }
+             }
+-            std::cout << "[INFO] Output[" << i << "] '" << out.logical << "' shape="
++            if (!quiet) std::cout << "[INFO] Output[" << i << "] '" << out.logical << "' shape="
+                       << ShapeToString(out.shape) << " dtype=" << out.dtype
+                       << " bytes=" << bytes << std::endl;
+             outputs.push_back(std::move(out));
+@@ -591,8 +599,18 @@ bool RunGeSessionBackend(const ModelGraph &graph, const IoSpec &spec,
+         return runner.CollectOutputs(tid, spec, tensors) && opt.capture(tid, request, tensors);
+     });
+ 
++    std::vector<std::vector<HostTensor>> hostOutputs(static_cast<size_t>(opt.bench.threads));
++    pres.finishOutputs = [&](int tid, const Request &, RequestRecord &record) {
++        auto &tensors=hostOutputs.at(static_cast<size_t>(tid));tensors.clear();
++        if(!runner.CollectOutputs(tid,spec,tensors,true)) return false;
++        for(const auto &tensor:tensors) record.d2hBytes+=tensor.data.size();
++        return true;
++    };
++    if(opt.replayCapture) pres.captureRequest = [&](int tid,const Request &request,const RequestRecord &record) {
++        return opt.replayCapture(tid,request,record,hostOutputs.at(static_cast<size_t>(tid)));
++    };
+     PerfResult result;
+-    bool ok = BenchPool(opt.bench.threads, opt.bench.requests, opt.bench.warmup, opt.seed,
++    bool ok = opt.bench.replay.enabled ? ReplayPool(opt.bench.threads,opt.seed,opt.bench.replay,*opt.pool,pres,result) : BenchPool(opt.bench.threads, opt.bench.requests, opt.bench.warmup, opt.seed,
+                         *opt.pool, pres, result);
+     if (ok) {
+         PrintPerfResult("GeSession 变长负载 (请求池回放)", result);
+diff --git a/runtime/backends/gesession_backend.h b/runtime/backends/gesession_backend.h
+index 3e2af67..69a479a 100644
+--- a/runtime/backends/gesession_backend.h
++++ b/runtime/backends/gesession_backend.h
+@@ -19,6 +19,7 @@ struct GeSessionOptions {
+     GeProfilingConfig profiling;    // GE 在线路径经 GEInitialize 全局选项开启 (不走 acl.json)
+     const RequestPool *pool = nullptr;   // 必填；所有执行统一使用请求池
+     std::function<bool(int, const Request &, const std::vector<HostTensor> &)> capture;
++    std::function<bool(int, const Request &, const RequestRecord &, const std::vector<HostTensor> &)> replayCapture;
+     uint64_t seed = 0;
+ };
+ 
+diff --git a/runtime/bench.cpp b/runtime/bench.cpp
+index ba028c8..10df3e8 100644
+--- a/runtime/bench.cpp
++++ b/runtime/bench.cpp
+@@ -31,9 +31,8 @@ Percentiles Summarize(std::vector<double> times) {
+     p.avg = std::accumulate(times.begin(), times.end(), 0.0) / static_cast<double>(times.size());
+     p.min = times.front();
+     p.max = times.back();
+-    p.p50 = times[times.size() / 2];
+-    size_t idx = static_cast<size_t>(static_cast<double>(times.size()) * 0.99);
+-    p.p99 = times[std::min(idx, times.size() - 1)];
++    p.p50 = times[NearestRankIndex(times.size(), 0.50)];
++    p.p99 = times[NearestRankIndex(times.size(), 0.99)];
+     return p;
+ }
+ 
+@@ -391,14 +390,28 @@ nlohmann::json PerfToJson(const PerfResult &p) {
+                              {"distinct_shapes", ip.distinctShapes},
+                              {"specialize_ms", ip.specializeMs}});
+     }
++    // Replay rates count only completions inside the common measurement window.
++    size_t windowSamples=0;
++    for(const auto &record:p.records)
++        if(!record.error && record.completedNs<=p.windowEndNs) windowSamples+=record.samples;
+     // Public metrics consumed by core/results.py.
+     return Json{{"schema", "ge-performance/1"},
+                 {"requests", p.requests},
+                 {"errors", p.errors},
+                 {"wall_ms", p.wallMs},
+                 {"qps", p.qps},
+-                {"samples_per_second", p.wallMs>0 ? p.samples/(p.wallMs/1000.0) : 0.0},
+-                {"latency_scope", "h2d_desc_execute_sync"},
++                {"samples_per_second", p.wallMs>0 ? (p.replay ? windowSamples : p.samples)/(p.wallMs/1000.0) : 0.0},
++                {"latency_scope", p.replay ? "h2d_desc_execute_sync_d2h" : "h2d_desc_execute_sync"},
++                {"arrival_model", "closed_loop"},
++                {"slo_status", "not_defined"},
++                {"run_id", p.runId},
++                {"statistics_sufficient", p.replay ? Json(p.statisticsSufficient) : Json(nullptr)},
++                {"window_start_ns", p.windowStartNs}, {"window_end_ns", p.windowEndNs},
++                {"last_completed_ns", p.lastCompletedNs},
++                {"window_successes", p.windowSuccesses}, {"cohort_successes", p.requests},
++                {"in_flight_at_end", p.inFlightAtEnd}, {"drain_ms", p.drainMs},
++                {"cohort_qps", p.wallMs > 0 ? p.requests / (p.wallMs/1000) : 0},
++                {"d2h_ms", {{"avg", p.d2hAvgMs}}},
+                 {"e2e_ms", {{"avg", p.avgMs}, {"min", p.minMs}, {"p50", p.p50Ms},
+                             {"p99", p.p99Ms}, {"max", p.maxMs}}},
+                 {"exec_ms", {{"avg", p.execAvgMs}, {"p99", p.execP99Ms}}},
+diff --git a/runtime/bench.h b/runtime/bench.h
+index 679f030..8bc5d44 100644
+--- a/runtime/bench.h
++++ b/runtime/bench.h
+@@ -20,10 +20,21 @@ inline double ElapsedMs(Clock::time_point begin, Clock::time_point end) {
+     return std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000.0;
+ }
+ 
++struct ReplayOptions {
++    bool enabled = false;
++    double minSeconds = 0, maxSeconds = 0;
++    size_t minRequests = 0, maxRequests = 2000000;
++    int warmupPerCase = 10;
++    bool captureOutputs = false;
++    std::string runId;
++    std::function<Clock::time_point()> now; // Controlled clock for CPU contract tests.
++};
++
+ struct BenchOptions {
+     int warmup = 0;
+     int threads = 1;              // >1 → 吞吐模式 (闭环并发)
+     int requests = 1;             // 测量段总调用次数
++    ReplayOptions replay;
+ };
+ 
+ // ---------------------------------------------------------------- 变长负载 (请求池回放)
+@@ -39,7 +50,10 @@ struct RequestRecord {
+     std::string inputSet;
+     std::string shapeKey;
+     int64_t samples = 0;
+-    double h2dMs = 0.0, descMs = 0.0, execMs = 0.0, e2eMs = 0.0;
++    double h2dMs = 0.0, descMs = 0.0, execMs = 0.0, e2eMs = 0.0, d2hMs = 0.0;
++    int64_t startedNs = 0, completedNs = 0;
++    size_t h2dBytes = 0, d2hBytes = 0;
++    std::string phase = "measure", errorStage;
+     bool firstHit = false;    // 该实例首次遇到这个 shape (GE 会在此付特化代价)
+     int error = 0;
+ };
+@@ -56,6 +70,12 @@ struct InstancePerf {
+ 
+ struct PerfResult {
+     std::vector<RequestRecord> records;
++    std::vector<RequestRecord> warmupRecords;
++    bool replay = false, statisticsSufficient = false;
++    std::string runId;
++    int64_t windowStartNs = 0, windowEndNs = 0, lastCompletedNs = 0;
++    size_t windowSuccesses = 0, inFlightAtEnd = 0;
++    double drainMs = 0, d2hAvgMs = 0;
+     std::vector<InstancePerf> instances;
+     size_t requests = 0, errors = 0, samples = 0;
+     double wallMs = 0.0, qps = 0.0;
+@@ -70,6 +90,8 @@ struct PerfResult {
+ struct PoolResources {
+     std::function<bool(int tid)> setup;                                  // 建第 tid 份实例资源
+     std::function<bool(int tid, const Request &, PhaseTime &)> setInputs; // 每请求: H2D + desc
++    std::function<bool(int tid, const Request &, RequestRecord &)> finishOutputs; // Full D2H, in timed boundary.
++    std::function<bool(int tid, const Request &, const RequestRecord &)> captureRequest; // After completion, pressure only.
+     std::function<bool(int tid)> execute;                                // execute + sync
+     std::function<void(int tid)> release;
+     std::function<void(int tid)> threadEnter;
+@@ -87,6 +109,11 @@ bool CapturePool(int instances, const RequestPool &pool, const PoolResources &re
+ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
+                const RequestPool &pool, const PoolResources &res, PerfResult &out);
+ 
++size_t NearestRankIndex(size_t count, double quantile);
++bool ReplayPool(int instances, uint64_t seed, const ReplayOptions &options,
++                const RequestPool &pool, const PoolResources &res, PerfResult &out);
++bool WriteRequestEvents(const std::string &path, const PerfResult &perf);
++
+ void PrintPerfResult(const std::string &label, const PerfResult &perf);
+ nlohmann::json PerfToJson(const PerfResult &perf);            // 调用方合并 meta 后落盘
+ bool WriteRequestsCsv(const std::string &path, const PerfResult &perf);
+diff --git a/runtime/io_spec.cpp b/runtime/io_spec.cpp
+index 3c0632e..9d17249 100644
+--- a/runtime/io_spec.cpp
++++ b/runtime/io_spec.cpp
+@@ -10,6 +10,7 @@
+ #include <fstream>
+ #include <sstream>
+ #include <stdexcept>
++#include <string_view>
+ 
+ #include <nlohmann/json.hpp>
+ 
+@@ -107,6 +108,16 @@ size_t DtypeSize(const std::string &dtype) {
+     return 0;
+ }
+ 
++bool SameDtype(const std::string &left, const std::string &right) {
++    if (DtypeSize(left) == 0 || DtypeSize(right) == 0) return false;
++    auto canonical = [](const std::string &dtype) -> std::string_view {
++        if (dtype == "float") return "float32";
++        if (dtype == "double") return "float64";
++        return dtype;
++    };
++    return canonical(left) == canonical(right);
++}
++
+ int64_t NumElements(const std::vector<int64_t> &shape) {
+     int64_t n = 1;
+     for (int64_t d : shape) {
+diff --git a/runtime/io_spec.h b/runtime/io_spec.h
+index 4eb9438..f464bda 100644
+--- a/runtime/io_spec.h
++++ b/runtime/io_spec.h
+@@ -51,6 +51,7 @@ struct HostTensor {
+ };
+ 
+ size_t DtypeSize(const std::string &dtype);
++bool SameDtype(const std::string &left, const std::string &right);
+ int64_t NumElements(const std::vector<int64_t> &shape);
+ std::string ShapeToString(const std::vector<int64_t> &shape);
+ bool ReadBinFile(const std::string &path, std::vector<char> &out);
+diff --git a/runtime/main.cpp b/runtime/main.cpp
+index 22c86c2..0481485 100644
+--- a/runtime/main.cpp
++++ b/runtime/main.cpp
+@@ -1,3 +1,4 @@
++#include <cmath>
+ #include <fstream>
+ #include <iostream>
+ #include <map>
+@@ -54,12 +55,49 @@ int main(int argc,char **argv) {
+         bench.warmup=mode=="infer"?0:plan.at("warmup").get<int>();
+         bench.requests=plan.at("iterations").get<int>();
+         if(bench.threads<1 || bench.requests<1 || bench.warmup<0) throw std::runtime_error("invalid execution counts");
++        if(plan.contains("replay")) {
++            if(mode!="bench" || graph.backend!="ge_session") throw std::runtime_error("replay requires GE Session bench");
++            const auto &replay=plan.at("replay"); bench.replay.enabled=true;
++            bench.replay.runId=replay.at("run_id").get<std::string>();
++            bench.replay.minSeconds=replay.at("min_seconds").get<double>();
++            bench.replay.maxSeconds=replay.at("max_seconds").get<double>();
++            bench.replay.minRequests=replay.at("min_requests").get<size_t>();
++            bench.replay.maxRequests=replay.value("max_requests",size_t{2000000});
++            bench.replay.warmupPerCase=replay.value("warmup_per_case",10);
++            bench.replay.captureOutputs=replay.value("capture_outputs",false);
++            if(bench.replay.runId.empty() || !std::isfinite(bench.replay.minSeconds) || !std::isfinite(bench.replay.maxSeconds) ||
++                bench.replay.minSeconds<=0 || bench.replay.maxSeconds<bench.replay.minSeconds || !bench.replay.minRequests ||
++                bench.replay.maxRequests<bench.replay.minRequests || bench.replay.maxRequests>10000000 || bench.replay.warmupPerCase<1)
++                throw std::runtime_error("invalid replay timing/counts");
++        }
+         const auto &options=plan.at("options");const auto &observe=plan.at("observability");
+         bool profile=observe.value("profiling",false),dump=observe.value("dump",false);
+         if(profile&&dump) throw std::runtime_error("collect profiling and dump separately");
+         if(graph.backend=="ge_session" && dump) throw std::runtime_error("GE Session dump is unsupported");
+         Json captured=Json::object();std::mutex captureMutex;std::ofstream binary;
+-        if(mode!="bench") binary.open(output+"/outputs.bin",std::ios::binary);
++        std::ofstream manifest;
++        if(mode!="bench" || bench.replay.captureOutputs) {
++            binary.open(output+"/outputs.bin",std::ios::binary);
++            if(!binary) throw std::runtime_error("cannot open output binary");
++        }
++        if(bench.replay.captureOutputs) {
++            manifest.open(output+"/manifest.jsonl");
++            if(!manifest) throw std::runtime_error("cannot open capture manifest");
++        }
++        auto replayCapture=[&](int instance,const Request &request,const RequestRecord &record,const std::vector<HostTensor> &tensors) {
++            std::lock_guard<std::mutex> guard(captureMutex);
++            if(tensors.size()!=io.outputs.size() || !binary || !manifest) return false;
++            Json row={{"run_id",bench.replay.runId},{"request_id",record.req},{"instance",instance},
++                {"case_id",request.name},{"phase","measure"},{"tensors",Json::array()}};
++            for(const auto &tensor:tensors) {
++                auto offset=binary.tellp();if(offset<0) return false;
++                binary.write(tensor.data.data(),tensor.data.size());
++                row["tensors"].push_back({{"name",tensor.logical},{"dtype",tensor.dtype},{"shape",tensor.shape},
++                    {"offset",static_cast<size_t>(offset)},{"bytes",tensor.data.size()}});
++            }
++            binary.flush();if(!binary) return false;
++            manifest<<row.dump()<<'\n';manifest.flush();return static_cast<bool>(manifest);
++        };
+         auto capture=[&](int instance,const Request &request,const std::vector<HostTensor> &tensors) {
+             std::lock_guard<std::mutex> guard(captureMutex);
+             if(tensors.size()!=io.outputs.size() || !binary) return false;
+@@ -83,6 +121,7 @@ int main(int argc,char **argv) {
+             opt.profiling.enabled=profile;opt.profiling.outputPath=output+"/"+mode+"-profiling";
+             opt.profiling.aicMetrics=observe.value("aic_metrics",std::string("PipeUtilization"));
+             if(mode!="bench") opt.capture=capture;
++            if(bench.replay.captureOutputs) opt.replayCapture=replayCapture;
+             ok=RunGeSessionBackend(graph,io,opt,&perf);
+         } else if(graph.backend=="atc_om") {
+             AclOptions opt;opt.device=graph.device;opt.bench=bench;opt.pool=&pool;opt.seed=plan.at("seed").get<uint64_t>();
+@@ -95,12 +134,20 @@ int main(int argc,char **argv) {
+             }
+             ok=RunAclBackend(graph,io,opt,&perf);
+         } else throw std::runtime_error("unknown backend");
+-        if(!ok && (mode!="bench" || perf.records.empty())) throw std::runtime_error("backend execution failed");
++        if(!ok && (mode!="bench" || (perf.records.empty() && perf.warmupRecords.empty()))) throw std::runtime_error("backend execution failed");
+         Json result={{"status",ok?"success":"failed"},{"mode",mode},{"backend",graph.backend}};
+         if(!ok) result["error"]="backend execution failed; partial measurements retained";
+         if(mode=="bench") {
++            binary.close();manifest.close();
+             result["performance"]=PerfToJson(perf);
++            if(bench.replay.enabled) {
++                result["replay"]=plan.at("replay");
++                if(!WriteRequestEvents(output+"/events.jsonl",perf)) throw std::runtime_error("cannot save replay events");
++                result["events"]=output+"/events.jsonl";
++                if(bench.replay.captureOutputs) result["manifest"]=output+"/manifest.jsonl";
++            }
+             result["performance"]["profiling_enabled"]=profile;
++            result["performance"]["capture_enabled"]=bench.replay.captureOutputs;
+             result["performance"]["sampling"]={{"seed",plan.at("seed")},{"replacement",true},{"pool_size",pool.requests.size()},{"order","global_request_index"}};
+             if(!WriteRequestsCsv(output+"/requests.csv",perf)) throw std::runtime_error("cannot save request metrics");
+         } else {binary.close();result["outputs"]=captured;}
+diff --git a/tests/runtime_contracts.cpp b/tests/runtime_contracts.cpp
+index 3339af0..4aeb9e8 100644
+--- a/tests/runtime_contracts.cpp
++++ b/tests/runtime_contracts.cpp
+@@ -12,6 +12,9 @@ int main(int argc,char **argv) {
+     CHECK(argc==2);
+     std::string dir=argv[1];MakeDirs(dir);
+     IoNode a;a.logical="encoder/output:0";a.dtype="float32";a.shape={-1};a.dynamic_dims={0};
++    CHECK(SameDtype("float", "float32") && SameDtype("double", "float64"));
++    CHECK(SameDtype("int64", "int64") && !SameDtype("float16", "float32"));
++    CHECK(!SameDtype("unknown", "unknown"));
+     {
+         IoSpec packedSpec;IoNode input;input.logical="features";input.node="graph_data_2";
+         input.dtype="float32";input.shape={-1,2};packedSpec.inputs={input};packedSpec.outputs={a};
+@@ -124,5 +127,63 @@ int main(int argc,char **argv) {
+     PerfResult unmeasured;
+     CHECK(!BenchPool(1,10,0,42,pool,resources,unmeasured));
+     CHECK(unmeasured.records.empty());
++    // Nearest rank must not move p99 up one sample at exact hundredths.
++    CHECK(NearestRankIndex(100,.99)==98 && NearestRankIndex(1000,.99)==989);
++    CHECK(NearestRankIndex(1,.99)==0);
++    {
++        RequestPool cases;cases.distinctShapes=2;
++        for(int i=0;i<5;++i){Request req;req.name="sample-"+std::to_string(i);req.shapeKey=std::to_string(i%2);req.samples=1;cases.requests.push_back(req);}
++        PoolResources fake;fake.setup=[](int){return true;};fake.release=[](int){};
++        fake.setInputs=[](int,const Request &,PhaseTime &){return true;};fake.execute=[](int){return true;};
++        std::atomic<int64_t> ticks{0};size_t finished=0,captured=0;
++        ReplayOptions options;options.runId="cpu";options.enabled=true;options.minSeconds=.010;options.maxSeconds=.100;
++        options.minRequests=3;options.maxRequests=100;options.warmupPerCase=1;options.captureOutputs=true;
++        options.now=[&](){return Clock::time_point(std::chrono::milliseconds(ticks.fetch_add(1)));};
++        fake.finishOutputs=[&](int,const Request &,RequestRecord &r){++finished;r.d2hBytes=40448;ticks.fetch_add(7);return true;};
++        fake.captureRequest=[&](int,const Request &req,const RequestRecord &r){
++            CHECK(r.inputSet==req.name && r.completedNs>r.startedNs && r.d2hBytes==40448);++captured;return true;
++        };
++        PerfResult replay;CHECK(ReplayPool(1,42,options,cases,fake,replay));
++        CHECK(replay.statisticsSufficient && replay.warmupRuns==5 && replay.requests>=3);
++        CHECK(finished==replay.requests+5 && captured==replay.requests);
++        CHECK(replay.records.size()==replay.requests && replay.windowSuccesses<=replay.requests);
++        for(size_t i=0;i<replay.records.size();++i){const auto &r=replay.records[i];CHECK(r.req==i && r.d2hMs>=7 && r.e2eMs>=r.d2hMs && !r.error);}
++        CHECK(PerfToJson(replay)["latency_scope"]=="h2d_desc_execute_sync_d2h");
++        CHECK(WriteRequestEvents(dir+"/events.jsonl",replay));
++        {std::ifstream f(dir+"/events.jsonl");std::string line;size_t lines=0;while(std::getline(f,line)){auto e=nlohmann::json::parse(line);CHECK(e["d2h_bytes"]==40448);++lines;}CHECK(lines==replay.requests+5);}
++        // Multiple independent workers must retain case/request/output association, including equal shapes.
++        {
++            ReplayOptions parallel=options;parallel.now={};parallel.minSeconds=.001;parallel.maxSeconds=1;
++            parallel.minRequests=100;parallel.maxRequests=200;
++            PoolResources isolated;std::string current[2];size_t captures[2]={0,0};
++            isolated.setup=[](int){return true;};isolated.release=[](int){};
++            isolated.setInputs=[&](int tid,const Request &req,PhaseTime &){current[tid]=req.name;return true;};
++            isolated.execute=[](int){return true;};
++            isolated.finishOutputs=[&](int tid,const Request &req,RequestRecord &r){CHECK(current[tid]==req.name);r.d2hBytes=40448;return true;};
++            isolated.captureRequest=[&](int tid,const Request &req,const RequestRecord &r){CHECK(current[tid]==req.name && r.inputSet==req.name && r.instance==tid);++captures[tid];return true;};
++            PerfResult concurrent;CHECK(ReplayPool(2,42,parallel,cases,isolated,concurrent));
++            CHECK(concurrent.requests>=100 && concurrent.requests<=200 && captures[0]+captures[1]==concurrent.requests);
++            Sampler expected(cases.requests.size(),42);
++            for(size_t i=0;i<concurrent.records.size();++i){CHECK(concurrent.records[i].req==i);CHECK(concurrent.records[i].inputSet==cases.requests[expected.Next()].name);}
++        }
++        // A copy failure must retain its stage/terminal record, stop dispatch, and never call capture.
++        captured=0;finished=0;ticks=0;
++        fake.finishOutputs=[&](int,const Request &,RequestRecord &r){r.d2hBytes=40448;return ++finished!=7;};
++        PerfResult failed;CHECK(!ReplayPool(1,42,options,cases,fake,failed));
++        CHECK(failed.requests==1 && failed.errors==1 && failed.records.size()==2 && captured==1);
++        CHECK(failed.records.back().error && failed.records.back().errorStage=="d2h");
++        CHECK(!failed.statisticsSufficient);
++        // A bounded window drains a slow request but does not count its late completion as window QPS.
++        ticks=0;options.minRequests=1;options.maxRequests=50;options.maxSeconds=.025;options.minSeconds=.010;options.captureOutputs=false;
++        fake.finishOutputs=[&](int,const Request &,RequestRecord &r){r.d2hBytes=40448;ticks.fetch_add(20);return true;};
++        PerfResult limited;CHECK(ReplayPool(1,42,options,cases,fake,limited));
++        CHECK(!limited.statisticsSufficient && limited.windowSuccesses==0 && limited.requests==1 && limited.inFlightAtEnd==1 && limited.drainMs>0);
++        CHECK(PerfToJson(limited)["samples_per_second"]==0 && PerfToJson(limited)["cohort_qps"].get<double>()>0);
++        // Sink failures stay terminal failures, rather than a successful D2H turning into a claimed successful response.
++        ticks=0;options.captureOutputs=true;options.minRequests=1;options.maxRequests=10;
++        fake.captureRequest=[](int,const Request &,const RequestRecord &){throw std::runtime_error("sink failure");return true;};
++        PerfResult sinkFailed;CHECK(!ReplayPool(1,42,options,cases,fake,sinkFailed));
++        CHECK(sinkFailed.errors==1 && sinkFailed.records.size()==1 && sinkFailed.records[0].errorStage=="capture");
++    }
+     std::cout<<"runtime contract checks passed\n";
+ }

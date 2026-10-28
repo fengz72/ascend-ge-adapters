@@ -1,0 +1,32 @@
+{
+  "schema": "bge-fusion-independent-cpu-review/1",
+  "started_at": "2026-10-26T02:30:32.188595+00:00",
+  "command": [
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/test_add_layernorm_pass"
+  ],
+  "exit_code": 0,
+  "stdout": "PASS valid\nPASS wrong-epsilon\nPASS nonlast-axis\nPASS shared-residual\nPASS statistics-used\nPASS control-edge\nPASS mixed-input-dtype\n7 CPU graph contract tests passed; no device execution\n",
+  "stderr": "",
+  "files": {
+    "add_layernorm_pass.cpp": {
+      "bytes": 5662,
+      "sha256": "e4d2894adbd1a0684f240581d79a1d88f0d2f5bdcaed29477c31106834e2ceb5"
+    },
+    "test_add_layernorm_pass.cpp": {
+      "bytes": 4512,
+      "sha256": "4ca200789f03d495a648da0cc57ca04fa75e87a5ce6ea8baf85c046e04cf01dd"
+    },
+    "test_add_layernorm_pass": {
+      "bytes": 91448,
+      "sha256": "f9ef491897247afaac3c1554da8ac61083df5734bca567d95e76d81cc481f681"
+    },
+    "libbge_add_layernorm_pass.so": {
+      "bytes": 89504,
+      "sha256": "8767095f04348ed6097c769d71909421409397cedef534c4c7650d61df6cfff5"
+    }
+  },
+  "CANN_schema_sha256": "7095e531097972147d50fd3eb0f3e3ceaa2c5527c1d4e6b7b358c3d10a8dc55f",
+  "CANN_schema_path": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_proto/inc/nn_norm_ops.h",
+  "passed": true,
+  "device_execution": false
+}

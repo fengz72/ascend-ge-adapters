@@ -31,9 +31,8 @@ Percentiles Summarize(std::vector<double> times) {
     p.avg = std::accumulate(times.begin(), times.end(), 0.0) / static_cast<double>(times.size());
     p.min = times.front();
     p.max = times.back();
-    p.p50 = times[times.size() / 2];
-    size_t idx = static_cast<size_t>(static_cast<double>(times.size()) * 0.99);
-    p.p99 = times[std::min(idx, times.size() - 1)];
+    p.p50 = times[NearestRankIndex(times.size(), 0.50)];
+    p.p99 = times[NearestRankIndex(times.size(), 0.99)];
     return p;
 }
 
@@ -391,14 +390,28 @@ nlohmann::json PerfToJson(const PerfResult &p) {
                              {"distinct_shapes", ip.distinctShapes},
                              {"specialize_ms", ip.specializeMs}});
     }
+    // Replay rates count only completions inside the common measurement window.
+    size_t windowSamples=0;
+    for(const auto &record:p.records)
+        if(!record.error && record.completedNs<=p.windowEndNs) windowSamples+=record.samples;
     // Public metrics consumed by core/results.py.
     return Json{{"schema", "ge-performance/1"},
                 {"requests", p.requests},
                 {"errors", p.errors},
                 {"wall_ms", p.wallMs},
                 {"qps", p.qps},
-                {"samples_per_second", p.wallMs>0 ? p.samples/(p.wallMs/1000.0) : 0.0},
-                {"latency_scope", "h2d_desc_execute_sync"},
+                {"samples_per_second", p.wallMs>0 ? (p.replay ? windowSamples : p.samples)/(p.wallMs/1000.0) : 0.0},
+                {"latency_scope", p.replay ? "h2d_desc_execute_sync_d2h" : "h2d_desc_execute_sync"},
+                {"arrival_model", "closed_loop"},
+                {"slo_status", "not_defined"},
+                {"run_id", p.runId},
+                {"statistics_sufficient", p.replay ? Json(p.statisticsSufficient) : Json(nullptr)},
+                {"window_start_ns", p.windowStartNs}, {"window_end_ns", p.windowEndNs},
+                {"last_completed_ns", p.lastCompletedNs},
+                {"window_successes", p.windowSuccesses}, {"cohort_successes", p.requests},
+                {"in_flight_at_end", p.inFlightAtEnd}, {"drain_ms", p.drainMs},
+                {"cohort_qps", p.wallMs > 0 ? p.requests / (p.wallMs/1000) : 0},
+                {"d2h_ms", {{"avg", p.d2hAvgMs}}},
                 {"e2e_ms", {{"avg", p.avgMs}, {"min", p.minMs}, {"p50", p.p50Ms},
                             {"p99", p.p99Ms}, {"max", p.maxMs}}},
                 {"exec_ms", {{"avg", p.execAvgMs}, {"p99", p.execP99Ms}}},

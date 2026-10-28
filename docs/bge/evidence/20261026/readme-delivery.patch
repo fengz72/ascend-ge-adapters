@@ -1,0 +1,75 @@
+--- a/models/bge/README.md
++++ b/models/bge/README.md
+@@ -7,6 +7,13 @@
+ Transformers model directories.
+ 
+ ## Reproduce
++
++The seven-stage `run` and `bench` examples in this section are historical
++smoke checks: the YAML selects `4|8` cores, `warmup=1` and `iterations=6`.
++Their bench scope is `h2d_desc_execute_sync`, without per-request D2H. They do
++not reproduce this tuning run's full-transfer performance. Use
++[Full-transfer replay plan preparation](#full-transfer-replay-plan-preparation)
++and its managed execution command for those results.
+ 
+ Validated location: machine `99`, container `hejun-cann9-bge`, repository
+ `/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters`, branch
+@@ -44,9 +51,11 @@
+ 
+ ## Configuration and compatibility repair
+ 
+-`config.yaml` selects `ge_session`, `Ascend910_9382`,
+-original FP32 graph/IO, `must_keep_origin_dtype`, one instance and a `4|8`
+-AIC/AIV budget. The budget
++`config.yaml` retains the historical smoke configuration: `ge_session`,
++`Ascend910_9382`, original FP32 graph/IO, `must_keep_origin_dtype`, one instance,
++a `4|8` AIC/AIV budget, `warmup=1` and `iterations=6`. This is not the
++full-transfer tuning configuration. The replay CLI defaults to all cores and
++uses its explicit instance, warmup and time-window parameters. A core budget
+ does not provide exclusive access to the shared device.
+ Both `reference.dtype` and `build.dtype` explicitly specify `float32` for
+ floating-point data. Integer feature inputs retain their original INT64 types.
+@@ -247,13 +256,36 @@
+ and preserve the inherited allocator. Do not prefix the Python CLI with a
+ fusion `LD_PRELOAD`.
+ 
+-After reviewing the plan, submit it through the workflow's existing managed
+-`run_checked.py` / `device_job.py` wrapper, which checks the physical device,
+-occupancy, lock, timeout and remaining budget. The launcher runs the frozen
+-`runtime/build/ge_runtime` with this plan on stdin. This preparation command does
+-not establish that the selected device is free, and it has no unmanaged `--run`
+-mode. Events, runtime results and optional capture data belong under `runtime/`;
+-keep them associated with the plan and native binary identity.
++After reviewing the plan, submit it through this tuning run's managed wrapper.
++From the repository root, the preparation example above is followed by:
++
++```bash
++python3 /export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/run_checked.py \
++  --job baseline-2027 --timeout 650 \
++  --binary /export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/runtime/build/ge_runtime \
++  /export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/replay/baseline-2027/plan.json
++```
++
++Use a fresh preparation directory and job name for every run. The explicit
++`--binary` selects the canonical repository binary instead of the wrapper's
++isolated-runner default. This task's wrapper is fixed to logical device 10 and
++its physical identity; it checks occupancy, the shared lock, timeout and the
++remaining cumulative device budget before submitting through `device_job.py`.
++Do not bypass a failed device or budget check. The helper lives at the absolute
++path shown above and must accompany the task's reproduction artifacts; it is not
++a generic command installed by this repository.
++
++The example deliberately remains the one-instance, full-core baseline. See the
++[final acceptance report](../../docs/bge/acceptance.md) for the delivered instance,
++core and precision settings and their artifact identities; a search result is
++not the final recommendation. Formal performance must report
++`status=success`, `statistics_sufficient=true`,
++`latency_scope=h2d_desc_execute_sync_d2h` and `capture_enabled=false`. Run pressure
++capture separately and compare every request against the unchanged references.
++
++Preparation does not establish that the selected device is free and has no
++unmanaged `--run` mode. Events, runtime results and optional capture data belong
++under `runtime/`; retain them with the plan and native binary identity.
+ 
+ CPU-only preparation regressions:
+ 

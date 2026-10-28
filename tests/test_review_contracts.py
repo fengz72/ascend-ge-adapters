@@ -14,6 +14,39 @@ from core.worker import save_rows, compare_outputs
 
 
 class OutputContracts(unittest.TestCase):
+    def test_onnx_export_preserves_slice_nodes_opsets_and_runtime_parameters(self):
+        import onnx
+        import onnxruntime as ort
+        from onnx import helper,TensorProto
+        from core import native_onnx
+        from core.exporters.onnx import export
+        for opset in (11,12,13,14):
+            with self.subTest(opset=opset),tempfile.TemporaryDirectory() as directory:
+                directory=Path(directory);source=directory/'source.onnx'
+                graph=helper.make_graph([
+                    helper.make_node('Slice',['x','starts','ends','axes','steps'],['y'])
+                ],'slice', [helper.make_tensor_value_info('x',TensorProto.FLOAT,['batch','length'])]+
+                   [helper.make_tensor_value_info(n,TensorProto.INT64,[1]) for n in ('ends','axes','steps')],
+                [helper.make_tensor_value_info('y',TensorProto.FLOAT,['batch','out'])],initializer=[
+                    helper.make_tensor('starts',TensorProto.INT64,[1],[0])])
+                model=helper.make_model(graph,opset_imports=[helper.make_opsetid('',opset)]);model.ir_version=7
+                onnx.checker.check_model(model);onnx.save(model,source)
+                handle=native_onnx.prepare_candidate(str(source),{'build':{'dtype':'float32'}})
+                artifact,_=export(handle.export_spec(),{},directory)
+                exported=onnx.load(artifact['path'])
+                self.assertEqual(list(model.opset_import),list(exported.opset_import))
+                for field in ('node','initializer','input','output'):
+                    self.assertEqual([x.SerializeToString() for x in getattr(model.graph,field)],
+                                     [x.SerializeToString() for x in getattr(exported.graph,field)])
+                original=ort.InferenceSession(str(source),providers=['CPUExecutionProvider'])
+                candidate=ort.InferenceSession(artifact['path'],providers=['CPUExecutionProvider'])
+                for axis,step,end in ((1,1,2),(1,2,4),(0,1,1),(1,-1,-5)):
+                    values={'x':np.arange(8,dtype=np.float32).reshape(2,4),
+                            'ends':np.array([end],dtype=np.int64),
+                            'axes':np.array([axis],dtype=np.int64),
+                            'steps':np.array([step],dtype=np.int64)}
+                    np.testing.assert_array_equal(original.run(None,values)[0],candidate.run(None,values)[0])
+
     def test_all_archived_outputs_need_policies_and_matching_names(self):
         with tempfile.TemporaryDirectory() as directory:
             config={'work_dir':directory,'verification':{'case_ids':'all','outputs':{}}}
@@ -51,7 +84,7 @@ class OutputContracts(unittest.TestCase):
             onnx.checker.check_model(model);onnx.save(model,path)
             config={'model':{'adapter_file':str(ROOT/'core/native_onnx.py'),'params':{}},
                     'data':{'directory':str(directory/'inputs'),'params':{'samples':1,'count':2,'inputs':{n:{'dtype':'float32','shape':[1,2]} for n in names}}},
-                    'build':{'dtype':'preserve'},'reference':{'dtype':'preserve'}}
+                    'build':{'dtype':'float32'},'reference':{'dtype':'float32'}}
             cases=data.generate(config)
             self.assertEqual(cases,data.load(config))
             paths=list((directory/'inputs').rglob('*.npy'))
@@ -79,14 +112,44 @@ class FailedMeasurements(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             binary=Path(directory,'runtime');binary.touch();log=Path(directory,'bench.log')
             process=subprocess.CompletedProcess([],1,'ACL execute returned 500002\nGE_RESULT '+json.dumps(payload)+'\n')
-            with patch('core.backends.runtime.RUNTIME',binary),patch('core.backends.runtime.subprocess.run',return_value=process):
+            def run(*args,**kwargs):
+                kwargs['stdout'].write(process.stdout)
+                return process
+            with patch('core.backends.runtime.RUNTIME',binary),patch('core.backends.runtime.subprocess.run',side_effect=run):
                 result=call({},log)
             self.assertEqual(result['performance'],payload['performance'])
             self.assertIn('500002',result['error']);self.assertIn(str(log),result['error'])
             self.assertEqual(log.read_text(),process.stdout)
             process.stdout='load graph failed\n'
-            with patch('core.backends.runtime.RUNTIME',binary),patch('core.backends.runtime.subprocess.run',return_value=process):
+            with patch('core.backends.runtime.RUNTIME',binary),patch('core.backends.runtime.subprocess.run',side_effect=run):
                 with self.assertRaisesRegex(RuntimeError,'load graph failed'):call({},log)
+
+    def test_crashed_runtime_does_not_wait_for_inherited_stdout_pipe(self):
+        import os
+        import signal
+        import sys
+        import time
+        from core.backends.runtime import call
+        with tempfile.TemporaryDirectory() as directory:
+            binary=Path(directory,'runtime');child_file=Path(directory,'child.pid')
+            binary.write_text(
+                '#!'+sys.executable+'\nimport os,time\n'
+                'child=os.fork()\n'
+                'if child == 0:\n    time.sleep(8)\n    os._exit(0)\n'
+                f'open({str(child_file)!r},"w").write(str(child))\n'
+                'print("compiler crashed",flush=True)\nos._exit(17)\n'
+            )
+            binary.chmod(0o700)
+            began=time.monotonic()
+            try:
+                with patch('core.backends.runtime.RUNTIME',binary):
+                    with self.assertRaisesRegex(RuntimeError,'exit 17.*compiler crashed'):
+                        call({})
+                self.assertLess(time.monotonic()-began,4)
+            finally:
+                if child_file.exists():
+                    try:os.kill(int(child_file.read_text()),signal.SIGTERM)
+                    except ProcessLookupError:pass
 
     def test_worker_preserves_partial_result_and_cleans_only_packed_buffers(self):
         from core.worker import infer_or_bench

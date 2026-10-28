@@ -1,0 +1,3 @@
+{"monotonic_ns": 879114591249262, "elapsed_seconds": 0.0007734659593552351, "runtime_pid": 12632, "rss_kib": 2304}
+{"monotonic_ns": 879124591637861, "elapsed_seconds": 10.001161524909548, "runtime_pid": 12632, "rss_kib": 1476096}
+{"monotonic_ns": 879134591892398, "elapsed_seconds": 20.00141638191417, "runtime_pid": 12632, "rss_kib": 4708352}

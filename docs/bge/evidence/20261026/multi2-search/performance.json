@@ -1,0 +1,113 @@
+{
+  "arrival_model": "closed_loop",
+  "capture_enabled": false,
+  "cohort_qps": 269.9329232152453,
+  "cohort_successes": 8098,
+  "d2h_ms": {
+    "avg": 0.032005619412200564
+  },
+  "distinct_shapes": 4,
+  "drain_ms": 4.879061,
+  "e2e_ms": {
+    "avg": 7.409230441713989,
+    "max": 8.901823,
+    "min": 5.464977,
+    "p50": 7.409078,
+    "p99": 7.914773
+  },
+  "errors": 0,
+  "exec_ms": {
+    "avg": 7.282345990244522,
+    "p99": 7.785212
+  },
+  "hbm_mb": {
+    "after_setup": 2970.80859375,
+    "base": 395.94140625
+  },
+  "in_flight_at_end": 1,
+  "instances": [
+    {
+      "desc_ms": {
+        "avg": 0.0009582303509638371
+      },
+      "distinct_shapes": 4,
+      "e2e_ms": {
+        "avg": 7.415337441423663,
+        "max": 8.901823,
+        "min": 5.464977,
+        "p50": 7.412568,
+        "p99": 7.922633
+      },
+      "errors": 0,
+      "exec_ms": {
+        "avg": 7.288445093672765,
+        "p99": 7.796342
+      },
+      "h2d_ms": {
+        "avg": 0.09147281265447339
+      },
+      "load_ms": 1647.368,
+      "name": "instance_0",
+      "qps": 134.8331284768668,
+      "requests": 4046,
+      "specialize_ms": 0.0
+    },
+    {
+      "desc_ms": {
+        "avg": 0.0005434353405725245
+      },
+      "distinct_shapes": 4,
+      "e2e_ms": {
+        "avg": 7.403132484945695,
+        "max": 8.62402,
+        "min": 6.620429,
+        "p50": 7.405397,
+        "p99": 7.897053
+      },
+      "errors": 0,
+      "exec_ms": {
+        "avg": 7.276255918065149,
+        "p99": 7.771901
+      },
+      "h2d_ms": {
+        "avg": 0.09099679170779836
+      },
+      "load_ms": 1733.285,
+      "name": "instance_1",
+      "qps": 135.06646145568956,
+      "requests": 4052,
+      "specialize_ms": 0.0
+    }
+  ],
+  "last_completed_ns": 2324628667224267,
+  "latency_scope": "h2d_desc_execute_sync_d2h",
+  "profiling_enabled": false,
+  "qps": 269.89958993255635,
+  "requests": 8098,
+  "run_id": "multi2-search",
+  "samples": {
+    "avg": 1.0,
+    "max": 1.0,
+    "min": 1.0,
+    "p50": 1.0,
+    "p99": 1.0
+  },
+  "samples_per_second": 269.89958993255635,
+  "sampling": {
+    "order": "global_request_index",
+    "pool_size": 5,
+    "replacement": true,
+    "seed": 42
+  },
+  "schema": "ge-performance/1",
+  "slo_status": "not_defined",
+  "statistics_sufficient": true,
+  "wall_ms": 30000.04558,
+  "warmup": {
+    "ms": 535.536427,
+    "runs": 100
+  },
+  "window_end_ns": 2324628662345206,
+  "window_start_ns": 2324598662299626,
+  "window_successes": 8097
+}

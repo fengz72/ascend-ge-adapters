@@ -1,0 +1,91 @@
+{
+  "checked_at": "2026-10-26T14:35:57.039478+08:00",
+  "skills_copies_match": true,
+  "skill_validation": "quick_validate passed for both maintained copies",
+  "updated_skill_files": {
+    "SKILL.md": "0b78403f690625f77297af013b79a2860f5157e0c28537f184f09356e84b749c",
+    "references/measurement.md": "84c473c203213619b422eb054ffd4abe7d014ac54edb6faad38a19b82c9c127d",
+    "references/requirements.md": "14742ed9b57ad271df63a4024d98229c899ee14eb3787e1d2097bfc2ebc0623a",
+    "assets/brief.md": "1ea96218b6f7815a7e34e42072d5d54768b21e7f8aa54e8b8bb0932d7a7d8fc8",
+    "assets/design.md": "07e5d87a84fb58ba621c826a1899a470651a730306b0717c0d5417d553eac92a",
+    "assets/optimization-record.md": "e1ddd52c4842cac18a495efedaf55308c6f2ad25c67e935e31cc97c16b5ad6e5",
+    "assets/delivery-report.md": "ddf0a7e89001b2b5cff988a045105551b870499179b717e2a1d14c4795725b15"
+  },
+  "record_coverage": {
+    "record_coverage_complete": true,
+    "allocated": [
+      "OPT-001",
+      "OPT-002",
+      "OPT-003",
+      "OPT-004",
+      "OPT-005",
+      "OPT-006",
+      "OPT-007",
+      "OPT-008",
+      "OPT-009"
+    ],
+    "records": [
+      "OPT-001",
+      "OPT-002",
+      "OPT-003",
+      "OPT-004",
+      "OPT-005",
+      "OPT-006",
+      "OPT-007",
+      "OPT-008",
+      "OPT-009"
+    ],
+    "summary": [
+      "OPT-001",
+      "OPT-002",
+      "OPT-003",
+      "OPT-004",
+      "OPT-005",
+      "OPT-006",
+      "OPT-007",
+      "OPT-008",
+      "OPT-009"
+    ],
+    "issues": [],
+    "not_checked": [
+      "metric values and changes",
+      "real execution/precision/performance evidence",
+      "adoption agrees with final artifact",
+      "placeholder content"
+    ]
+  },
+  "broken_model_doc_links": [],
+  "cli_cpu_tests_passed": 12,
+  "native_cpp_unchanged": true,
+  "npu_runs_started": false,
+  "fixed_performance_measured": false,
+  "remote_integration": "pending: SSH99 bastion Connection closed by UNKNOWN port 65535",
+  "independent_verifier_adaptation": "CPU ready, archived separately from historical tools; remote integration and actual fixed run still pending",
+  "bundle": {
+    "archive": "outputs/npu-workflow-bundle.zip",
+    "sha256": "efea6ed80d855bfb0c093e1bbf1624a2bb02c77419a051c54ea6af0e02538d4f",
+    "updated_members": [
+      ".agents/skills/npu-model-workflow/SKILL.md",
+      ".agents/skills/npu-model-workflow/references/measurement.md",
+      ".agents/skills/npu-model-workflow/references/requirements.md",
+      ".agents/skills/npu-model-workflow/assets/brief.md",
+      ".agents/skills/npu-model-workflow/assets/design.md",
+      ".agents/skills/npu-model-workflow/assets/optimization-record.md",
+      ".agents/skills/npu-model-workflow/assets/delivery-report.md"
+    ],
+    "manifest_files": 48,
+    "hash_validation": "PASS"
+  },
+  "independent_verifier_cpu_tests_passed": 13,
+  "independent_review": "analysis/dual-workload-review.md",
+  "verifier_artifact_hashes": {
+    "evidence/20261026/acceptance-v2/workload_identity.py": "9fa70e5348ca30cd1663741f514d6f2e263aab35d3b922ff2068062eb1510a80",
+    "evidence/20261026/acceptance-v2/verify_plan_inputs.py": "0e2f615b077ba4a370c95b321135d0dd3ca52ab1ddc28cffb6de8f9efb1173dc",
+    "evidence/20261026/acceptance-v2/validate_run_identity.py": "b27ee3be7a32825bd421f6d1799ca40530a1bb8dcc6bae2dd8917d42e5d5f762",
+    "evidence/20261026/acceptance-v2/cli-independent-cpu.log": "0facf898f18dedf747e5a23723a155eb476f7e35f2e970ad8b3a046ec9d06a2d",
+    "evidence/20261026/acceptance-v2/test_workload_identity.py": "eb3be6b70671d91b9f93d04fc91e1c4fdf2c61241d2a61a46f0d16cce4734820",
+    "evidence/20261026/acceptance-v2/validation.json": "4ebf36ea6568e8b3f9d198b3de1c43c5e05c511b921204daa2f3652f0dd7e52b",
+    "evidence/20261026/acceptance-v2/cpu-regression.log": "0ee33282884651e7848aecce7ea8ccb9fc3b2b4cfbaa0ab69f5b0be41c250b58",
+    "evidence/20261026/acceptance-v2/verify_outputs.py": "d37baaa29558f0aafc2285b989fdbf2d5d2ca5f0cbbc7bdc6cbc26ea2431695d"
+  }
+}

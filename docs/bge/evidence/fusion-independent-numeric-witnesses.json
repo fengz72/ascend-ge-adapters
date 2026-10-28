@@ -1,0 +1,58 @@
+{
+  "note": "CPU scalar mathematical counterexamples only, no NPU calls; these demonstrate semantic mismatch, not backend accuracy validation.",
+  "l2": {
+    "x": [
+      1e-08,
+      0.0
+    ],
+    "onnx_epsilon": 9.999999960041972e-13,
+    "original": 1.0,
+    "wrong_cann_eps_1e12": 0.010000000019979013,
+    "matching_cann_eps_squared": 1.0
+  },
+  "gelu": [
+    {
+      "x": -3,
+      "erf_formula": -0.00404969409489031,
+      "tanh_approx": -0.0036373920817729943
+    },
+    {
+      "x": -2,
+      "erf_formula": -0.04550026389635842,
+      "tanh_approx": -0.04540230591222494
+    },
+    {
+      "x": -1,
+      "erf_formula": -0.15865525393145707,
+      "tanh_approx": -0.1588080093917233
+    },
+    {
+      "x": 0,
+      "erf_formula": 0.0,
+      "tanh_approx": 0.0
+    },
+    {
+      "x": 1,
+      "erf_formula": 0.8413447460685429,
+      "tanh_approx": 0.8411919906082768
+    },
+    {
+      "x": 2,
+      "erf_formula": 1.9544997361036416,
+      "tanh_approx": 1.954597694087775
+    },
+    {
+      "x": 3,
+      "erf_formula": 2.99595030590511,
+      "tanh_approx": 2.996362607918227
+    }
+  ],
+  "mask": {
+    "source_masked_logit": -3.4028234663852886e+38,
+    "all_masked_row_finite_min_softmax": [
+      0.5,
+      0.5
+    ],
+    "minus_inf_softmax": "undefined/NaN under subtract-max; backend fused empty-row behavior may instead be zero"
+  }
+}

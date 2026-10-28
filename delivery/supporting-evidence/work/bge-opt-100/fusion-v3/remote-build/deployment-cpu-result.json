@@ -1,0 +1,69 @@
+{
+  "started_at": "2026-10-26T13:34:09.071344+00:00",
+  "scope": "CPU build/graph/preload/numeric only",
+  "npu_initialized": false,
+  "source_sha256": {
+    "test_add_layernorm_attention_pass.cpp": "21a49409e498ac14d1ebf1afa8ac2a2a86c329e1d7eda5baa95e70dbd16fd796",
+    "add_layernorm_attention_v3.cpp": "1508f75b5576c6718ceadd58b1c435c7798b7c29cfc396d9f45cfd21544b118d",
+    "test_local_v3.py": "46bac4118e732935c7ee8efb4a5b3719e49212e2f5fc85a59292a0dc48161eb6",
+    "numeric_semantics.py": "fac44b2d5eb2392f2a929662fa256b25ec71e32037c9c5914f392ed9abd1f6a0",
+    "attention_scope.h": "91649f5e8377b51b8681e0d280ae4e56d05682b7050bd560520ef8c0c2a2684b",
+    "v2-to-v3.patch": "fdc33c4dd1cef988073116d0a2635d5d6b3dffae6e18c9f9f0beaae5ba48f060",
+    "README.md": "18d4df5a737eb2fbe2e07d6ef95cca1372560e3cfbcfbb71f151d27cdec697d9",
+    "build_attention_v3.py": "7ec3d23d4285b5ae47a05e2377f06afb8e5569a67f354c01fb504a9a6dd7eb18",
+    "test_preload_scope.cpp": "826310aaf311e85a65050f1aba8bd01d345eb72d20a76363f0665d190e63157c",
+    "add_layernorm_attention_pass.cpp": "0f546bc19d58f58af5bf603efa337cd819f6cf12a865706f9295fb2f93700a64",
+    "preload_probe.cpp": "62ea7175a2e27684ea8ce08f9fde1ef287f0f277c2e23e79ceeae0f2d9599837",
+    "preload_scope_filter.h": "df898ca1aea1452a4c9b36a54bae241cef423feac80e04558f55648addecdc59",
+    "test_attention_scope.cpp": "b2ac25e372d5a07440e68d1f0a0426550e63cf2654141d4a8b49f0cdf7d5fff3"
+  },
+  "protected_before": {
+    "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/libbge_add_layernorm_pass_v2.so": "76ea9fb0f1800369b023e22d71298e508dcfaa6f69f34bcf952af4a1b5fa48ed",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/add_layernorm_pass.cpp": "e4d2894adbd1a0684f240581d79a1d88f0d2f5bdcaed29477c31106834e2ceb5",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/add_layernorm_pass_v2.cpp": "831de3786b4251b1fb26d4e641050dfbb2186229f29a946605671d19fe83bf74",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/materials/exported/model.onnx": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/materials/expected_outputs.json": "4765cc2b9dac9d2f523f9a684a81082d3b943caaff1fd2c4db90cfdf1b375384",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/runner/runtime/build/ge_runtime": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d"
+  },
+  "commands": [
+    {
+      "argv": [
+        "/usr/local/python3.11.15/bin/python3",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/build_attention_v3.py",
+        "--cann",
+        "/usr/local/Ascend/cann-9.0.0",
+        "--directory",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 8.514555563917384,
+      "stdout": "{\n  \"status\": \"pass\",\n  \"npu_initialized\": false,\n  \"fusion_graph_contract_tests\": 13,\n  \"environment_filter_tests\": 11,\n  \"integration_checks\": [\n    \"native maps self but child env excludes self\",\n    \"native child Python does not map self\",\n    \"other executable preserves original preload\"\n  ],\n  \"ldd_r_no_missing_or_undefined\": true,\n  \"artifacts\": [\n    {\n      \"path\": \"/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/add_layernorm_attention_v3.cpp\",\n      \"bytes\": 1285,\n      \"sha256\": \"1508f75b5576c6718ceadd58b1c435c7798b7c29cfc396d9f45cfd21544b118d\"\n    },\n    {\n      \"path\": \"/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/add_layernorm_attention_pass.cpp\",\n      \"bytes\": 5690,\n      \"sha256\": \"0f546bc19d58f58af5bf603efa337cd819f6cf12a865706f9295fb2f93700a64\"\n    },\n    {\n      \"path\": \"/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/attention_scope.h\",\n      \"bytes\": 1015,\n      \"sha256\": \"91649f5e8377b51b8681e0d280ae4e56d05682b7050bd560520ef8c0c2a2684b\"\n    },\n    {\n      \"path\": \"/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/test_add_layernorm_attention_pass.cpp\",\n      \"bytes\": 5274,\n      \"sha256\": \"21a49409e498ac14d1ebf1afa8ac2a2a86c329e1d7eda5baa95e70dbd16fd796\"\n    },\n    {\n      \"path\": \"/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/preload_scope_filter.h\",\n      \"bytes\": 1745,\n      \"sha256\": \"df898ca1aea1452a4c9b36a54bae241cef423feac80e04558f55648addecdc59\"\n    },\n    {\n      \"path\": \"/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/test_preload_scope.cpp\",\n      \"bytes\": 2295,\n      \"sha256\": \"826310aaf311e85a65050f1aba8bd01d345eb72d20a76363f0665d190e63157c\"\n    },\n    {\n      \"path\": \"/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/preload_probe.cpp\",\n      \"bytes\": 856,\n      \"sha256\": \"62ea7175a2e27684ea8ce08f9fde1ef287f0f277c2e23e79ceeae0f2d9599837\"\n    },\n    {\n      \"path\": \"/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/build_attention_v3.py\",\n      \"bytes\": 4424,\n      \"sha256\": \"7ec3d23d4285b5ae47a05e2377f06afb8e5569a67f354c01fb504a9a6dd7eb18\"\n    },\n    {\n      \"path\": \"/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/libbge_add_layernorm_attention_v3.so\",\n      \"bytes\": 91088,\n      \"sha256\": \"5472882c2c401e7b99f5dde12470742519397a204650a4e76803df802249e299\"\n    }\n  ]\n}\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/local/python3.11.15/bin/python3",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/numeric_semantics.py"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.194640486035496,
+      "stdout": "{\"passed\": true, \"numpy\": \"1.26.4\", \"npu_initialized\": false, \"scope\": \"NumPy semantic check only, not CANN AddLayerNorm or full BGE\", \"numeric_cases\": [{\"sequence\": 6, \"scale\": 1.0, \"max_abs_vs_fp64\": 5.296969547430308e-07}, {\"sequence\": 8, \"scale\": 1e-07, \"max_abs_vs_fp64\": 2.1910497682853247e-07}, {\"sequence\": 13, \"scale\": 10.0, \"max_abs_vs_fp64\": 5.362536796837958e-07}], \"wrong_epsilon_detectable_max_diff\": 0.09980180114507675}\n",
+      "stderr": ""
+    }
+  ],
+  "protected_after": {
+    "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/libbge_add_layernorm_pass_v2.so": "76ea9fb0f1800369b023e22d71298e508dcfaa6f69f34bcf952af4a1b5fa48ed",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/add_layernorm_pass.cpp": "e4d2894adbd1a0684f240581d79a1d88f0d2f5bdcaed29477c31106834e2ceb5",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/add_layernorm_pass_v2.cpp": "831de3786b4251b1fb26d4e641050dfbb2186229f29a946605671d19fe83bf74",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/materials/exported/model.onnx": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/materials/expected_outputs.json": "4765cc2b9dac9d2f523f9a684a81082d3b943caaff1fd2c4db90cfdf1b375384",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/runner/runtime/build/ge_runtime": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d"
+  },
+  "so": {
+    "path": "/export/home/ext.hejun23/workspace/bge-opt-100/candidates-v3/libbge_add_layernorm_attention_v3.so",
+    "sha256": "5472882c2c401e7b99f5dde12470742519397a204650a4e76803df802249e299",
+    "bytes": 91088
+  },
+  "status": "pass",
+  "finished_at": "2026-10-26T13:34:17.783098+00:00"
+}

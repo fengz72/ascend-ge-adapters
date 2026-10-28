@@ -1,0 +1,10 @@
+{
+  "at": "2026-10-26T02:40:37.842412+00:00",
+  "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+  "plan_sha256": "25e68ee3097d8e5b780643f5d51b19431bc84cf1e8f829137cce2e6cba4a1757",
+  "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/base-pressure.json",
+  "device": 10,
+  "pci": "0000:89:00.0",
+  "env": [],
+  "charged_before_seconds": 79.801313
+}

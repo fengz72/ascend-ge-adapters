@@ -1,0 +1,175 @@
+{
+  "passed": true,
+  "plans": {
+    "multi2-correctness.json": {
+      "passed": true,
+      "instances": 2,
+      "device": 10,
+      "full_core_unlimited": true,
+      "precision_mode": "must_keep_origin_dtype",
+      "capture_outputs": true,
+      "replay": {
+        "run_id": "multi2-correctness",
+        "min_seconds": 2,
+        "max_seconds": 180,
+        "min_requests": 2000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": true
+      }
+    },
+    "multi2-round1.json": {
+      "passed": true,
+      "instances": 2,
+      "device": 10,
+      "full_core_unlimited": true,
+      "precision_mode": "must_keep_origin_dtype",
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi2-round1",
+        "min_seconds": 60,
+        "max_seconds": 300,
+        "min_requests": 10000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    },
+    "multi2-round2.json": {
+      "passed": true,
+      "instances": 2,
+      "device": 10,
+      "full_core_unlimited": true,
+      "precision_mode": "must_keep_origin_dtype",
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi2-round2",
+        "min_seconds": 60,
+        "max_seconds": 300,
+        "min_requests": 10000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    },
+    "multi2-round3.json": {
+      "passed": true,
+      "instances": 2,
+      "device": 10,
+      "full_core_unlimited": true,
+      "precision_mode": "must_keep_origin_dtype",
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi2-round3",
+        "min_seconds": 60,
+        "max_seconds": 300,
+        "min_requests": 10000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    },
+    "multi2-search.json": {
+      "passed": true,
+      "instances": 2,
+      "device": 10,
+      "full_core_unlimited": true,
+      "precision_mode": "must_keep_origin_dtype",
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi2-search",
+        "min_seconds": 30,
+        "max_seconds": 180,
+        "min_requests": 2000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    },
+    "multi4-correctness.json": {
+      "passed": true,
+      "instances": 4,
+      "device": 10,
+      "full_core_unlimited": true,
+      "precision_mode": "must_keep_origin_dtype",
+      "capture_outputs": true,
+      "replay": {
+        "run_id": "multi4-correctness",
+        "min_seconds": 2,
+        "max_seconds": 180,
+        "min_requests": 2000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": true
+      }
+    },
+    "multi4-round1.json": {
+      "passed": true,
+      "instances": 4,
+      "device": 10,
+      "full_core_unlimited": true,
+      "precision_mode": "must_keep_origin_dtype",
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi4-round1",
+        "min_seconds": 60,
+        "max_seconds": 300,
+        "min_requests": 10000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    },
+    "multi4-round2.json": {
+      "passed": true,
+      "instances": 4,
+      "device": 10,
+      "full_core_unlimited": true,
+      "precision_mode": "must_keep_origin_dtype",
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi4-round2",
+        "min_seconds": 60,
+        "max_seconds": 300,
+        "min_requests": 10000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    },
+    "multi4-round3.json": {
+      "passed": true,
+      "instances": 4,
+      "device": 10,
+      "full_core_unlimited": true,
+      "precision_mode": "must_keep_origin_dtype",
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi4-round3",
+        "min_seconds": 60,
+        "max_seconds": 300,
+        "min_requests": 10000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    },
+    "multi4-search.json": {
+      "passed": true,
+      "instances": 4,
+      "device": 10,
+      "full_core_unlimited": true,
+      "precision_mode": "must_keep_origin_dtype",
+      "capture_outputs": false,
+      "replay": {
+        "run_id": "multi4-search",
+        "min_seconds": 30,
+        "max_seconds": 180,
+        "min_requests": 2000,
+        "max_requests": 2000000,
+        "warmup_per_case": 10,
+        "capture_outputs": false
+      }
+    }
+  }
+}

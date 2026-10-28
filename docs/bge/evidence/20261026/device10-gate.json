@@ -1,0 +1,53 @@
+{
+  "at": "2026-10-26T10:24:10.601414+08:00",
+  "logical_device": 10,
+  "card": 5,
+  "chip": 0,
+  "pci": "0000:89:00.0",
+  "checks": [
+    {
+      "argv": [
+        "npu-smi",
+        "info",
+        "-t",
+        "proc-mem",
+        "-i",
+        "5",
+        "-c",
+        "0"
+      ],
+      "code": 0,
+      "out": "\tNo process in device.\n",
+      "err": ""
+    },
+    {
+      "argv": [
+        "npu-smi",
+        "info",
+        "-t",
+        "usages",
+        "-i",
+        "5",
+        "-c",
+        "0"
+      ],
+      "code": 0,
+      "out": "\tDDR Capacity(MB)               : 0\n\tDDR Usage Rate(%)              : 0\n\tDDR Hugepages Total(page)      : 0\n\tDDR Hugepages Usage Rate(%)    : 0\n\tHBM Capacity(MB)               : 65536\n\tHBM Usage Rate(%)              : 4\n\tAicore Usage Rate(%)           : 0\n\tAivector Usage Rate(%)         : 0\n\tAicpu Usage Rate(%)            : 0\n\tCtrlcpu Usage Rate(%)          : 3\n\tDDR Bandwidth Usage Rate(%)    : 0\n\tHBM Bandwidth Usage Rate(%)    : 0\n\tNPU Utilization(%)             : 0\n\tAicube Usage Rate(%)           : 0\n",
+      "err": ""
+    },
+    {
+      "argv": [
+        "npu-smi",
+        "info",
+        "-t",
+        "board",
+        "-i",
+        "5"
+      ],
+      "code": 0,
+      "out": "\tNPU ID                         : 5\n\tProduct Name                   : IT22HMDA_2_S\n\tModel                          : NA\n\tManufacturer                   : Huawei\n\tSerial Number                  : 102539089335\n\tSoftware Version               : 25.5.t6.b001\n\tFirmware Version               : 7.8.0.5.216\n\tCompatibility                  : OK\n\tBoard ID                       : 0x71\n\tMain Board ID                  : 0x18\n\tPCB ID                         : B\n\tBOM ID                         : 2\n\tPCIe Bus Info                  : 0000:89:00.0\n\tSlot ID                        : 5\n\tClass ID                       : NA\n\tPCI Vendor ID                  : 0x19E5\n\tPCI Device ID                  : 0xD803\n\tSubsystem Vendor ID            : 0x19E5\n\tSubsystem Device ID            : 0x3001\n\tChip Count                     : 2\n",
+      "err": ""
+    }
+  ],
+  "idle": true
+}

@@ -1,0 +1,20 @@
+{
+  "confirmed_at": "2026-10-26T14:05:21.794666+08:00",
+  "timezone": "Asia/Shanghai",
+  "user_decision": "先归档已有结果，设备释放后再继续",
+  "state": "archived_waiting_for_device",
+  "new_device_jobs_started": false,
+  "device_occupancy_rechecked_this_turn": false,
+  "charged_seconds": 1616.67991,
+  "remaining_seconds": 5583.32009,
+  "unique_configs_used": 9,
+  "unique_config_limit": 12,
+  "final_optimization_accepted": false,
+  "pending": [
+    "OPT009半核压力与性能搜索",
+    "按结果决定最佳并发融合组合",
+    "冻结候选三轮性能与交错基线",
+    "最终输出关联压力、10分钟稳定性及释放验收"
+  ],
+  "resume_requires": "重新核查设备空闲、授权物理映射及旧任务；不重置预算或覆盖旧结果"
+}

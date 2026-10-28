@@ -1,6 +1,7 @@
 """Native execution and self-contained graph IO; no build or data generation."""
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 from core.config import ROOT
 from core.contracts import validate_io
@@ -11,14 +12,17 @@ RUNTIME=ROOT/'runtime/build/ge_runtime'
 
 def call(plan,path=None):
     if not RUNTIME.is_file():raise FileNotFoundError(f'{RUNTIME}; build runtime first: bash runtime/build.sh')
-    process=subprocess.run([str(RUNTIME)],input=json.dumps(plan),text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-    if path:Path(path).write_text(process.stdout)
-    messages=[line[len('GE_RESULT '):] for line in process.stdout.splitlines() if line.startswith('GE_RESULT ')]
+    # CANN compiler workers can inherit stdout and outlive a crashed runtime.
+    # A regular file lets us report the parent's failure without waiting for pipe EOF.
+    with (Path(path).open('w+',encoding='utf-8') if path else tempfile.TemporaryFile(mode='w+',encoding='utf-8')) as log:
+        process=subprocess.run([str(RUNTIME)],input=json.dumps(plan),text=True,stdout=log,stderr=subprocess.STDOUT)
+        log.seek(0);output=log.read()
+    messages=[line[len('GE_RESULT '):] for line in output.splitlines() if line.startswith('GE_RESULT ')]
     if len(messages)!=1:
-        raise RuntimeError('GE execution: '+process.stdout[-12000:]+(f'\nlog: {path}' if path else ''))
+        raise RuntimeError(f'GE execution (exit {process.returncode}): '+output[-12000:]+(f'\nlog: {path}' if path else ''))
     result=json.loads(messages[0])
     if process.returncode:
-        detail='GE execution: '+process.stdout[-12000:]+(f'\nlog: {path}' if path else '')
+        detail=f'GE execution (exit {process.returncode}): '+output[-12000:]+(f'\nlog: {path}' if path else '')
         if result.get('status')!='failed':raise RuntimeError(detail)
         result['error']=detail
     return result

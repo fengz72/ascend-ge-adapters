@@ -1,0 +1,123 @@
+{
+  "kind": "performance",
+  "passed": true,
+  "statistics_sufficient": true,
+  "errors": 0,
+  "minimum_seconds": 60,
+  "minimum_window_successes": 10000,
+  "window_seconds": 60.004205712,
+  "window_successes": 10520,
+  "cohort_successes": 10520,
+  "drain_ms": 0.0,
+  "qps": 175.32104416967806,
+  "p50_ms": 5.622879,
+  "p99_ms": 7.111864,
+  "max_ms": 9.792502,
+  "p99_limit": null,
+  "SLO_acceptance": "not_configured",
+  "per_case": {
+    "case-0000": {
+      "count": 2048,
+      "p50_ms": 5.605219,
+      "p99_ms": 6.969562
+    },
+    "case-0001": {
+      "count": 2085,
+      "p50_ms": 5.558358,
+      "p99_ms": 7.045143
+    },
+    "case-0004": {
+      "count": 2118,
+      "p50_ms": 5.67461,
+      "p99_ms": 7.275436
+    },
+    "case-0002": {
+      "count": 2138,
+      "p50_ms": 5.682889,
+      "p99_ms": 7.158085
+    },
+    "case-0003": {
+      "count": 2131,
+      "p50_ms": 5.607998,
+      "p99_ms": 7.099064
+    }
+  },
+  "segments": {
+    "h2d_ms": {
+      "mean": 0.08961863117870722,
+      "p99": 0.105
+    },
+    "desc_ms": {
+      "mean": 0.0007164448669201523,
+      "p99": 0.001
+    },
+    "execute_ms": {
+      "mean": 5.574282646863118,
+      "p99": 6.966682
+    },
+    "d2h_ms": {
+      "mean": 0.03569097233840304,
+      "p99": 0.050621
+    },
+    "unattributed_host_ms": {
+      "mean": 0.002936609600760389,
+      "p99": 0.0045909999999986795
+    }
+  },
+  "events_sha256": "02bf4cda600540432b4e8668ea41903b93e88d93ba9b3c329af14fc6869bfb04",
+  "performance_sha256": "7e539b2a481f2d39973ef4046343b2647ac2cbeaf10a21f69df0cbfc60815cee",
+  "run_id": "base-round2",
+  "seed": 2028,
+  "plan_sha256": "b8837c0c980fa5edcefff76b570bbebac460b75bba44683e85a5c33ff0dec7b0",
+  "per_case_counts": {
+    "case-0000": 2048,
+    "case-0001": 2085,
+    "case-0002": 2138,
+    "case-0003": 2131,
+    "case-0004": 2118
+  },
+  "ten_second_windows": [
+    {
+      "start_seconds": 0,
+      "seconds": 10.0,
+      "successes": 1765,
+      "qps": 176.5
+    },
+    {
+      "start_seconds": 10,
+      "seconds": 10.0,
+      "successes": 1717,
+      "qps": 171.7
+    },
+    {
+      "start_seconds": 20,
+      "seconds": 10.0,
+      "successes": 1733,
+      "qps": 173.3
+    },
+    {
+      "start_seconds": 30,
+      "seconds": 10.0,
+      "successes": 1727,
+      "qps": 172.7
+    },
+    {
+      "start_seconds": 40,
+      "seconds": 10.0,
+      "successes": 1789,
+      "qps": 178.9
+    },
+    {
+      "start_seconds": 50,
+      "seconds": 10.0,
+      "successes": 1788,
+      "qps": 178.8
+    },
+    {
+      "start_seconds": 60,
+      "seconds": 0.004205712000000972,
+      "successes": 1,
+      "qps": 237.77186835422134
+    }
+  ]
+}

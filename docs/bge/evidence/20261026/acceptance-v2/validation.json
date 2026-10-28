@@ -1,0 +1,21 @@
+{
+  "schema": "bge-dual-workload-cpu-readiness/1",
+  "checked_at": "2026-10-26T06:42:32.329011+00:00",
+  "cli_tests_passed": 12,
+  "verifier_tests_passed": 13,
+  "accuracy_and_pressure_functions_unchanged": true,
+  "historical_three_scripts_unchanged": true,
+  "ssh_used": false,
+  "npu_used": false,
+  "remote_integration_verified": false,
+  "fixed_performance_verified": false,
+  "files": {
+    "verify_outputs.py": "d37baaa29558f0aafc2285b989fdbf2d5d2ca5f0cbbc7bdc6cbc26ea2431695d",
+    "verify_plan_inputs.py": "0e2f615b077ba4a370c95b321135d0dd3ca52ab1ddc28cffb6de8f9efb1173dc",
+    "validate_run_identity.py": "b27ee3be7a32825bd421f6d1799ca40530a1bb8dcc6bae2dd8917d42e5d5f762",
+    "workload_identity.py": "9fa70e5348ca30cd1663741f514d6f2e263aab35d3b922ff2068062eb1510a80",
+    "test_workload_identity.py": "eb3be6b70671d91b9f93d04fc91e1c4fdf2c61241d2a61a46f0d16cce4734820",
+    "cpu-regression.log": "0ee33282884651e7848aecce7ea8ccb9fc3b2b4cfbaa0ab69f5b0be41c250b58",
+    "cli-independent-cpu.log": "0facf898f18dedf747e5a23723a155eb476f7e35f2e970ad8b3a046ec9d06a2d"
+  }
+}

@@ -1,0 +1,236 @@
+{
+  "schema": "bge-independent-rounds/1",
+  "passed": true,
+  "runs": [
+    "multi2-search"
+  ],
+  "instances": 2,
+  "device": 10,
+  "rounds": [
+    {
+      "kind": "performance",
+      "passed": true,
+      "statistics_sufficient": true,
+      "errors": 0,
+      "minimum_seconds": 30.0,
+      "minimum_window_successes": 2000,
+      "window_seconds": 30.00004558,
+      "window_successes": 8097,
+      "cohort_successes": 8098,
+      "drain_ms": 4.879061,
+      "qps": 269.89958993255635,
+      "p50_ms": 7.409078,
+      "p99_ms": 7.914773,
+      "max_ms": 8.901823,
+      "p99_limit": null,
+      "SLO_acceptance": "not_configured",
+      "per_case": {
+        "case-0001": {
+          "count": 1648,
+          "p50_ms": 7.538399,
+          "p99_ms": 7.947353
+        },
+        "case-0004": {
+          "count": 1534,
+          "p50_ms": 7.259666,
+          "p99_ms": 7.65719
+        },
+        "case-0000": {
+          "count": 1693,
+          "p50_ms": 7.324307,
+          "p99_ms": 7.68898
+        },
+        "case-0002": {
+          "count": 1614,
+          "p50_ms": 7.265286,
+          "p99_ms": 7.66073
+        },
+        "case-0003": {
+          "count": 1609,
+          "p50_ms": 7.61276,
+          "p99_ms": 7.976784
+        }
+      },
+      "segments": {
+        "h2d_ms": {
+          "mean": 0.09123462583353914,
+          "p99": 0.107
+        },
+        "desc_ms": {
+          "mean": 0.0007506791800444558,
+          "p99": 0.001
+        },
+        "execute_ms": {
+          "mean": 7.282345990244505,
+          "p99": 7.785212
+        },
+        "d2h_ms": {
+          "mean": 0.032005619412200544,
+          "p99": 0.042721
+        },
+        "unattributed_host_ms": {
+          "mean": 0.0028935270437144586,
+          "p99": 0.004061000000000092
+        }
+      },
+      "events_sha256": "ad47895a3f8dd7ddb7be77ebec0867d94d7c46f6081e91839a53f70501ba8b5d",
+      "performance_sha256": "938612b2178ff39fdc638c7737fa3571037d06b97e6ef134264b56a09f1c4cbf",
+      "run_id": "multi2-search",
+      "seed": 42,
+      "plan_sha256": "0674ce5bf11bc375cfd263e23131511c1124467ab82bc9c6342fcbe871ed9203",
+      "per_case_counts": {
+        "case-0000": 1693,
+        "case-0001": 1648,
+        "case-0002": 1614,
+        "case-0003": 1609,
+        "case-0004": 1534
+      },
+      "ten_second_windows": [
+        {
+          "start_seconds": 0,
+          "seconds": 10.0,
+          "successes": 2694,
+          "qps": 269.4
+        },
+        {
+          "start_seconds": 10,
+          "seconds": 10.0,
+          "successes": 2701,
+          "qps": 270.1
+        },
+        {
+          "start_seconds": 20,
+          "seconds": 10.0,
+          "successes": 2701,
+          "qps": 270.1
+        },
+        {
+          "start_seconds": 30,
+          "seconds": 4.557999999832418e-05,
+          "successes": 1,
+          "qps": 21939.44712673906
+        }
+      ]
+    }
+  ],
+  "median_qps": 269.89958993255635,
+  "min_qps": 269.89958993255635,
+  "max_qps": 269.89958993255635,
+  "qps_relative_range_percent": 0.0,
+  "merged_request_count": 8098,
+  "merged_p50_ms": 7.409078,
+  "merged_p99_ms": 7.914773,
+  "merged_per_case": {
+    "case-0000": {
+      "count": 1693,
+      "p50_ms": 7.324307,
+      "p99_ms": 7.68898
+    },
+    "case-0001": {
+      "count": 1648,
+      "p50_ms": 7.538399,
+      "p99_ms": 7.947353
+    },
+    "case-0002": {
+      "count": 1614,
+      "p50_ms": 7.265286,
+      "p99_ms": 7.66073
+    },
+    "case-0003": {
+      "count": 1609,
+      "p50_ms": 7.61276,
+      "p99_ms": 7.976784
+    },
+    "case-0004": {
+      "count": 1534,
+      "p50_ms": 7.259666,
+      "p99_ms": 7.65719
+    }
+  },
+  "resource_evidence": {
+    "multi2-search": {
+      "sample_count": 6,
+      "device": 10,
+      "npu": 5,
+      "chip": 0,
+      "BDF": "0000:89:00.0",
+      "observed_host_pids": [
+        3695741
+      ],
+      "directly_witnessed_own_host_pids": [
+        3695741,
+        3696231
+      ],
+      "unmapped_host_pids": [],
+      "external_process_observed": false,
+      "identity_limitation": null,
+      "hbm_mb_min": 3132,
+      "hbm_mb_max": 5913,
+      "rss_kib_min": 2752,
+      "rss_kib_max": 6325568,
+      "resource_sha256": "1f82e1d6d3d775c97c92b63a4ce0f9b3e19153b868c11419852ebf94b1c5e9eb",
+      "samples": [
+        {
+          "monotonic_ns": 2324577675499239,
+          "runtime_container_pid": 2014509,
+          "device10_host_pids": [
+            3695741
+          ]
+        },
+        {
+          "monotonic_ns": 2324589459119137,
+          "runtime_container_pid": 2014509,
+          "device10_host_pids": [
+            3695741
+          ]
+        },
+        {
+          "monotonic_ns": 2324601756407434,
+          "runtime_container_pid": 2014509,
+          "device10_host_pids": [
+            3695741
+          ]
+        },
+        {
+          "monotonic_ns": 2324613947616973,
+          "runtime_container_pid": 2014509,
+          "device10_host_pids": [
+            3695741
+          ]
+        },
+        {
+          "monotonic_ns": 2324625745596081,
+          "runtime_container_pid": 2014509,
+          "device10_host_pids": [
+            3695741
+          ]
+        },
+        {
+          "monotonic_ns": 2324637873905712,
+          "runtime_container_pid": 2014509,
+          "device10_host_pids": []
+        }
+      ]
+    }
+  },
+  "plan_identities": [
+    {
+      "run_id": "multi2-search",
+      "seed": 42,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "graph": {
+        "format": "onnx",
+        "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+        "om_path": null
+      },
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d"
+    }
+  ],
+  "p99_limit": null,
+  "SLO_acceptance": "not_configured",
+  "resource_identity_limitations": []
+}

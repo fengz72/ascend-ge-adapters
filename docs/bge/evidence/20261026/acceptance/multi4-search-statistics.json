@@ -1,0 +1,248 @@
+{
+  "schema": "bge-independent-rounds/1",
+  "passed": true,
+  "runs": [
+    "multi4-search"
+  ],
+  "instances": 4,
+  "device": 10,
+  "rounds": [
+    {
+      "kind": "performance",
+      "passed": true,
+      "statistics_sufficient": true,
+      "errors": 0,
+      "minimum_seconds": 30.0,
+      "minimum_window_successes": 2000,
+      "window_seconds": 30.001677326,
+      "window_successes": 11107,
+      "cohort_successes": 11110,
+      "drain_ms": 2.766539,
+      "qps": 370.21263442409173,
+      "p50_ms": 10.791432,
+      "p99_ms": 11.448209,
+      "max_ms": 12.198577,
+      "p99_limit": null,
+      "SLO_acceptance": "not_configured",
+      "per_case": {
+        "case-0001": {
+          "count": 2242,
+          "p50_ms": 10.954044,
+          "p99_ms": 11.447749
+        },
+        "case-0004": {
+          "count": 2140,
+          "p50_ms": 10.654902,
+          "p99_ms": 11.158037
+        },
+        "case-0000": {
+          "count": 2296,
+          "p50_ms": 10.681731,
+          "p99_ms": 11.187337
+        },
+        "case-0002": {
+          "count": 2222,
+          "p50_ms": 10.653771,
+          "p99_ms": 11.181246
+        },
+        "case-0003": {
+          "count": 2210,
+          "p50_ms": 11.053336,
+          "p99_ms": 11.575671
+        }
+      },
+      "segments": {
+        "h2d_ms": {
+          "mean": 0.09293411341134114,
+          "p99": 0.11
+        },
+        "desc_ms": {
+          "mean": 0.001005490549054906,
+          "p99": 0.001
+        },
+        "execute_ms": {
+          "mean": 10.673338886048604,
+          "p99": 11.319458
+        },
+        "d2h_ms": {
+          "mean": 0.030928872637263728,
+          "p99": 0.04128
+        },
+        "unattributed_host_ms": {
+          "mean": 0.003034835373537374,
+          "p99": 0.004151000000000238
+        }
+      },
+      "events_sha256": "75d178eae640053a099b58692d16a32105b18cb7aee8e0767820a14e61bd53bf",
+      "performance_sha256": "1ccb2fe0cf5825cf0acb18859ea7728dcc43e5fe062c206ff5573638d1cf1e41",
+      "run_id": "multi4-search",
+      "seed": 42,
+      "plan_sha256": "37ca679bd1eadee5d5ff8b2e1f7c12901c2b394e5af1a978d2bed3125a46a051",
+      "per_case_counts": {
+        "case-0000": 2296,
+        "case-0001": 2242,
+        "case-0002": 2222,
+        "case-0003": 2210,
+        "case-0004": 2140
+      },
+      "ten_second_windows": [
+        {
+          "start_seconds": 0,
+          "seconds": 10.0,
+          "successes": 3698,
+          "qps": 369.8
+        },
+        {
+          "start_seconds": 10,
+          "seconds": 10.0,
+          "successes": 3705,
+          "qps": 370.5
+        },
+        {
+          "start_seconds": 20,
+          "seconds": 10.0,
+          "successes": 3703,
+          "qps": 370.3
+        },
+        {
+          "start_seconds": 30,
+          "seconds": 0.0016773259999993684,
+          "successes": 1,
+          "qps": 596.1870262551088
+        }
+      ]
+    }
+  ],
+  "median_qps": 370.21263442409173,
+  "min_qps": 370.21263442409173,
+  "max_qps": 370.21263442409173,
+  "qps_relative_range_percent": 0.0,
+  "merged_request_count": 11110,
+  "merged_p50_ms": 10.791432,
+  "merged_p99_ms": 11.448209,
+  "merged_per_case": {
+    "case-0000": {
+      "count": 2296,
+      "p50_ms": 10.681731,
+      "p99_ms": 11.187337
+    },
+    "case-0001": {
+      "count": 2242,
+      "p50_ms": 10.954044,
+      "p99_ms": 11.447749
+    },
+    "case-0002": {
+      "count": 2222,
+      "p50_ms": 10.653771,
+      "p99_ms": 11.181246
+    },
+    "case-0003": {
+      "count": 2210,
+      "p50_ms": 11.053336,
+      "p99_ms": 11.575671
+    },
+    "case-0004": {
+      "count": 2140,
+      "p50_ms": 10.654902,
+      "p99_ms": 11.158037
+    }
+  },
+  "resource_evidence": {
+    "multi4-search": {
+      "sample_count": 8,
+      "device": 10,
+      "npu": 5,
+      "chip": 0,
+      "BDF": "0000:89:00.0",
+      "observed_host_pids": [
+        3774043
+      ],
+      "directly_witnessed_own_host_pids": [
+        3774043,
+        3776614
+      ],
+      "unmapped_host_pids": [],
+      "external_process_observed": false,
+      "identity_limitation": null,
+      "hbm_mb_min": 3167,
+      "hbm_mb_max": 8792,
+      "rss_kib_min": 2752,
+      "rss_kib_max": 10191616,
+      "resource_sha256": "93e486dcee2367595692e87cf2217a077cf4fdebaffabf637bf159dfef4e3bdb",
+      "samples": [
+        {
+          "monotonic_ns": 2324993790034295,
+          "runtime_container_pid": 2017262,
+          "device10_host_pids": []
+        },
+        {
+          "monotonic_ns": 2325006880181970,
+          "runtime_container_pid": 2017262,
+          "device10_host_pids": [
+            3774043
+          ]
+        },
+        {
+          "monotonic_ns": 2325019161987763,
+          "runtime_container_pid": 2017262,
+          "device10_host_pids": [
+            3774043
+          ]
+        },
+        {
+          "monotonic_ns": 2325030877378284,
+          "runtime_container_pid": 2017262,
+          "device10_host_pids": [
+            3774043
+          ]
+        },
+        {
+          "monotonic_ns": 2325042706466472,
+          "runtime_container_pid": 2017262,
+          "device10_host_pids": [
+            3774043
+          ]
+        },
+        {
+          "monotonic_ns": 2325055007967901,
+          "runtime_container_pid": 2017262,
+          "device10_host_pids": [
+            3774043
+          ]
+        },
+        {
+          "monotonic_ns": 2325066826387347,
+          "runtime_container_pid": 2017262,
+          "device10_host_pids": [
+            3774043
+          ]
+        },
+        {
+          "monotonic_ns": 2325079134402733,
+          "runtime_container_pid": 2017262,
+          "device10_host_pids": []
+        }
+      ]
+    }
+  },
+  "plan_identities": [
+    {
+      "run_id": "multi4-search",
+      "seed": 42,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "graph": {
+        "format": "onnx",
+        "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+        "om_path": null
+      },
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d"
+    }
+  ],
+  "p99_limit": null,
+  "SLO_acceptance": "not_configured",
+  "resource_identity_limitations": []
+}

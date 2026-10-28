@@ -1,0 +1,10 @@
+	NPU ID                         : 1
+	Chip Count                     : 2
+
+	Get pid name failed.
+	Process id:2478386 Process name:                  Process memory(MB):10866
+	Chip ID                        : 0
+
+	No process in device.
+	Chip ID                        : 1
+

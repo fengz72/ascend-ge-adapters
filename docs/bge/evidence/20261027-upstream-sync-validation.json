@@ -1,0 +1,69 @@
+{
+  "schema": "bge-upstream-sync-validation/1",
+  "upstream_commit": "bdfcb382dd55e8d215d8a802faf8389a14053a21",
+  "merge_commit": "bf7c0343e490c7098b45a82ff9b9ac40b9a08b52",
+  "final_runner_commit": "21293e35b3c68374f37bcdfa7081a3c7827adc81",
+  "dtype_contract": "concrete dtype, float32 default; platform-only overrides",
+  "tests": {
+    "python": {
+      "result": "111 passed, 5 hardware opt-in skipped",
+      "log": "work/post-sync-bge-python-tests-20261027.log",
+      "sha256": "7b874e28e30a8db59a4ee48225b9c1fe6d937651412374c5eec936799c7c106c"
+    },
+    "cpp": {
+      "result": "runtime_contracts passed",
+      "log": "work/post-sync-bge-cpp-tests-20261027.log",
+      "sha256": "e6a1184ec12ff0714ec00a83ad0e368bd90becb3eb02fe974e97ccd3a7a07a62"
+    }
+  },
+  "initial_device2_gate": {
+    "passed": false,
+    "expected_safety_rejection": true,
+    "gate_log": "work/post-sync-bge-mode0-20261027-before-gate.json"
+  },
+  "correctness_runs": {
+    "post-sync-bge-mode0-d12-20261027": {
+      "instances": 1,
+      "requests": 4185,
+      "failed_requests": 0,
+      "all_five_cases": true,
+      "all_top10_ids_and_order_passed": true,
+      "worst": {
+        "max_abs_error": 0.00021588802337646484,
+        "relative_l2": 0.0004473780329645363,
+        "top10_max_abs_error": 9.595939636231066e-05
+      },
+      "accuracy_report": "work/post-sync-bge-mode0-d12-20261027-accuracy.json",
+      "identity_report": "work/post-sync-bge-mode0-d12-20261027-run-identity.json",
+      "plan_sha256": "3cb377a03e7f5d0ab2e14fc8df3c04afd5beef505b66f81cf5d4527163b34769",
+      "graph_sha256": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "device": 12,
+      "physical_devices": [
+        "100/0000:85:00.0",
+        "100/0000:87:00.0"
+      ]
+    },
+    "post-sync-bge-half8-d12-20261027": {
+      "instances": 8,
+      "requests": 2007,
+      "failed_requests": 0,
+      "all_five_cases": true,
+      "all_top10_ids_and_order_passed": true,
+      "worst": {
+        "max_abs_error": 0.0002159271389245987,
+        "relative_l2": 0.00044739159086712183,
+        "top10_max_abs_error": 9.578058242798448e-05
+      },
+      "accuracy_report": "work/post-sync-bge-half8-d12-20261027-accuracy.json",
+      "identity_report": "work/post-sync-bge-half8-d12-20261027-run-identity.json",
+      "plan_sha256": "9f975213b8248af4487b8c2a0853f71c9dae8f4d60175822b5f48b15444561e1",
+      "graph_sha256": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "device": 12,
+      "physical_devices": [
+        "100/0000:85:00.0",
+        "100/0000:87:00.0"
+      ]
+    }
+  },
+  "scope": "five provided cases, GE graph_run_mode=0, original ONNX, FP32; no post-sync performance acceptance"
+}

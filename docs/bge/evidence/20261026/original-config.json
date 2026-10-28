@@ -1,0 +1,69 @@
+{
+  "model": {
+    "params": {},
+    "name": "bge",
+    "adapter_file": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/core/native_onnx.py"
+  },
+  "reference": {
+    "device": "cpu",
+    "dtype": "float32"
+  },
+  "data": {
+    "params": {
+      "samples_file": "../sample_inputs.json"
+    },
+    "script": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/models/bge/generate_cases.py",
+    "directory": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/models/bge/io/inputs"
+  },
+  "build": {
+    "backend": "ge_session",
+    "dtype": "float32",
+    "options": {
+      "precision_mode": "must_keep_origin_dtype",
+      "graph_run_mode": 0
+    }
+  },
+  "verification": {
+    "case_ids": "all",
+    "outputs": {
+      "scores": {
+        "policy": "numeric",
+        "scope": "per_sample",
+        "cosine_min": 0.9999,
+        "relative_l2_max": 0.001,
+        "max_abs_error": 0.001
+      }
+    },
+    "script": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/models/bge/verify.py",
+    "params": {
+      "expected_outputs": "../expected_outputs.json",
+      "atol": 0.001
+    }
+  },
+  "benchmark": {
+    "instances": 1,
+    "warmup": 0,
+    "iterations": 6,
+    "seed": 42
+  },
+  "dependencies": {
+    "custom_ops": [],
+    "ge_passes": [],
+    "parser_plugins": []
+  },
+  "observability": {
+    "profiling": false,
+    "dump": false
+  },
+  "source": {
+    "kind": "onnx",
+    "ref": "/export/home/ext.hejun23/workspace/bge/model.onnx"
+  },
+  "target": {
+    "id": "Ascend910_9382",
+    "soc": "Ascend910_9382",
+    "family": "a3"
+  },
+  "_root": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters",
+  "work_dir": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge"
+}

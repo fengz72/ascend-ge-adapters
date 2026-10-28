@@ -1,0 +1,2034 @@
+{
+  "ops": {
+    "AttentionScore": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "attr": {
+          "list": "keep_prob,query_transpose,key_transpose,bmm_score_transpose_a,bmm_score_transpose_b,softmax_axes"
+        },
+        "attr_bmm_score_transpose_a": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_bmm_score_transpose_b": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_keep_prob": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_key_transpose": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_query_transpose": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_softmax_axes": {
+          "defaultValue": "-1",
+          "paramType": "optional",
+          "type": "listInt",
+          "value": "all"
+        },
+        "input0": {
+          "dtype": "float16,float16",
+          "format": "FRACTAL_NZ,FRACTAL_NZ",
+          "name": "query",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input1": {
+          "dtype": "float16,float16",
+          "format": "FRACTAL_NZ,FRACTAL_NZ",
+          "name": "key",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input2": {
+          "dtype": "float16,float16",
+          "format": "FRACTAL_NZ,FRACTAL_NZ",
+          "name": "value",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input3": {
+          "dtype": "float16,float16",
+          "format": "FRACTAL_NZ,FRACTAL_NZ",
+          "name": "padding_mask",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input4": {
+          "dtype": "float16,float16",
+          "format": "ND,ND",
+          "name": "scale",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input5": {
+          "dtype": "uint8,float16",
+          "format": "ND,ND",
+          "name": "drop_mask",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "opFile": {
+          "value": "attention_score"
+        },
+        "opInterface": {
+          "value": "attention_score"
+        },
+        "output0": {
+          "dtype": "float16,float16",
+          "format": "FRACTAL_NZ,FRACTAL_NZ",
+          "name": "attention_score",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "output1": {
+          "dtype": "float16,float16",
+          "format": "FRACTAL_NZ,FRACTAL_NZ",
+          "name": "softmax_output",
+          "paramType": "optional",
+          "shape": "all"
+        }
+      }
+    },
+    "DetectFlashAttentionScore": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-oam.json",
+      "info": {
+        "attr": {
+          "list": "scale_value,keep_prob,pre_tockens,next_tockens,head_num,input_layout,inner_precise,sparse_mode,pse_type"
+        },
+        "attr_head_num": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_inner_precise": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_input_layout": {
+          "paramType": "required",
+          "type": "str",
+          "value": "all"
+        },
+        "attr_keep_prob": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_next_tockens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pre_tockens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pse_type": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_scale_value": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_sparse_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input1": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input10": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "q_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input11": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "kv_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input2": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input3": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "real_shift",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input4": {
+          "dtype": "uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "drop_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input5": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "padding_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input6": {
+          "dtype": "uint8,uint8,bool,bool,uint8,uint8,bool,bool,uint8,bool",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "atten_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input7": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "prefix",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input8": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_qlen",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input9": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_kvlen",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "jitCompile": {
+          "flag": "static_false,dynamic_false"
+        },
+        "needCheckSupport": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "detect_flash_attention_score"
+        },
+        "opInterface": {
+          "value": "detect_flash_attention_score"
+        },
+        "output0": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_max",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output1": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_sum",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output2": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_out",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output3": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "attention_out",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        }
+      }
+    },
+    "DetectFlashAttentionScoreGrad": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-oam.json",
+      "info": {
+        "attr": {
+          "list": "scale_value,keep_prob,pre_tockens,next_tockens,head_num,input_layout,inner_precise,sparse_mode,pse_type"
+        },
+        "attr_head_num": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_inner_precise": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_input_layout": {
+          "paramType": "required",
+          "type": "str",
+          "value": "all"
+        },
+        "attr_keep_prob": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_next_tockens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pre_tockens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pse_type": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_scale_value": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_sparse_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input1": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input10": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_in",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input11": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "attention_in",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input12": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "prefix",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input13": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_qlen",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input14": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_kvlen",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input15": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "q_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input16": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "kv_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input2": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input3": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dy",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input4": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "pse_shift",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input5": {
+          "dtype": "uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "drop_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input6": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "padding_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input7": {
+          "dtype": "uint8,uint8,bool,bool,uint8,uint8,bool,bool,bool,bool",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "atten_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input8": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_max",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input9": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_sum",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "jitCompile": {
+          "flag": "static_false,dynamic_false"
+        },
+        "needCheckSupport": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "detect_flash_attention_score_grad"
+        },
+        "opInterface": {
+          "value": "detect_flash_attention_score_grad"
+        },
+        "output0": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dq",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output1": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dk",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output2": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dv",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output3": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dpse",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        }
+      }
+    },
+    "L2Normalize": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "attr": {
+          "list": "axis,eps"
+        },
+        "attr_axis": {
+          "paramType": "required",
+          "type": "listInt",
+          "value": "all"
+        },
+        "attr_eps": {
+          "paramType": "required",
+          "type": "float",
+          "value": "all"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,float",
+          "format": "ND,ND",
+          "name": "x",
+          "paramType": "required",
+          "reshapeType": "NC",
+          "unknownshape_format": "ND,ND"
+        },
+        "output0": {
+          "dtype": "float16,float",
+          "format": "ND,ND",
+          "name": "y",
+          "paramType": "required",
+          "reshapeType": "NC",
+          "shape": "all",
+          "unknownshape_format": "ND,ND"
+        },
+        "slicePattern": {
+          "value": "reduce"
+        }
+      }
+    },
+    "L2NormalizeGrad": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-legacy.json",
+      "info": {
+        "attr": {
+          "list": "dim,eps"
+        },
+        "attr_dim": {
+          "paramType": "required",
+          "type": "listInt",
+          "value": "all"
+        },
+        "attr_eps": {
+          "paramType": "required",
+          "type": "float",
+          "value": "all"
+        },
+        "input0": {
+          "dtype": "float16,float",
+          "format": "ND,ND",
+          "name": "x",
+          "paramType": "required",
+          "reshapeType": "NC"
+        },
+        "input1": {
+          "dtype": "float16,float",
+          "format": "ND,ND",
+          "name": "y",
+          "paramType": "required",
+          "reshapeType": "NC"
+        },
+        "input2": {
+          "dtype": "float16,float",
+          "format": "ND,ND",
+          "name": "dy",
+          "paramType": "required",
+          "reshapeType": "NC"
+        },
+        "output0": {
+          "dtype": "float16,float",
+          "format": "ND,ND",
+          "name": "dx",
+          "paramType": "required",
+          "reshapeType": "NC",
+          "shape": "all"
+        }
+      }
+    },
+    "MaskedSoftmaxWithRelPosBias": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-nn.json",
+      "info": {
+        "aclnnSupport": {
+          "value": "support_aclnn"
+        },
+        "attr": {
+          "list": "scale_value,inner_precision_mode"
+        },
+        "attr_inner_precision_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_scale_value": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,bfloat16,float32",
+          "format": "ND,ND,ND",
+          "name": "x",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND"
+        },
+        "input1": {
+          "dtype": "float16,bfloat16,float32",
+          "format": "ND,ND,ND",
+          "name": "atten_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND"
+        },
+        "input2": {
+          "dtype": "float16,bfloat16,float32",
+          "format": "ND,ND,ND",
+          "name": "relative_pos_bias",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND"
+        },
+        "needCheckSupport": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "masked_softmax_with_rel_pos_bias"
+        },
+        "opInterface": {
+          "value": "masked_softmax_with_rel_pos_bias"
+        },
+        "output0": {
+          "dtype": "float16,bfloat16,float32",
+          "format": "ND,ND,ND",
+          "name": "y",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        }
+      }
+    },
+    "FlashAttentionScore": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-transformer.json",
+      "info": {
+        "attr": {
+          "list": "scale_value,keep_prob,pre_tockens,next_tockens,head_num,input_layout,inner_precise,sparse_mode,pse_type,seed,offset,out_dtype,softmax_out_layout"
+        },
+        "attr_head_num": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_inner_precise": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_input_layout": {
+          "paramType": "required",
+          "type": "str",
+          "value": "all"
+        },
+        "attr_keep_prob": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_next_tockens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_offset": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_out_dtype": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pre_tockens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pse_type": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_scale_value": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_seed": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_softmax_out_layout": {
+          "defaultValue": "",
+          "paramType": "optional",
+          "type": "str",
+          "value": "all"
+        },
+        "attr_sparse_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input1": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input10": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "q_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input11": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "kv_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input12": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "d_scale_q",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input13": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "d_scale_k",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input14": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "d_scale_v",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input15": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query_rope",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input16": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_rope",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input17": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "sink",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input18": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "p_scale",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input2": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input3": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "real_shift",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input4": {
+          "dtype": "uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "drop_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input5": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "padding_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input6": {
+          "dtype": "uint8,uint8,bool,bool,uint8,uint8,bool,bool,uint8,bool",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "atten_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input7": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "prefix",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input8": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_qlen",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input9": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_kvlen",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "jitCompile": {
+          "flag": "static_false,dynamic_false"
+        },
+        "needCheckSupport": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "flash_attention_score"
+        },
+        "opInterface": {
+          "value": "flash_attention_score"
+        },
+        "output0": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_max",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output1": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_sum",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output2": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_out",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output3": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "attention_out",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        }
+      }
+    },
+    "FlashAttentionScoreGrad": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-transformer.json",
+      "info": {
+        "attr": {
+          "list": "scale_value,keep_prob,pre_tockens,next_tockens,head_num,input_layout,inner_precise,sparse_mode,pse_type,seed,offset,out_dtype,softmax_in_layout"
+        },
+        "attr_head_num": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_inner_precise": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_input_layout": {
+          "paramType": "required",
+          "type": "str",
+          "value": "all"
+        },
+        "attr_keep_prob": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_next_tockens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_offset": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_out_dtype": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pre_tockens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pse_type": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_scale_value": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_seed": {
+          "defaultValue": "2",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_softmax_in_layout": {
+          "defaultValue": "",
+          "paramType": "optional",
+          "type": "str",
+          "value": "all"
+        },
+        "attr_sparse_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "coreType": {
+          "value": "AiCore"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input1": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input10": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_in",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input11": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "attention_in",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input12": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "prefix",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input13": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_qlen",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input14": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_kvlen",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input15": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "q_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input16": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "kv_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "valueDepend": "optional"
+        },
+        "input17": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "d_scale_q",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input18": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "d_scale_k",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input19": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "d_scale_v",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input2": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input20": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "d_scale_dy",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input21": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "d_scale_o",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input22": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query_rope",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input23": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_rope",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input24": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "sink",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input25": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "ds_scale",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input26": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "p_scale",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input3": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dy",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input4": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "pse_shift",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input5": {
+          "dtype": "uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8,uint8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "drop_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input6": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "padding_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input7": {
+          "dtype": "uint8,uint8,bool,bool,uint8,uint8,bool,bool,bool,bool",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "atten_mask",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input8": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_max",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "input9": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_sum",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "jitCompile": {
+          "flag": "static_false,dynamic_false"
+        },
+        "needCheckSupport": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "flash_attention_score_grad"
+        },
+        "opInterface": {
+          "value": "flash_attention_score_grad"
+        },
+        "output0": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dq",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output1": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dk",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output2": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dv",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output3": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dpse",
+          "paramType": "required",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output4": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dq_rope",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output5": {
+          "dtype": "float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dk_rope",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "output6": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dsink",
+          "paramType": "optional",
+          "shape": "all",
+          "unknownshape_format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        }
+      }
+    },
+    "FusedInferAttentionScore": {
+      "file": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info-transformer.json",
+      "info": {
+        "aclnnSupport": {
+          "value": "support_aclnn"
+        },
+        "attr": {
+          "list": "num_heads,scale,pre_tokens,next_tokens,input_layout,num_key_value_heads,sparse_mode,inner_precise,block_size,antiquant_mode,softmax_lse_flag,key_antiquant_mode,value_antiquant_mode,query_quant_mode,pse_type,out_dtype"
+        },
+        "attr_antiquant_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_block_size": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_inner_precise": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_input_layout": {
+          "defaultValue": "BSH",
+          "paramType": "optional",
+          "type": "str",
+          "value": "all"
+        },
+        "attr_key_antiquant_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_next_tokens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_num_heads": {
+          "paramType": "required",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_num_key_value_heads": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_out_dtype": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pre_tokens": {
+          "defaultValue": "2147483647",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_pse_type": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_query_quant_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_scale": {
+          "defaultValue": "1",
+          "paramType": "optional",
+          "type": "float",
+          "value": "all"
+        },
+        "attr_softmax_lse_flag": {
+          "defaultValue": "false",
+          "paramType": "optional",
+          "type": "bool",
+          "value": "all"
+        },
+        "attr_sparse_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "attr_value_antiquant_mode": {
+          "defaultValue": "0",
+          "paramType": "optional",
+          "type": "int",
+          "value": "all"
+        },
+        "dynamicCompileStatic": {
+          "flag": "true"
+        },
+        "dynamicFormat": {
+          "flag": "true"
+        },
+        "dynamicRankSupport": {
+          "flag": "true"
+        },
+        "dynamicShapeSupport": {
+          "flag": "true"
+        },
+        "input0": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "input1": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,int4,int4,int4,int4,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key",
+          "paramType": "dynamic",
+          "shape": "all"
+        },
+        "input10": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float16,float16,float16,float16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "quant_scale2",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input11": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float16,float16,float16,float16,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "quant_offset2",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input12": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,bfloat16,bfloat16,float32,float32,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float32,float32,float16,float16,float16,float16,float16,float16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "antiquant_scale",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input13": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float32,float32,bfloat16,bfloat16,float32,float32,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float32,float32,float16,float16,float16,float16,float16,float16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "antiquant_offset",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input14": {
+          "dtype": "int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32,int32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "block_table",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input15": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query_padding_size",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input16": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "kv_padding_size",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input17": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float16,float16,float16,float16,float16,float16,float32,float32,float32,float32,float16,float16,bfloat16,bfloat16,float32,float32,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_antiquant_scale",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input18": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float16,float16,float16,float16,float16,float16,float32,float32,float32,float32,float16,float16,bfloat16,bfloat16,float32,float32,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_antiquant_offset",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input19": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value_antiquant_scale",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input2": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,int4,int4,int4,int4,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value",
+          "paramType": "dynamic",
+          "shape": "all"
+        },
+        "input20": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value_antiquant_offset",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input21": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,float16,float16,float32,float32,float16,float16,int4,int4,int4,int4,int4,int4,int4,int4,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_shared_prefix",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input22": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,float16,float16,float32,float32,float16,float16,int4,int4,int4,int4,int4,int4,int4,int4,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "value_shared_prefix",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input23": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_shared_prefix_len",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input24": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "query_rope",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input25": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,int4,int4,int4,int4,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int4,int4,int4,int4,float16,float16,float16,float16,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,int8,int8,int8,int8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_rope",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input26": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float16,float16,float32,float32,float16,float16,float32,float32,float32,float32,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float32,float32,float32,float32,float16,float16,float16,float16,float16,float16,float32,float32,float32,float32,float16,float16,bfloat16,bfloat16,float32,float32,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "key_rope_antiquant_scale",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input27": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dequant_scale_query",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input28": {
+          "dtype": "bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16,bfloat16,float16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "learnable_sink",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input29": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "q_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input3": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "pse_shift",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input30": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "kv_start_idx",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input4": {
+          "dtype": "float16,float16,bool,bool,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,float16,float16,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,float16,float16,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,int8,int8,bool,bool,float16,float16,bool,bool,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,float16,float16,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,float16,float16,bool,bool,uint8,uint8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,int8,int8,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,int8,int8,int8,int8,bool,bool,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,bool,bool,int8,int8,uint8,uint8,bool,bool,bool,bool,bool,bool,bool,bool,int8,int8,uint8,uint8,uint8,uint8,int8,int8,uint8,uint8,int8,int8,int8,int8,uint8,uint8",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "atten_mask",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input5": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_lengths",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input6": {
+          "dtype": "int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64,int64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "actual_seq_lengths_kv",
+          "paramType": "optional",
+          "shape": "all",
+          "valueDepend": "optional"
+        },
+        "input7": {
+          "dtype": "uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,float32,float32,float32,float32,uint64,uint64,uint64,uint64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dequant_scale1",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input8": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "quant_scale1",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "input9": {
+          "dtype": "uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,uint64,uint64,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,uint64,uint64,uint64,uint64,float32,float32,float32,float32,uint64,uint64,uint64,uint64",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "dequant_scale2",
+          "paramType": "optional",
+          "shape": "all"
+        },
+        "jitCompile": {
+          "flag": "static_false,dynamic_false"
+        },
+        "needCheckSupport": {
+          "flag": "false"
+        },
+        "opFile": {
+          "value": "fused_infer_attention_score"
+        },
+        "opInterface": {
+          "value": "fused_infer_attention_score"
+        },
+        "output0": {
+          "dtype": "float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,int8,int8,float16,float16,int8,int8,bfloat16,bfloat16,int8,int8,bfloat16,bfloat16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,float16,float16,bfloat16,bfloat16,int8,int8,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,int8,int8,float16,float16,int8,int8,bfloat16,bfloat16,int8,int8,bfloat16,bfloat16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,float16,float16,float16,float16,int8,int8,int8,int8,int8,int8,int8,int8,float16,float16,bfloat16,bfloat16,float16,float16,bfloat16,bfloat16,float16,float16,float16,float16,float16,float16,int8,int8,float16,float16,float16,float16,bfloat16,bfloat16,float16,float16,int8,int8,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16,bfloat16",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "attention_out",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "output1": {
+          "dtype": "float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32,float32",
+          "format": "ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND,ND",
+          "name": "softmax_lse",
+          "paramType": "required",
+          "shape": "all"
+        },
+        "prebuildPattern": {
+          "value": "Opaque"
+        },
+        "precision_reduce": {
+          "flag": "true"
+        }
+      }
+    }
+  },
+  "pass_names": [
+    "MatMulBiasAddFusionPass",
+    "matmul_gelugrad_ub_fusion.cc",
+    "MatmulGelugradUbFusion",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Begin to do MatmulGelugradUbFusion!\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"End to do MatmulGelugradUbFusion!\"",
+    "matmul_fastgelugrad_ub_fusion.cc",
+    "MatmulFastGelugradUbFusion",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Begin to do MatmulFastGelugradUbFusion!\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"End to do MatmulFastGelugradUbFusion!\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Eltwise op type is not supported for matmul dequant gelu quant ub fusion pass, skip fusion.\"",
+    "TbeMatmulDequantFastGeluV2QuantPass",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"the Matmul node %s's input node number is %zu, may have biasadd graph fusion, not support atomic add.\"",
+    "L2Normalize",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"l2norm square.input_node.not same to mul.input_node.can not fusion.\"",
+    "bert/encoder",
+    "loss-BertPretrainingLoss/gradMul",
+    "FusedBatchNormBertFusionPass",
+    "fusedbatchnorm_bert_fusion_pass.cc",
+    "MatMulBiasAddFusion",
+    "matmul_biasadd_fusion_pass.cc",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"matmul biasadd fusion success!\"",
+    "matmul_reshape_biasadd_fusion_pass.cc",
+    "MatmulReshapeBiasAddFusion",
+    "MatMulReshapeBiasAddFusionPass",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"MatmulReshapeBiasAddFusion cannot be applied for unknown shape\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"MatmulReshapeBiasAddFusion only support that do not \" \"split the last dim of matmul node output when fusion with bias_add node.\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"matmul reshape biasadd fusion success!\"",
+    "bert",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"fusedmuladd fusion pass only used in bert network.\"",
+    "attention_score_fusion_pass.cc",
+    "ZAttentionScoreFusionPass",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Start ZAttentionScoreFusionPass.\"",
+    "/AttentionScore",
+    "AttentionScore",
+    "Add input0 of AttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input0 of AttentionScore failed.\"",
+    "Add input1 of AttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input1 of AttentionScore failed.\"",
+    "Add input2 of AttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input2 of AttentionScore failed.\"",
+    "Add input3 of AttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input3 of AttentionScore failed.\"",
+    "Add input4 of AttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input4 of AttentionScore failed.\"",
+    "attention_score",
+    "Add input5 of AttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input5 of AttentionScore failed.\"",
+    "Add output0 of AttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add output0 of AttentionScore failed.\"",
+    "Add output1 of AttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add output1 of AttentionScore failed.\"",
+    "Add AttentionScore to graph failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add AttentionScore to graph failed.\"",
+    "attention_score_grad_fusion_pass.cc",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input6 of AttentionScore failed.\"",
+    "Add input6 of AttentionScore failed.",
+    "/AttentionScoreGrad",
+    "AttentionScoreGrad",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Start ZAttentionScoreGradFusionPass.\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Start Create new Node AttentionScore.\"",
+    "Add AttentionScoreGrad to graph failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add AttentionScoreGrad to graph failed.\"",
+    "ZAttentionScoreGradFusionPass",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"UpgradeNodeList can not get matmul_list or bias_add_list!\"",
+    "swin_attention_score_fusion_pass.cc",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Start SwinAttentionScoreFusionPass::AddOutputEdgeForNode.\"",
+    "SwinAttentionScoreFusionPass",
+    "AAASwinAttentionScoreFusionPass",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Start SwinAttentionScoreFusionPass::Fusion.\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"swin_attention_score fusion pass only used in swin_transformer or GTP2 network.\"",
+    "SwinAttentionScore",
+    "Create SwinAttentionScore Op error",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Create SwinAttentionScore Op error\"",
+    "Add input0 of SwinAttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input0 of SwinAttentionScore failed.\"",
+    "Add input1 of SwinAttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input1 of SwinAttentionScore failed.\"",
+    "Add input2 of SwinAttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input2 of SwinAttentionScore failed.\"",
+    "Add input3 of SwinAttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input3 of SwinAttentionScore failed.\"",
+    "Add input4 of SwinAttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input4 of SwinAttentionScore failed.\"",
+    "Add input5 of SwinAttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input5 of SwinAttentionScore failed.\"",
+    "Add input6 of SwinAttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input6 of SwinAttentionScore failed.\"",
+    "Add output0 of SwinAttentionScore failed.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add output0 of SwinAttentionScore failed.\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"CheckOpSupported fail, SwinAttentionScore fusion fail.\"",
+    "MaskedSoftmaxWithRelPosBias",
+    "masked_softmax_with_relposbias_fusion_pass.cc",
+    "Add input x of MaskedSoftmaxWithRelPosBias.",
+    "Add output y of MaskedSoftmaxWithRelPosBias.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input x of MaskedSoftmaxWithRelPosBias.\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add output y of MaskedSoftmaxWithRelPosBias.\"",
+    "Add input2 of MaskedSoftmaxWithRelPosBias.",
+    "Add input1 of MaskedSoftmaxWithRelPosBias.",
+    "Add input0 of MaskedSoftmaxWithRelPosBias.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input2 of MaskedSoftmaxWithRelPosBias.\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input1 of MaskedSoftmaxWithRelPosBias.\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Add input0 of MaskedSoftmaxWithRelPosBias.\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Start MaskedSoftmaxWithRelPosBiasFusionPass::AddOutputEdgeForNode.\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Enter into define MaskedSoftmaxWithRelPosBias!\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Define MaskedSoftmaxWithRelPosBiasFusionPass pattern end!\"",
+    "MaskedSoftmaxWithRelPosBiasFusionPass",
+    "Create MaskedSoftmaxWithRelPosBias Op error",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Enter into MaskedSoftmaxWithRelPosBiasFusionPass!\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Create MaskedSoftmaxWithRelPosBias Op error\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Faild to create MaskedSoftmaxWithRelPosBias op Desc.\"",
+    "op[%s], Faild to create MaskedSoftmaxWithRelPosBias op Desc.",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"MaskedSoftmaxWithRelPosBias graph fusion success!\"",
+    "FusedInferAttentionScoreQuantDeployPass",
+    "fused_infer_attention_score_quant_deploy_pass.cc",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Define FusedInferAttentionScoreQuantDeployPass fusion begin.\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"Define FusedInferAttentionScoreQuantDeployPass fusion end.\"",
+    "FusedInferAttentionScore",
+    "FusedInferAttentionScoreQuantFusionPass",
+    "fused_infer_attention_score_quant_fusion_pass.cc",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"FusedInferAttentionScoreQuantFusionPass fusion begin.\"",
+    "[%s:%d][%s][%s][%lu] OpName:[%s] \"FusedInferAttentionScoreQuantFusionPass Fusion end.\"",
+    "N2fe22MatmulGelugradUbFusionE",
+    "N2fe26MatmulFastGelugradUbFusionE",
+    "CheckMatmulDequantGeluQuantFusion",
+    "N2fe28FusedBatchNormBertFusionPassE",
+    "N2fe23MatMulBiasAddFusionPassE",
+    "N2fe30MatMulReshapeBiasAddFusionPassE",
+    "N2fe25ZAttentionScoreFusionPassE",
+    "N2fe29ZAttentionScoreGradFusionPassE",
+    "N2fe28SwinAttentionScoreFusionPassE",
+    "N2fe37MaskedSoftmaxWithRelPosBiasFusionPassE",
+    "N2fe39FusedInferAttentionScoreQuantDeployPassE",
+    "N2fe39FusedInferAttentionScoreQuantFusionPassE"
+  ],
+  "headers": {
+    "FlashAttentionScore": {
+      "path": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_graph/inc/fusion_ops.h",
+      "line": 84,
+      "text": "/**\n* @brief Fast and Memory-Efficient Exact Attention with IO-Awareness.\n\n* @par Inputs:\n* twelve inputs, including:\n* @li query: A matrix Tensor. The type support float16, bf16, float32.\n* @li key: A matrix Tensor. The type support float16, bf16, float32.\n* @li value: A matrix Tensor. The type support float16, bf16, float32.\n* @li real_shift: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.\n* @li drop_mask: A matrix Tensor. An optional input parameter. The type support uint8.\n* @li padding_mask: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.\n* @li atten_mask: A matrix Tensor. An optional input parameter. The type support bool, uint8.\n* @li prefix: A matrix Tensor. An optional input parameter. The type support int64.\n* @li actual_seq_qlen: A matrix Tensor. An optional input parameter. The type support int64. If used,\n* layout need to be setted TND. ex. If the q seqlen is [2,2,2,2,2], this parameter need be setted [2,4,6,8,10].\n* @li actual_seq_kvlen: A matrix Tensor. An optional input parameter. The type support int64. If used,\n* layout need to be setted TND. ex. If the kv seqlen is [2,2,2,2,2], this parameter need be setted [2,4,6,8,10].\n* @li q_start_idx: A matrix Tensor. An optional input parameter. The type support int64.\n* @li kv_start_idx: A matrix Tensor. An optional input parameter. The type support int64.\n* @li d_scale_q: A matrix Tensor. An optional input parameter. The type support float32.\n* @li d_scale_k: A matrix Tensor. An optional input parameter. The type support float32.\n* @li d_scale_v: A matrix Tensor. An optional input parameter. The type support float32.\n* @li queryRope: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.\n* @li keyRope: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.\n* @li sink: A matrix Tensor. An optional input parameter. The type support float32.\n\n* @par Attributes:\n* @li scale_value: A float. The scale value. Default: 1.0.\n* @li keep_prob: A float. The keep probability of dropout. Default: 1.0.\n* @li pre_tockens: An int. Previous tokens.\n* @li next_tockens: An int. Next tokens.\n* @li head_num: An int. A required attribute. The number of the heads.\n* @li input_layout: A string. A required attribute. Specifies the layout of `query`, the value must be one of [\"BSH\",\n* \"SBH\", \"BNSD\", \"BSND\", \"TND\"].\n* @li inner_precise: An int. 0, 1, reserved value. 2, support invalid lines.\n* @li sparse_mode: An int. 0, defaultMsk. 1, allMask. 2, leftUpCausal. 3, rightDownCausal. 4, band. 5, prefix.\n* 6, prefixCompress. 7, rightDownCausalBand. 8, bandLeftUpCausal.\n* @li pse_type: An int. Optional attribute. Users can pass in 1 if they do not specify it.\n* The supported configuration values \u200b\u200bare 0, 1, 2, and 3.\n* @li seed: An int. Optional attribute. Default: 0.\n* @li offset: An int. Optional attribute.  Default: 0.\n* @li out_dtype: An int. Optional attribute.  Default: 0.\n* @li softmax_out_layout: A string. Optional attribute.  Default: \"\", the value must be one of [\"\", \"same_as_input\"].\n\n* @par Outputs:\n* @li softmax_max: A matrix Tensor. The type support float32.\n* @li softmax_sum: A matrix Tensor. The type support float32.\n* @li softmax_out: A matrix Tensor. The type support float16, bf16, float32.\n* @li attention_out: A matrix Tensor. The type support float16, bf16, float32.\n*/\nREG_OP(FlashAttentionScore)\n    .INPUT(query, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .INPUT(key, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .INPUT(value, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(real_shift, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(drop_mask, TensorType({DT_UINT8}))\n    .OPTIONAL_INPUT(padding_mask, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(atten_mask, TensorType({DT_BOOL, DT_UINT8}))\n    .OPTIONAL_INPUT(prefix, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(actual_seq_qlen, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(actual_seq_kvlen, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(q_start_idx, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(kv_start_idx, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(d_scale_q, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(d_scale_k, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(d_scale_v, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(query_rope, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(key_rope, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(sink, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(p_scale, TensorType({DT_FLOAT32}))\n    .OUTPUT(softmax_max, TensorType({DT_FLOAT32}))\n    .OUTPUT(softmax_sum, TensorType({DT_FLOAT32}))\n    .OUTPUT(softmax_out, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OUTPUT(attention_out, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .ATTR(scale_value, Float, 1.0)\n    .ATTR(keep_prob, Float, 1.0)\n    .ATTR(pre_tockens, Int, 2147483647)\n    .ATTR(next_tockens, Int, 2147483647)\n    .REQUIRED_ATTR(head_num, Int)\n    .REQUIRED_ATTR(input_layout, String)\n    .ATTR(inner_precise, Int, 0)\n    .ATTR(sparse_mode, Int, 0)\n    .ATTR(pse_type, Int, 1)\n    .ATTR(seed, Int, 0)\n    .ATTR(offset, Int, 0)\n    .ATTR(out_dtype, Int, 0)\n    .ATTR(softmax_out_layout, String, \"\")\n    .OP_END_FACTORY_REG(FlashAttentionScore)\n"
+    },
+    "FusedInferAttentionScore": {
+      "path": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_graph/inc/ops_proto_legacy.h",
+      "line": 13605,
+      "text": "/**\n* @brief Function FusedInferAttentionScore.\n\n* @par Inputs:\n* @li query: A matrix tensor. The type support int8, float16, bfloat16, hifloat8, float8_e5m2, float8_e4m3fn.\n* Query for attention structure.\n* @li key: It's a dynamic input. A matrix tensor. The type support int8, float16, bfloat16, hifloat8, float8_e5m2, float8_e4m3fn, int4, float4_e1m2, float4_e2m1.\n* Key for attention structure.\n* @li value: It's a dynamic input. A matrix tensor. The type support int8, float16, bfloat16, hifloat8, float8_e5m2, float8_e4m3fn, int4, float4_e1m2, float4_e2m1.\n* Value for attention structure.\n* @li pse_shift: A matrix tensor. The type support float16, bfloat16.\n* Postional encoding parameters inside the attention structure.\n* @li atten_mask: A matrix tensor. The type support float16, bool, uint8, int8.\n* Mask of the result QK, indicating whether to calculate the correlation between tokens.\n* @li actual_seq_lengths: A matrix tensor. The type support int64.\n* Efective sequence length of query in different batches.\n* @li actual_seq_lengths_kv: A matrix tensor. The type support int64.\n* Effective sequence length of key/value in different batches.\n* @li dequant_scale1: A matrix tensor. The type support uint64, float32.\n* Dequantization factor behind BMM1.\n* @li quant_scale1: A matrix tensor. The type support float32.\n* Quantification factor in front of BMM2.\n* @li dequant_scale2: A matrix tensor. The type support uint64, float32.\n* Dequantization factor behind BMM2\n* @li quant_scale2: A matrix tensor. The type support float32, bfloat16.\n* Quantization factor of the output.\n* @li quant_offset2: A matrix tensor. The type support float32, bfloat16.\n* Qantization offset of the output.\n* @li antiquant_scale: A matrix tensor. The type support float16, bfloat16.\n* Antiquantization factor.\n* @li antiquant_offset: A matrix tensor. The type support float16, bfloat16.\n* Antiquantization offset.\n* @li block_table: A matrix tensor. The type support int32.\n* The block mapping table used in KV storage of PageAttention.\n* @li query_padding_size: A matrix tensor. The type support int64.\n* Whether the data in each batch of query is right-aligned, and the number of right-aligned entries.\n* @li kv_padding_size: A matrix tensor. The type support int64.\n* Whether the data in each batch of key/value is right-aligned, and the number of right-aligned entries.\n* @li key_antiquant_scale: A matrix tensor. The type support float16, bfloat16, float32.\n* The dequantization factor of key when separating the KV antiquantization parameters.\n* @li key_antiquant_offset: A matrix tensor. The type support float16, bfloat16, float32.\n* The dequantization offset of key when separating the KV antiquantization parameters.\n* @li value_antiquant_scale: A matrix tensor. The type support float16, bfloat16, float32.\n* The dequantization factor of value when separating the KV antiquantization parameters.\n* @li value_antiquant_offset: A matrix tensor. The type support float16, bfloat16, float32.\n* The dequantization offset of value when separating the KV antiquantization parameters.\n* @li key_shared_prefix: A matrix tensor. The type support int8, float16, bfloat16.\n* The input of the system prefix part of key in the attention structure.\n* @li value_shared_prefix: A matrix tensor. The type support int8, float16, bfloat16.\n* The input of the system prefix part of value in the attention structure.\n* @li actual_shared_prefix_len: A matrix tensor. The type support int64.\n* Effective Sequence Length of key_shared_prefix/value_shared_prefix.\n* @li query_rope: A matrix tensor. The type support int8, float16, bfloat16.\n* The rope information of query in the MLA structure.\n* @li key_rope: A matrix tensor. The type support int8, float16, bfloat16.\n* The rope information of key in the MLA structure.\n* @li key_rope_antiquant_scale: A matrix tensor. The type support float16, bfloat16.\n* The dequantization factor of the rope information of key in the MLA structure.\n* @li dequant_scale_query: A matrix tensor. The type support float32.\n* The dequantization factor of query.\n* @li learnable_sink: A matrix tensor. The type support bfloat16.\n* The sink token factor of attention score.\n* @li q_start_idx: A matrix tensor. The type support int64.\n* start idx of q for alibi pse.\n* @li kv_start_idx: A matrix tensor. The type support int64.\n* start idx of kv for alibi pse.\n\n* @par Attributes:\n* @li num_heads: An int. The number of the heads.\n* @li scale: A float. The scale value. Default: 1.0.\n* @li pre_tokens: An int. Previous tokens. Default: 2147483647.\n* @li next_tokens: An int. Next tokens. Default: 2147483647.\n* @li input_layout: A string. Specifies the layout of `query`, the value must be one of [\"BSH\", \"BNSD\", \"BSND\", \"BNSD_BSND\"]. Default: \"BSH\".\n* @li num_key_value_heads: key value num heads. Default: 0.\n* @li sparse_mode: sparse mode. Default: 0.\n* - 0: default mask\n* - 1: all mask\n* - 2: leftUpCausal mask\n* - 3: rightDownCausal make\n* - 4: band mask\n* @li inner_precise: An int. 0, float16 high precision. 1, high performance. 2, high precision with row invalid fix. 3, high performance with row invalid fix. Default: 1.\n* @li block_size: An int. Default: 0.\n* In PageAttention, KV stores the maximum number of tokens in each block.\n* @li antiquant_mode: An int. Antiquantization mode, 0: per-channel (per-channel includes per-tensor); 1: per-token. Default: 0.\n* @li softmax_lse_flag: A bool. Whether to output softmax_lse. Default: false.\n* @li key_antiquant_mode: An int. Antiquantization mode of key. Default: 0.\n* - 0: per-channel (per-channel includes per-tensor)\n* - 1: per-token\n* - 2: per-tensor+per-head\n* - 3: per-token+per-head\n* - 4: per-token+using page attention mode to manage scale/offset\n* - 5: per-token+per-head+using page attention mode to manage scale/offset\n* - 6: per-token-group\n* @li value_antiquant_mode: An int. Antiquantization mode of key. The mode number is the same as key_antiquant_mode. Default: 0.\n* @li query_quant_mode: An int. Quantization mode of key. Only support mode 3: per-token+per-head now. Default: 0.\n* @li pse_type: An int. Type of pse, 0: generate pse outside, 2: generate pse inside, 3: generate pse inside and do sqrt. Default: 0.\n* @li out_dtype: An int. Dtype of attention_out tensor. Only supprt in PTA graph mode.\n* - 5: fp16, 15: bf16, 23: fp8 e5m2, 24: fp8 e4m3, 290: hifp8. Default: 0.\n\n* @par Outputs:\n* @li attention_out: A matrix tensor. The type support float16, int8, bfloat16.\n* The output of attention structure.\n* @li softmax_lse: A matrix tensor. The type support float32.\n* Ring attention takes the result of multiplying query by key, first finds the max to get softmax_max.\n* The result of query multiplied by key minus softmax_max is then exponentiated, followed by summing to obtain softmax_sum.\n* Finally, take the log of softmax_sum and add the result obtained from softmax_max.\n\n* @attention Constraints:\n* @li Ensure CANN and PyTorch package version compatibility when using this interface with PyTorch.\n* @li Handle empty input: Check if 'query' is empty; return if so.\n* If 'query' is non-empty and 'key', 'value' are empty tensors (i.e., S2=0), output a zero-filled tensor of the corresponding shape (fill 'attention_out').\n* If 'attention_out' is an empty tensor, AscendCLNN framework will handle it.\n* @li The shapes of tensors corresponding to 'key' and 'value' must be identical;\n* in non-continuous scenarios, the batch size in the tensor list of 'key' and 'value' must be 1, equal to the number of 'query', with B, N, and D being equal.\n*/\nREG_OP(FusedInferAttentionScore)\n    .INPUT(query, TensorType({DT_INT8, DT_FLOAT16, DT_BF16, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN}))\n    .DYNAMIC_INPUT(key, TensorType({DT_INT8, DT_FLOAT16, DT_BF16, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2, DT_INT4}))\n    .DYNAMIC_INPUT(value, TensorType({DT_INT8, DT_FLOAT16, DT_BF16, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2, DT_INT4}))\n    .OPTIONAL_INPUT(pse_shift, TensorType({DT_FLOAT16, DT_BF16}))\n    .OPTIONAL_INPUT(atten_mask, TensorType({DT_FLOAT16, DT_BOOL, DT_UINT8, DT_INT8}))\n    .OPTIONAL_INPUT(actual_seq_lengths, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(actual_seq_lengths_kv, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(dequant_scale1, TensorType({DT_UINT64, DT_FLOAT}))\n    .OPTIONAL_INPUT(quant_scale1, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(dequant_scale2, TensorType({DT_UINT64, DT_FLOAT}))\n    .OPTIONAL_INPUT(quant_scale2, TensorType({DT_FLOAT32, DT_BF16}))\n    .OPTIONAL_INPUT(quant_offset2, TensorType({DT_FLOAT32, DT_BF16}))\n    .OPTIONAL_INPUT(antiquant_scale, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(antiquant_offset, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(block_table, TensorType({DT_INT32}))\n    .OPTIONAL_INPUT(query_padding_size, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(kv_padding_size, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(key_antiquant_scale, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(key_antiquant_offset, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(value_antiquant_scale, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(value_antiquant_offset, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(key_shared_prefix, TensorType({DT_INT8, DT_FLOAT16, DT_BF16}))\n    .OPTIONAL_INPUT(value_shared_prefix, TensorType({DT_INT8, DT_FLOAT16, DT_BF16}))\n    .OPTIONAL_INPUT(actual_shared_prefix_len, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(query_rope, TensorType({DT_INT8, DT_FLOAT16, DT_BF16}))\n    .OPTIONAL_INPUT(key_rope, TensorType({DT_INT8, DT_FLOAT16, DT_BF16}))\n    .OPTIONAL_INPUT(key_rope_antiquant_scale, TensorType({DT_FLOAT16, DT_BF16}))\n    .OPTIONAL_INPUT(dequant_scale_query, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(learnable_sink, TensorType({DT_BF16}))\n    .OPTIONAL_INPUT(q_start_idx, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(kv_start_idx, TensorType({DT_INT64}))\n    .OUTPUT(attention_out, TensorType({DT_FLOAT16, DT_INT8, DT_BF16}))\n    .OUTPUT(softmax_lse, TensorType({DT_FLOAT32}))\n    .REQUIRED_ATTR(num_heads, Int)\n    .ATTR(scale, Float, 1.0)\n    .ATTR(pre_tokens, Int, 2147483647)\n    .ATTR(next_tokens, Int, 2147483647)\n    .ATTR(input_layout, String, \"BSH\")\n    .ATTR(num_key_value_heads, Int, 0)\n    .ATTR(sparse_mode, Int, 0)\n    .ATTR(inner_precise, Int, 1)\n    .ATTR(block_size, Int, 0)\n    .ATTR(antiquant_mode, Int, 0)\n    .ATTR(softmax_lse_flag, Bool, false)\n    .ATTR(key_antiquant_mode, Int, 0)\n    .ATTR(value_antiquant_mode, Int, 0)\n    .ATTR(query_quant_mode, Int, 0)\n    .ATTR(pse_type, Int, 0)\n    .ATTR(out_dtype, Int, 0)\n    .OP_END_FACTORY_REG(FusedInferAttentionScore)\n"
+    },
+    "FlashAttentionScoreGrad": {
+      "path": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_graph/inc/ops_proto_legacy.h",
+      "line": 13717,
+      "text": "/**\n* @brief Backwards calculation of FlashAttentionScore.\n\n* @par Inputs:\n* Seventeen inputs, including:\n* @li query: A matrix Tensor. The type support float16, bf16, float32.\n* @li key: A matrix Tensor. The type support float16, bf16, float32.\n* @li value: A matrix Tensor. The type support float16, bf16, float32.\n* @li dy: A matrix Tensor. The type support float16, bf16, float32.\n* @li pse_shift: A scalar. An optional input parameter. The type support float16, bf16, float32.\n* @li drop_mask: A matrix Tensor. An optional input parameter. The type support uint8.\n* @li padding_mask: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.\n* @li atten_mask: A matrix Tensor. An optional input parameter. The type support uint8, bool.\n* @li softmax_max: A matrix Tensor. An optional input parameter. The type support float32.\n* @li softmax_sum: A matrix Tensor. An optional input parameter. The type support float32.\n* @li softmax_in: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.\n* @li attention_in: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.\n* @li prefix: A matrix Tensor. An optional input parameter. The type support int64.\n* @li actual_seq_qlen: A matrix Tensor. An optional input parameter. The type support int64.\n* If used, layout need to be setted TND. ex. If the q seqlen is [2,2,2,2,2], this parameter need be setted [2,4,6,8,10].\n* @li actual_seq_kvlen: A matrix Tensor. An optional input parameter. The type support int64. If used,\n* layout need to be setted TND. ex. If the kv seqlen is [2,2,2,2,2], this parameter need be setted [2,4,6,8,10].\n* @li q_start_idx: A matrix Tensor. An optional input parameter. The type support int64.\n* @li kv_start_idx: A matrix Tensor. An optional input parameter. The type support int64.\n* @li d_scale_q: A matrix Tensor. An optional input parameter. The type support float32.\n* @li d_scale_k: A matrix Tensor. An optional input parameter. The type support float32.\n* @li d_scale_v: A matrix Tensor. An optional input parameter. The type support float32.\n* @li d_scale_dy: A matrix Tensor. An optional input parameter. The type support float32.\n* @li d_scale_o: A matrix Tensor. An optional input parameter. The type support float32.\n* @li query_rope: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.\n* @li key_rope: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.\n* @li sink: A matrix Tensor. An optional input parameter. The type support float32.\n\n* @par Attributes:\n* @li scale_value: A float. The scale value. Default: 1.0.\n* @li keep_prob: A float. The keep probability of dropout. Default: 1.0.\n* @li pre_tockens: An int. Previous tokens.\n* @li next_tockens: An int. Next tokens.\n* @li head_num: An int. A required attribute. The number of the heads.\n* @li input_layout: A string. A required attribute. Specifies the layout of `query`, the value must be one of [\"BSH\",\n* \"SBH\", \"BNSD\", \"BSND\", \"TND\"].\n* @li inner_precise: An int. 0, 1, reserved value. 2, support invalid lines.\n* @li sparse_mode: An int. 0, defaultMsk. 1, allMask. 2, leftUpCausal. 3, rightDownCausal. 4, band. 5, prefix.\n* 6, prefixCompress. 7, rightDownCausalBand. 8, bandLeftUpCausal.\n* @li pse_type: An int. Optional attribute. Users can pass in 1 if they do not specify it.\n* The supported configuration values \u200b\u200bare 0, 1, 2, and 3.\n* @li seed: An int. Optional attribute. Default: 0.\n* @li offset: An int. Optional attribute.  Default: 0.\n* @li out_dtype: An int. Optional attribute.  Default: 0.\n* @li softmax_in_layout: A string. Optional attribute.  Default: \"\", the value must be one of [\"\", \"same_as_input\"].\n\n* @par Outputs:\n* @li dq: A matrix Tensor. The type support float16, bf16, float32.\n* @li dk: A matrix Tensor. The type support float16, bf16, float32.\n* @li dv: A matrix Tensor. The type support float16, bf16, float32.\n* @li dpse: A matrix Tensor. The type support float16, bf16, float32.\n* @li dqRope: A matrix Tensor. The type support float16, bf16, float32.\n* @li dkRope: A matrix Tensor. The type support float16, bf16, float32.\n* @li dsink: A matrix Tensor. The type support float32.\n*/\nREG_OP(FlashAttentionScoreGrad)\n    .INPUT(query, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .INPUT(key, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .INPUT(value, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .INPUT(dy, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(pse_shift, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(drop_mask, TensorType({DT_UINT8}))\n    .OPTIONAL_INPUT(padding_mask, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(atten_mask, TensorType({DT_BOOL, DT_UINT8}))\n    .OPTIONAL_INPUT(softmax_max, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(softmax_sum, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(softmax_in, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(attention_in, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(prefix, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(actual_seq_qlen, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(actual_seq_kvlen, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(q_start_idx, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(kv_start_idx, TensorType({DT_INT64}))\n    .OPTIONAL_INPUT(d_scale_q, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(d_scale_k, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(d_scale_v, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(d_scale_dy, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(d_scale_o, TensorType({DT_FLOAT32}))\n    .OPTIONAL_INPUT(query_rope, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(key_rope, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OPTIONAL_INPUT(sink, TensorType({DT_FLOAT32}))\n    .OUTPUT(dq, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OUTPUT(dk, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OUTPUT(dv, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OUTPUT(dpse, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OUTPUT(dq_rope, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OUTPUT(dk_rope, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT32}))\n    .OUTPUT(dsink, TensorType({DT_FLOAT32}))\n    .ATTR(scale_value, Float, 1.0)\n    .ATTR(keep_prob, Float, 1.0)\n    .ATTR(pre_tockens, Int, 2147483647)\n    .ATTR(next_tockens, Int, 2147483647)\n    .REQUIRED_ATTR(head_num, Int)\n    .REQUIRED_ATTR(input_layout, String)\n    .ATTR(inner_precise, Int, 0)\n    .ATTR(sparse_mode, Int, 0)\n    .ATTR(pse_type, Int, 1)\n    .ATTR(seed, Int, 0)\n    .ATTR(offset, Int, 0)\n    .ATTR(out_dtype, Int, 0)\n    .ATTR(softmax_in_layout, String, \"\")\n    .OP_END_FACTORY_REG(FlashAttentionScoreGrad)\n"
+    },
+    "SwinAttentionScoreQuant": {
+      "path": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_graph/inc/fusion_ops.h",
+      "line": 3143,
+      "text": "/**\n* @brief The quant fusion operator of SwinAttentionScoreQuant.\n\n* @par Inputs:\n* @li query: A matrix Tensor. The type support int8.\n* @li key: A matrix Tensor. The type support int8.\n* @li value: A matrix Tensor. The type support int8.\n* @li scale_quant: A Tensor. The type support fp16.\n* @li scale_dequant1: A Tensor. The type support uint64.\n* @li scale_dequant2: A Tensor. The type support uint64.\n* @li bias_quant: A Tensor. The type support fp16.\n* @li bias_dequant1: A Tensor. The type support int32.\n* @li bias_dequant2: A Tensor. The type support int32.\n* @li padding_mask1: A matrix Tensor. The type support fp16.\n* @li padding_mask2: A matrix Tensor. The type support fp16.\n* @li attention_score: A matrix Tensor. The type support fp16.\n\n* @par Attributes:\n* @li query_transpose: A bool. Whether query is transposed. Default: false.\n* @li key_transpose: A bool. Whether key is transposed. Default: false.\n* @li value_transpose: A bool. Whether value is transposed. Default: false.\n* @li softmax_axes: An int. Which axes to calculate softmax. Default: -1.\n\n* @par Outputs:\n* @li attention_score: A matrix Tensor. The type support fp16. \\n\n*/\nREG_OP(SwinAttentionScoreQuant)\n    .INPUT(query, TensorType({DT_INT8}))\n    .INPUT(key, TensorType({DT_INT8}))\n    .INPUT(value, TensorType({DT_INT8}))\n    .INPUT(scale_quant, TensorType({DT_FLOAT16}))\n    .INPUT(scale_dequant1, TensorType({DT_UINT64}))\n    .INPUT(scale_dequant2, TensorType({DT_UINT64}))\n    .OPTIONAL_INPUT(bias_quant, TensorType({DT_FLOAT16}))\n    .OPTIONAL_INPUT(bias_dequant1, TensorType({DT_INT32}))\n    .OPTIONAL_INPUT(bias_dequant2, TensorType({DT_INT32}))\n    .OPTIONAL_INPUT(padding_mask1, TensorType({DT_FLOAT16}))\n    .OPTIONAL_INPUT(padding_mask2, TensorType({DT_FLOAT16}))\n    .OUTPUT(attention_score, TensorType({DT_FLOAT16}))\n    .ATTR(query_transpose, Bool, false)\n    .ATTR(key_transpose, Bool, false)\n    .ATTR(value_transpose, Bool, false)\n    .ATTR(softmax_axes, Int, -1)\n    .OP_END_FACTORY_REG(SwinAttentionScoreQuant)\n"
+    },
+    "AttentionScore": {
+      "path": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_graph/inc/ops_proto_legacy.h",
+      "line": 41370,
+      "text": "/**\n* @brief AttentionScore's forward calculation.\n\n* @par Inputs:\n* six inputs, including:\n* @li query: A matrix Tensor. The type only support float16. Enter a 4D Tensor.\n* @li key: A matrix Tensor. The type only support float16. Enter a 4D Tensor.\n* @li value: A matrix Tensor. The type only support float16. Enter a 4D Tensor.\n* @li padding_mask: A matrix Tensor. The type only support float16. Enter a 4D Tensor.\n* @li scale: A scalar. The type only support float16. Enter a 4D Tensor.\n* @li drop_mask: A matrix Tensor. An optional input parameter. The type only support uint8. Enter a 4D Tensor.\n\n* @par Attributes:\n* @li keep_prob: A float. The keep probability of dropout. Default: 1.0.\n* @li query_transpose: A bool. If True, changes the shape of \"query\" from [B, N, S, D] to [B, N, D, S].\n* Default: false.\n* @li key_transpose: A bool. If True, changes the shape of \"key\" from [B, N, S, D] to [B, N, D, S].\n* Default: false.\n* @li bmm_score_transpose_a: A bool. If True, changes the shape of \"mid_data\" from [B, N, S, D] to [B, N, D, S].\n* Default: false.\n* @li bmm_score_transpose_b: A bool. If True, changes the shape of \"value\" from [B, N, S, D] to [B, N, D, S].\n* Default: false.\n* @li softmax_axes: A list of int. The dimension softmax would be performed on. Defaults to \"[-1]\".\n\n* @par Outputs:\n* attention_score: The result matrix Tensor. The type only support float16. The output shape is the same as query.\n* softmax_output: The result matrix Tensor. The type only support float16. The output shape is the same as query.\n\n* @par Restrictions:\n* Warning: THIS FUNCTION IS EXPERIMENTAL. Please do not use.\n*/\nREG_OP(AttentionScore)\n    .INPUT(query, TensorType({DT_FLOAT16}))\n    .INPUT(key, TensorType({DT_FLOAT16}))\n    .INPUT(value, TensorType({DT_FLOAT16}))\n    .INPUT(padding_mask, TensorType({DT_FLOAT16}))\n    .INPUT(scale, TensorType({DT_FLOAT16}))\n    .OPTIONAL_INPUT(drop_mask, TensorType({DT_INT8}))\n    .OUTPUT(attention_score, TensorType({DT_FLOAT16}))\n    .OUTPUT(softmax_output, TensorType({DT_FLOAT16}))\n    .ATTR(keep_prob, Float, 1.0)\n    .ATTR(query_transpose, Bool, false)\n    .ATTR(key_transpose, Bool, false)\n    .ATTR(bmm_score_transpose_a, Bool, false)\n    .ATTR(bmm_score_transpose_b, Bool, false)\n    .ATTR(softmax_axes, ListInt, {-1})\n    .OP_END_FACTORY_REG(AttentionScore)\n"
+    },
+    "AttentionScoreGrad": {
+      "path": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_graph/inc/ops_proto_legacy.h",
+      "line": 41422,
+      "text": "/**\n* @brief Function AttentionScoreGrad. \\n\n\n* @par Inputs:\n* seven inputs, including:\n* @li attention_score: A matrix Tensor. The type only support float16.\n* @li dx: A matrix Tensor. The type only support float16.\n* @li query: A matrix Tensor. The type only support float16.\n* @li key: A matrix Tensor. The type only support float16.\n* @li value: A matrix Tensor. The type only support float16.\n* @li scale: A scalar. The type only support float16.\n* @li drop_mask: A matrix Tensor. The type only support uint8. \\n\n\n* @par Attributes:\n* @li keep_prob: A mutable Tensor. Must met all of the following rules:\n shape of \"keep_prob\" should be (1,) or [1,].\n* @li query_transpose: A bool. If True, changes the shape of \"query\" from [K, M] to\n [M, K].\n* @li key_transpose: A bool. If True, changes the shape of \"key\" from [N, K] to\n [K, N].\n* @li value_transpose: A bool. If True, changes the shape of \"mid_data\" from [K, M] to\n [M, K].\n* @li dx_transpose: A bool. If True, changes the shape of \"value\" from [N, K] to\n [K, N].\n* @li softmax_axes: A int. The dimension softmax would be performed on. Defaults\n to \"-1\" . \\n\n\n* @par Outputs:\n* value_dw: The result matrix Tensor. The type only support float16.\n* query_dx: The result matrix Tensor. The type only support float16.\n* key_dw: The result matrix Tensor. The type only support float16.\n\n* @par Restrictions:\n* Warning: THIS FUNCTION IS EXPERIMENTAL. Please do not use.\n*/\nREG_OP(AttentionScoreGrad)\n    .INPUT(attention_score, TensorType({DT_FLOAT16}))\n    .INPUT(dx, TensorType({DT_FLOAT16}))\n    .INPUT(query, TensorType({DT_FLOAT16}))\n    .INPUT(key, TensorType({DT_FLOAT16}))\n    .INPUT(value, TensorType({DT_FLOAT16}))\n    .INPUT(scale, TensorType({DT_FLOAT16}))\n    .OPTIONAL_INPUT(drop_mask, TensorType({DT_INT8}))\n    .OUTPUT(value_dw, TensorType({DT_FLOAT16}))\n    .OUTPUT(query_dx, TensorType({DT_FLOAT16}))\n    .OUTPUT(key_dw, TensorType({DT_FLOAT16}))\n    .ATTR(keep_prob, Float, 1.0)\n    .ATTR(query_transpose, Bool, false)\n    .ATTR(key_transpose, Bool, false)\n    .ATTR(value_transpose, Bool, false)\n    .ATTR(dx_transpose, Bool, false)\n    .ATTR(softmax_axes, Int, -1)\n    .OP_END_FACTORY_REG(AttentionScoreGrad)\n"
+    },
+    "SwinAttentionScore": {
+      "path": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_graph/inc/ops_proto_legacy.h",
+      "line": 42426,
+      "text": "/**\n* @brief Function SwinAttentionScore. \\n\n\n* @par Inputs:\n* six inputs, including:\n* @li query: A matrix Tensor. The type only support float16.\n* @li key: A matrix Tensor. The type only support float16.\n* @li value: A matrix Tensor. The type only support float16.\n* @li padding_mask1: A matrix Tensor. The type only support float16.\n* @li padding_mask2: A matrix Tensor. The type only support float16.\n* @li scale: A scalar. The type only support float16.\n* @li drop_mask: A matrix Tensor. The type only support uint8. \\n\n\n* @par Attributes:\n* @li keep_prob: A mutable Tensor. Must met all of the following rules:\n shape of \"keep_prob\" should be (1,) or [1,].\n* @li query_transpose: A bool. If True, changes the shape of \"query\" from [K, M] to\n [M, K].\n* @li key_transpose: A bool. If True, changes the shape of \"key\" from [N, K] to\n [K, N].\n* @li bmm_score_transpose_a: A bool. If True, changes the shape of \"mid_data\" from [K, M] to\n [M, K].\n* @li bmm_score_transpose_b: A bool. If True, changes the shape of \"value\" from [N, K] to\n [K, N].\n* @li softmax_axes: A list of int. The dimension softmax would be performed on. Defaults\n to \"[]\" . \\n\n\n* @par Outputs:\n* attention_score: The result matrix Tensor. The type only support float16.\n* softmax: The result matrix Tensor. The type only support float16.\n\n* @par Restrictions:\n* Warning: THIS FUNCTION IS EXPERIMENTAL. Please do not use.\n*/\nREG_OP(SwinAttentionScore)\n    .INPUT(query, TensorType({DT_FLOAT16}))\n    .INPUT(key, TensorType({DT_FLOAT16}))\n    .INPUT(value, TensorType({DT_FLOAT16}))\n    .OPTIONAL_INPUT(padding_mask1, TensorType({DT_FLOAT16}))\n    .OPTIONAL_INPUT(padding_mask2, TensorType({DT_FLOAT16}))\n    .INPUT(scale, TensorType({DT_FLOAT16}))\n    .OPTIONAL_INPUT(drop_mask, TensorType({DT_INT8}))\n    .OUTPUT(attention_score, TensorType({DT_FLOAT16}))\n    .OUTPUT(softmax, TensorType({DT_FLOAT16}))\n    .ATTR(keep_prob, Float, 1.0)\n    .ATTR(query_transpose, Bool, false)\n    .ATTR(key_transpose, Bool, false)\n    .ATTR(bmm_score_transpose_a, Bool, false)\n    .ATTR(bmm_score_transpose_b, Bool, false)\n    .ATTR(softmax_axes, ListInt, {})\n    .OP_END_FACTORY_REG(SwinAttentionScore)\n"
+    },
+    "MaskedSoftmaxWithRelPosBias": {
+      "path": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_graph/inc/matrix_calculation_ops.h",
+      "line": 2224,
+      "text": "/**\n* @brief swin_transformer model specific structure.Operator only supports swin_transformer.\n\n* @par Inputs:\n* Three inputs, including:\n* @li x: An ND Tensor. Must be one of the following types: float16, float, bfloat16,\n         the shape should be (B*W, N, S1, S2) or (B, W, N, S1, S2).\n* @li atten_mask: An ND Tensor. Must be one of the following types: float16, float, bfloat16,\n                  the shape should be (W, S1, S2) or (W, 1, S1, S2) or (1, W, 1, S1, S2)\n* @li relative_pos_bias: An ND Tensor. Must be one of the following types: float16, float, bfloat16.\n                         the shape sholud be (N, S1, S2) or (1, N, S1, S2) or (1, 1, N, S1, S2)\n\n* @par Attributes:\n* @li scale_value: A optional attribute, the type is float. Defaults to 1.0.\n* @li inner_precision_mode: A optional attribute, the type is int. Defaults to 0, reserved field.\n\n* @par Outputs:\n* One output, including:\n* @li y: An ND Tensor. Must be one of the following types: float16, float, bfloat16,\n         the shape should be same with x.\n*/\nREG_OP(MaskedSoftmaxWithRelPosBias)\n    .INPUT(x, TensorType({DT_FLOAT16, DT_BFLOAT16, DT_FLOAT}))\n    .OPTIONAL_INPUT(atten_mask, TensorType({DT_FLOAT16, DT_BFLOAT16, DT_FLOAT}))\n    .INPUT(relative_pos_bias, TensorType({DT_FLOAT16, DT_BFLOAT16, DT_FLOAT}))\n    .OUTPUT(y, TensorType({DT_FLOAT16, DT_BFLOAT16, DT_FLOAT}))\n    .ATTR(scale_value, Float, 1.0)\n    .ATTR(inner_precision_mode, Int, 0)\n    .OP_END_FACTORY_REG(MaskedSoftmaxWithRelPosBias)\n"
+    },
+    "L2Normalize": {
+      "path": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_graph/inc/ops_proto_legacy.h",
+      "line": 8183,
+      "text": "/**\n*@brief Normalizes elements of a specific dimension of eigenvalues (L2) .\n\n*@par Inputs:\n*x: A ND Tensor(1D-8D) of type float16 or float32, specifying the eigenvalue . \\n\n\n*@par Attributes:\n*@li axis: A optional required attribute of type list, specifying the axis for normalization Defaults to {} .\n*@li eps: An optional attribute of type float, specifying the lower limit of normalization. Defaults to \"1e-4\" . \\n\n\n*@par Outputs:\n*y: A ND Tensor(1D-8D) of type float16 or float32, specifying the eigenvalue for normalization. \\n\n\n*@par Third-party framework compatibility\n* Compatible with the L2 scenario of PyTorch operator Normalize.\n*/\nREG_OP(L2Normalize)\n    .INPUT(x, TensorType({DT_FLOAT16, DT_FLOAT}))\n    .OUTPUT(y, TensorType({DT_FLOAT16, DT_FLOAT}))\n    .ATTR(axis, ListInt, {})\n    .ATTR(eps, Float, 1e-4f)\n    .OP_END_FACTORY_REG(L2Normalize)\n"
+    },
+    "L2NormalizeGrad": {
+      "path": "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_graph/inc/ops_proto_legacy.h",
+      "line": 8214,
+      "text": "/**\n*@brief Performs the backpropagation of L2Normalize for training scenarios .\n\n*@par Inputs:\n* Three inputs, including:\n*@li x: A ND Tensor(1D-8D) of type float16 or float32, specifying\n* the eigenvalue of forward inputs.\n*@li y: A ND Tensor(1D-8D) of type float16 or float32, specifying\n* the normalization result of the forward output. the same shape with x.\n*@li dy: A ND Tensor(1D-8D) of type float16 or float32, specifying\n* the reverse input gradient. the same shape with x . \\n\n\n*@par Attributes:\n*@li dim: A required attribute of type int, specifying the axis to be\n* normalized.  Defaults to {}.\n*@li eps: An optional attribute of type float, specifying the lower limit of\n* normalization. Defaults to \"1e-4\" . \\n\n\n*@par Outputs:\n*dx: A ND Tensor(1D-8D), Reverse gradient of eigenvalue \"x\". Has the same shape as \"x\" . \\n\n\n*@par Third-party framework compatibility\n* Compatible with the L2 scenario of PyTorch operator NormalizeGrad.\n*/\nREG_OP(L2NormalizeGrad)\n    .INPUT(x, TensorType({DT_FLOAT, DT_FLOAT16}))\n    .INPUT(y, TensorType({DT_FLOAT, DT_FLOAT16}))\n    .INPUT(dy, TensorType({DT_FLOAT, DT_FLOAT16}))\n    .OUTPUT(dx, TensorType({DT_FLOAT, DT_FLOAT16}))\n    .ATTR(dim, ListInt, {})\n    .ATTR(eps, Float, 0.0001f)\n    .OP_END_FACTORY_REG(L2NormalizeGrad)\n"
+    }
+  }
+}

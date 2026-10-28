@@ -2,6 +2,23 @@
 import numpy as np
 
 
+def compare_business(config, outputs):
+    """Optional model-owned checks against external business reference data."""
+    path = config['verification'].get('script')
+    if not path:
+        return {}
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('_ge_business_verification', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    reports = module.compare(config, outputs)
+    if not isinstance(reports, dict) or set(reports) != set(outputs):
+        raise ValueError('business verification must report every selected case exactly once')
+    if any(not isinstance(report, dict) or type(report.get('passed')) is not bool for report in reports.values()):
+        raise ValueError('business verification requires a boolean passed for each case')
+    return reports
+
+
 def numeric(reference, candidate, policy):
     if reference.shape != candidate.shape:
         raise ValueError(f"shape mismatch: {reference.shape} != {candidate.shape}")

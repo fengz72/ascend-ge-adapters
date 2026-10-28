@@ -1,0 +1,43 @@
+{
+  "record_coverage_complete": true,
+  "allocated": [
+    "OPT-001",
+    "OPT-002",
+    "OPT-003",
+    "OPT-004",
+    "OPT-005",
+    "OPT-006",
+    "OPT-007",
+    "OPT-008",
+    "OPT-009"
+  ],
+  "records": [
+    "OPT-001",
+    "OPT-002",
+    "OPT-003",
+    "OPT-004",
+    "OPT-005",
+    "OPT-006",
+    "OPT-007",
+    "OPT-008",
+    "OPT-009"
+  ],
+  "summary": [
+    "OPT-001",
+    "OPT-002",
+    "OPT-003",
+    "OPT-004",
+    "OPT-005",
+    "OPT-006",
+    "OPT-007",
+    "OPT-008",
+    "OPT-009"
+  ],
+  "issues": [],
+  "not_checked": [
+    "metric values and changes",
+    "real execution/precision/performance evidence",
+    "adoption agrees with final artifact",
+    "placeholder content"
+  ]
+}

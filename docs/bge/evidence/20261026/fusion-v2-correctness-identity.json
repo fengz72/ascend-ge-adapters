@@ -1,0 +1,18 @@
+{
+  "at": "2026-10-26T03:16:35.308876+00:00",
+  "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+  "plan_sha256": "fb1b55f74d75da855a1a7e72b7adf428afd3e595af7c8b6a8defd2b56f6ad7e6",
+  "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/fusion-v2-correctness.json",
+  "device": 10,
+  "pci": "0000:89:00.0",
+  "env": [
+    "DUMP_GE_GRAPH=2",
+    "DUMP_GRAPH_LEVEL=3",
+    "DUMP_GRAPH_PATH=/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/fusion-v2-graph-dump"
+  ],
+  "runtime_env": {
+    "LD_PRELOAD": "/usr/lib64/libtcmalloc.so.4.5.16:/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass_v2.so"
+  },
+  "charged_before_seconds": 745.696424,
+  "launcher_sha256": "8f6c919d6e196016b451aae3085d82c029755d9deb92419f2b82b620a662372b"
+}

@@ -1,0 +1,38 @@
+model:
+  name: bge
+source:
+  kind: onnx
+  ref: ../materials/model.onnx
+target: Ascend910_9382
+reference:
+  device: cpu
+  dtype: float32
+data:
+  script: models/bge/generate_cases.py
+  directory: models/bge/io/inputs
+  params:
+    samples_file: ../materials/sample_inputs.json
+build:
+  backend: ge_session
+  dtype: float32
+  options:
+    precision_mode: force_fp16
+    aicore_num: 12|24
+verification:
+  case_ids: all
+  script: models/bge/verify.py
+  params:
+    expected_outputs: ../materials/expected_outputs.json
+    atol: 0.001
+  outputs:
+    scores:
+      policy: numeric
+      scope: per_sample
+      cosine_min: 0.9999
+      relative_l2_max: 0.001
+      max_abs_error: 0.001
+benchmark:
+  instances: 10
+  warmup: 1
+  iterations: 6
+  seed: 42

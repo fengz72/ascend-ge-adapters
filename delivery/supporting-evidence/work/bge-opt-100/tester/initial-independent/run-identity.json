@@ -1,0 +1,90 @@
+{
+  "schema": "bge-run-artifact-identity/2",
+  "passed": true,
+  "identity_manifest_sha256": "4dfb5d3780edeee6a94950e68a567f61d0966009d3ed55c827e8af2b0b5d0e91",
+  "runs": {
+    "base-pressure-d2": {
+      "passed": true,
+      "result_sha256": "70a16dd23311fdee93a0d45698f1da82b610585ee0d2c663a9d7dc3bb616c467",
+      "plan_sha256": "98fea41354e2b7552f2e5a4dff997c706391c5553d42b08d8d0cf46bf54d48f0",
+      "job_status_sha256": "0f6f1ce1a2bb389721d6cdf715b9281e1390bf095e7ed9a92b5cfa0b7c17e0dd",
+      "job_request_sha256": "6ad8c95218e30ee5294ea8b6b61fe6fe2062d8cc3782fe35ce151bf71c97113c",
+      "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "packed_graph_sha256": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "precision_mode": "must_keep_origin_dtype",
+      "plugins": {},
+      "seed": 42,
+      "physical_devices": [
+        "100/0000:99:00.0",
+        "100/0000:9B:00.0"
+      ],
+      "capture_enabled": true
+    },
+    "base-fixed-r1": {
+      "passed": true,
+      "result_sha256": "a8edfd4a08bc68ad0578710d3e1d8cdd87f1cd0633bf210b21f0e9089a30742c",
+      "plan_sha256": "fe56bf3faf63f5ec892061a347fd1603ea70e15dc8c35bbddac0bd5bd52b9c60",
+      "job_status_sha256": "6a107a6e45b320759c66420a4a6d0810a0392f7aba2c3cac322d6bcadabf3206",
+      "job_request_sha256": "7091dec7fa76a112108535a1b30a577f9b93718522978d4501b61f0b2c8b9731",
+      "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "packed_graph_sha256": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "input_binary_sha256": "27ce13c73cb35762ee7d0396d4425829d7e25a3b8ae2a12b37ed7f96b8690aa5",
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0002"
+        ],
+        "sampling": "fixed"
+      },
+      "precision_mode": "must_keep_origin_dtype",
+      "plugins": {},
+      "seed": 2027,
+      "physical_devices": [
+        "100/0000:99:00.0",
+        "100/0000:9B:00.0"
+      ],
+      "capture_enabled": false
+    },
+    "base-random-r1": {
+      "passed": true,
+      "result_sha256": "72455139860bda408caa3df5f3c83c6f306ec6296729b01d1e67441c5fdf72ea",
+      "plan_sha256": "4e0bc0c0ff7fe488ff3f1b8eb348ae6c50ddb339c2d08a6f6ac18f3f42439d77",
+      "job_status_sha256": "7f5a0cd8ad505268878f888f4837f383d40a0218dfbedc98ddf52e35c6da8d60",
+      "job_request_sha256": "9896ec1784de553c37214b4e3fca8120d6239e4472c06a2413e0361086e1563f",
+      "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "packed_graph_sha256": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "precision_mode": "must_keep_origin_dtype",
+      "plugins": {},
+      "seed": 2027,
+      "physical_devices": [
+        "100/0000:99:00.0",
+        "100/0000:9B:00.0"
+      ],
+      "capture_enabled": false
+    }
+  }
+}

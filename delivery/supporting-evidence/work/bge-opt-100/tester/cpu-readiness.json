@@ -1,0 +1,77 @@
+{
+  "schema": "bge100-independent-cpu-readiness/1",
+  "at": "2026-10-26T12:37:03.334903+00:00",
+  "passed": true,
+  "npu_used": false,
+  "ssh_used": false,
+  "npu_correctness_passed": null,
+  "npu_performance_passed": null,
+  "results": {
+    "dual_workload_cli": {
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-100/tester/cli-src/tests",
+        "-p",
+        "test_bge_replay_cli.py",
+        "-v"
+      ],
+      "cwd": "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh",
+      "PYTHONPATH": "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-20261026/python-deps:/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-100/tester/cli-src",
+      "exit_code": 0,
+      "log": "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-100/tester/dual-workload-cli.log",
+      "log_sha256": "9d6f21925fb67a8ff6b0c6b9d6b417cc7bc1490f197b8516cbc5e4231896571f"
+    },
+    "workload_identity_v2": {
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-20261026/acceptance-v2",
+        "-p",
+        "test_workload_identity.py",
+        "-v"
+      ],
+      "cwd": "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh",
+      "PYTHONPATH": "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-20261026/python-deps:/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-20261026/acceptance-v2",
+      "exit_code": 0,
+      "log": "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-100/tester/workload-identity-v2.log",
+      "log_sha256": "d520866bc088d8790143b478d72bcf09b9a8ef004183a264aa1832180fc8b5f0"
+    },
+    "legacy_adversarial": {
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "-c",
+        "from pathlib import Path\nimport json, runpy, verify_outputs as v\nv.REFERENCE=Path('/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-100/tester/legacy-acceptance/cpu-golden.npz')\nv.META=Path('/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-100/tester/legacy-acceptance/cpu-golden-manifest.json')\nv.EXPECTED=Path('/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-provided-samples/expected_outputs.json')\nout=v.selftest()\nPath('/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-100/tester/legacy-selftest.json').write_text(json.dumps(out,indent=2)+'\\n')\nrunpy.run_path('/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-100/tester/legacy-acceptance/test_acceptance.py',run_name='__main__')"
+      ],
+      "cwd": "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh",
+      "PYTHONPATH": "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-20261026/python-deps:/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-100/tester/legacy-acceptance",
+      "exit_code": 0,
+      "log": "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-100/tester/legacy-adversarial.log",
+      "log_sha256": "6c3f0bdde815b863f408de7774a71ef13d1bdb78280abdfd3003add70488b064"
+    }
+  },
+  "source_sha256": {
+    "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-20261026/measurement-src/models/bge/replay.py": "0b5ac3dde39951bd4976cbc342a54d3a2bb22ffcb2805d00304a26ef0f10b3b0",
+    "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-20261026/measurement-src/tests/test_bge_replay_cli.py": "599497ff6bf43feaaed3ed2984166cc7997167575529cdc85d76c8ee3d946925",
+    "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-20261026/acceptance-v2/workload_identity.py": "9fa70e5348ca30cd1663741f514d6f2e263aab35d3b922ff2068062eb1510a80",
+    "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-20261026/acceptance-v2/verify_outputs.py": "d37baaa29558f0aafc2285b989fdbf2d5d2ca5f0cbbc7bdc6cbc26ea2431695d",
+    "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-opt-20261026/acceptance-v2/test_workload_identity.py": "eb3be6b70671d91b9f93d04fc91e1c4fdf2c61241d2a61a46f0d16cce4734820",
+    "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/docs/bge/evidence/20261026/acceptance/verify_outputs.py": "538e9748132d32ee045382178389741949b5a0ee2fbdd70b1e6b96d39dc69e4a",
+    "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/docs/bge/evidence/20261026/acceptance/test_acceptance.py": "245353bc96ca31abe69a2d6cc3039b7b3f4ec4b0b1c5bc34537b1a3d72c4a19b",
+    "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/work/bge-provided-samples/expected_outputs.json": "4765cc2b9dac9d2f523f9a684a81082d3b943caaff1fd2c4db90cfdf1b375384",
+    "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/docs/bge/evidence/20261026/acceptance/cpu-golden.npz": "a59f406eb5782926181963e94cb1f87e1728621dedc3d613f88a7317d8213f35",
+    "/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh/docs/bge/evidence/20261026/acceptance/cpu-golden-manifest.json": "ba2afe4a2ab5c867174b5f515966f77413e79409d113c5a305fff7130bb3561f"
+  },
+  "fixture_path_override_only": true,
+  "limitations": [
+    "Preparation CLI is assembled in an isolated local source copy, not a frozen 100 build.",
+    "Legacy verifier fixture paths are overridden in memory; thresholds and logic unchanged.",
+    "Synthetic events validate test logic and are not NPU execution evidence."
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "checks": {
+    "graph_identity": true,
+    "layernorm_count": true,
+    "gelu_count": true,
+    "matmul_bias_count": true,
+    "l2_count": true,
+    "layernorm_boundary_set": true,
+    "gelu_boundary_set": true,
+    "all_selected_intermediates_closed": true,
+    "one_l2_constant_only": true
+  },
+  "npu_execution": false
+}

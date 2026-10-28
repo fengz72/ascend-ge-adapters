@@ -41,3 +41,8 @@ session-ses_*.md
 
 # Machine-local generated models, dependencies and execution results
 /work/
+
+# Historical CPU test build output in BGE evidence
+/docs/bge/evidence/**/measurement-cpu-build/
+# macOS transfer metadata
+**/._*

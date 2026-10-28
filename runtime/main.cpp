@@ -1,3 +1,4 @@
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -54,12 +55,49 @@ int main(int argc,char **argv) {
         bench.warmup=mode=="infer"?0:plan.at("warmup").get<int>();
         bench.requests=plan.at("iterations").get<int>();
         if(bench.threads<1 || bench.requests<1 || bench.warmup<0) throw std::runtime_error("invalid execution counts");
+        if(plan.contains("replay")) {
+            if(mode!="bench" || graph.backend!="ge_session") throw std::runtime_error("replay requires GE Session bench");
+            const auto &replay=plan.at("replay"); bench.replay.enabled=true;
+            bench.replay.runId=replay.at("run_id").get<std::string>();
+            bench.replay.minSeconds=replay.at("min_seconds").get<double>();
+            bench.replay.maxSeconds=replay.at("max_seconds").get<double>();
+            bench.replay.minRequests=replay.at("min_requests").get<size_t>();
+            bench.replay.maxRequests=replay.value("max_requests",size_t{2000000});
+            bench.replay.warmupPerCase=replay.value("warmup_per_case",10);
+            bench.replay.captureOutputs=replay.value("capture_outputs",false);
+            if(bench.replay.runId.empty() || !std::isfinite(bench.replay.minSeconds) || !std::isfinite(bench.replay.maxSeconds) ||
+                bench.replay.minSeconds<=0 || bench.replay.maxSeconds<bench.replay.minSeconds || !bench.replay.minRequests ||
+                bench.replay.maxRequests<bench.replay.minRequests || bench.replay.maxRequests>10000000 || bench.replay.warmupPerCase<1)
+                throw std::runtime_error("invalid replay timing/counts");
+        }
         const auto &options=plan.at("options");const auto &observe=plan.at("observability");
         bool profile=observe.value("profiling",false),dump=observe.value("dump",false);
         if(profile&&dump) throw std::runtime_error("collect profiling and dump separately");
         if(graph.backend=="ge_session" && dump) throw std::runtime_error("GE Session dump is unsupported");
         Json captured=Json::object();std::mutex captureMutex;std::ofstream binary;
-        if(mode!="bench") binary.open(output+"/outputs.bin",std::ios::binary);
+        std::ofstream manifest;
+        if(mode!="bench" || bench.replay.captureOutputs) {
+            binary.open(output+"/outputs.bin",std::ios::binary);
+            if(!binary) throw std::runtime_error("cannot open output binary");
+        }
+        if(bench.replay.captureOutputs) {
+            manifest.open(output+"/manifest.jsonl");
+            if(!manifest) throw std::runtime_error("cannot open capture manifest");
+        }
+        auto replayCapture=[&](int instance,const Request &request,const RequestRecord &record,const std::vector<HostTensor> &tensors) {
+            std::lock_guard<std::mutex> guard(captureMutex);
+            if(tensors.size()!=io.outputs.size() || !binary || !manifest) return false;
+            Json row={{"run_id",bench.replay.runId},{"request_id",record.req},{"instance",instance},
+                {"case_id",request.name},{"phase","measure"},{"tensors",Json::array()}};
+            for(const auto &tensor:tensors) {
+                auto offset=binary.tellp();if(offset<0) return false;
+                binary.write(tensor.data.data(),tensor.data.size());
+                row["tensors"].push_back({{"name",tensor.logical},{"dtype",tensor.dtype},{"shape",tensor.shape},
+                    {"offset",static_cast<size_t>(offset)},{"bytes",tensor.data.size()}});
+            }
+            binary.flush();if(!binary) return false;
+            manifest<<row.dump()<<'\n';manifest.flush();return static_cast<bool>(manifest);
+        };
         auto capture=[&](int instance,const Request &request,const std::vector<HostTensor> &tensors) {
             std::lock_guard<std::mutex> guard(captureMutex);
             if(tensors.size()!=io.outputs.size() || !binary) return false;
@@ -77,12 +115,13 @@ int main(int argc,char **argv) {
         if(graph.backend=="ge_session") {
             GeSessionOptions opt;opt.device=graph.device;opt.bench=bench;opt.pool=&pool;
             opt.seed=plan.at("seed").get<uint64_t>();
-            opt.graph_run_mode=options.value("graph_run_mode",1);
+            opt.graph_run_mode=options.value("graph_run_mode",opt.graph_run_mode);
             opt.precision_mode=options.value("precision_mode",std::string("force_fp16"));
             opt.aicore_num=options.value("aicore_num",std::string());
             opt.profiling.enabled=profile;opt.profiling.outputPath=output+"/"+mode+"-profiling";
             opt.profiling.aicMetrics=observe.value("aic_metrics",std::string("PipeUtilization"));
             if(mode!="bench") opt.capture=capture;
+            if(bench.replay.captureOutputs) opt.replayCapture=replayCapture;
             ok=RunGeSessionBackend(graph,io,opt,&perf);
         } else if(graph.backend=="atc_om") {
             AclOptions opt;opt.device=graph.device;opt.bench=bench;opt.pool=&pool;opt.seed=plan.at("seed").get<uint64_t>();
@@ -95,12 +134,20 @@ int main(int argc,char **argv) {
             }
             ok=RunAclBackend(graph,io,opt,&perf);
         } else throw std::runtime_error("unknown backend");
-        if(!ok && (mode!="bench" || perf.records.empty())) throw std::runtime_error("backend execution failed");
+        if(!ok && (mode!="bench" || (perf.records.empty() && perf.warmupRecords.empty()))) throw std::runtime_error("backend execution failed");
         Json result={{"status",ok?"success":"failed"},{"mode",mode},{"backend",graph.backend}};
         if(!ok) result["error"]="backend execution failed; partial measurements retained";
         if(mode=="bench") {
+            binary.close();manifest.close();
             result["performance"]=PerfToJson(perf);
+            if(bench.replay.enabled) {
+                result["replay"]=plan.at("replay");
+                if(!WriteRequestEvents(output+"/events.jsonl",perf)) throw std::runtime_error("cannot save replay events");
+                result["events"]=output+"/events.jsonl";
+                if(bench.replay.captureOutputs) result["manifest"]=output+"/manifest.jsonl";
+            }
             result["performance"]["profiling_enabled"]=profile;
+            result["performance"]["capture_enabled"]=bench.replay.captureOutputs;
             result["performance"]["sampling"]={{"seed",plan.at("seed")},{"replacement",true},{"pool_size",pool.requests.size()},{"order","global_request_index"}};
             if(!WriteRequestsCsv(output+"/requests.csv",perf)) throw std::runtime_error("cannot save request metrics");
         } else {binary.close();result["outputs"]=captured;}

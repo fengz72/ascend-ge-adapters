@@ -1,0 +1,14 @@
+{
+  "kind": "selftest",
+  "passed": true,
+  "checks": {
+    "golden_passes": true,
+    "reject_fp16_output": true,
+    "reject_nan": true,
+    "reject_full_vector_error": true,
+    "reject_same_shape_wrong_case": true,
+    "reject_top10_order_swap": true,
+    "nearest_rank_100": true,
+    "nearest_rank_1000": true
+  }
+}

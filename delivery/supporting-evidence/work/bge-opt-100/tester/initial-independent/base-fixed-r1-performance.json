@@ -1,0 +1,108 @@
+{
+  "kind": "performance",
+  "workload": {
+    "kind": "fixed_case",
+    "case_ids": [
+      "case-0002"
+    ],
+    "sampling": "fixed"
+  },
+  "input_identity": {
+    "passed": true,
+    "workload": {
+      "kind": "fixed_case",
+      "case_ids": [
+        "case-0002"
+      ],
+      "sampling": "fixed"
+    },
+    "input_binary": "/export/home/ext.hejun23/workspace/bge-opt-100/work/prepared/base-fixed-r1/inputs.bin",
+    "input_binary_sha256": "27ce13c73cb35762ee7d0396d4425829d7e25a3b8ae2a12b37ed7f96b8690aa5",
+    "input_bytes": 3448,
+    "cases": {
+      "case-0002": {
+        "input_ids": {
+          "passed": true,
+          "content_sha256": "dce2e25aecdbc4bdb176262702567c9ebd23895fac3842a3b6a3c947db22845c"
+        },
+        "attention_mask": {
+          "passed": true,
+          "content_sha256": "4bceb969a21579c6bc5a0fcbb54aa78d88778821db0846e1b49a71df6ed1f0f0"
+        },
+        "long_cid3_raw": {
+          "passed": true,
+          "content_sha256": "147c30e6d9e9bbf28d2c4781ffc2fe27f94e0a97c8bf120c11d49dcd2cf30c9d"
+        },
+        "long_action": {
+          "passed": true,
+          "content_sha256": "c1d24d60c076849e97dc34940cc767f1243bb38cb6baf04b5d5e9e9aac54beff"
+        },
+        "long_time_bucket": {
+          "passed": true,
+          "content_sha256": "fa2f5b182976f78592c41bbb813705973679d6c6b1f842bbfd8ec650a58f66c2"
+        },
+        "stat_dense_raw": {
+          "passed": true,
+          "content_sha256": "734ca99ec7f98eefcd4dee552dae73a81429baf11401201a262b97de591a880b"
+        },
+        "stat_ratio": {
+          "passed": true,
+          "content_sha256": "d558bf384f2b4e9c4f0a62bc7a13faf84a4831193b371f78f36d7e083684ec68"
+        },
+        "stat_count": {
+          "passed": true,
+          "content_sha256": "35be322d094f9d154a8aba4733b8497f180353bd7ae7b0a15f90b586b549f28b"
+        }
+      }
+    },
+    "reference_manifest_sha256": "ba2afe4a2ab5c867174b5f515966f77413e79409d113c5a305fff7130bb3561f",
+    "original_input_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44"
+  },
+  "passed": true,
+  "statistics_sufficient": true,
+  "errors": 0,
+  "minimum_seconds": 60.0,
+  "minimum_window_successes": 10000,
+  "window_seconds": 60.004877128,
+  "window_successes": 10262,
+  "cohort_successes": 10262,
+  "drain_ms": 0.0,
+  "qps": 171.0194319389991,
+  "p50_ms": 5.79743,
+  "p99_ms": 7.079841,
+  "max_ms": 11.56841,
+  "p99_limit": null,
+  "SLO_acceptance": "not_configured",
+  "per_case": {
+    "case-0002": {
+      "count": 10262,
+      "p50_ms": 5.79743,
+      "p99_ms": 7.079841
+    }
+  },
+  "segments": {
+    "h2d_ms": {
+      "mean": 0.10068690313778991,
+      "p99": 0.123
+    },
+    "desc_ms": {
+      "mean": 0.0008358994348080299,
+      "p99": 0.001
+    },
+    "execute_ms": {
+      "mean": 5.705176699473786,
+      "p99": 6.751988
+    },
+    "d2h_ms": {
+      "mean": 0.03701452143831612,
+      "p99": 0.05158
+    },
+    "unattributed_host_ms": {
+      "mean": 0.002955538101734516,
+      "p99": 0.004411000000000165
+    }
+  },
+  "events_sha256": "8d1c6060beb8bd1dfa0a88085881f1de4b2962f30bb6e60f30d9b2339fa57e56",
+  "performance_sha256": "a8edfd4a08bc68ad0578710d3e1d8cdd87f1cd0633bf210b21f0e9089a30742c",
+  "acceptance_level": "formal_round"
+}

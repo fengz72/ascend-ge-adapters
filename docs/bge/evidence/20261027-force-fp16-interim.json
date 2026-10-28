@@ -1,0 +1,1142 @@
+{
+  "schema": "bge-force-fp16-results/1",
+  "host": "100",
+  "device": 10,
+  "config": {
+    "instances": 8,
+    "aicore_num": "12|24"
+  },
+  "search": {
+    "fp32_case0": {
+      "name": "fp16-parent8-d10-case0-s1-20261027",
+      "qps": 577.1786633209173,
+      "p99_ms": 14.378613,
+      "successes": 17316,
+      "seconds": 30.001109016,
+      "precision_mode": "must_keep_origin_dtype",
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "report_sha256": "add9d10a761ccdb909c5bfe546e979851fc85cfaa183f58c099b06e3fc0b906a",
+      "plan_sha256": "2ece772389aa72c3bd80793b7d83a48a5e4f3b3dc9f269eede7db3777e9afe84",
+      "status_sha256": "32a0d3dd82839aaf294108e2e7bf7d68450f824c560b99b916593eadce06fff5",
+      "before_gate_sha256": "00e6ee876755ad8234fd33ec8a5009c5faa4b5b2433cf2050a25c50ac4f2b8b8"
+    },
+    "fp32_random": {
+      "name": "fp16-parent8-d10-random-s1-20261027",
+      "qps": 593.2515338087918,
+      "p99_ms": 14.132312,
+      "successes": 17798,
+      "seconds": 30.00076525,
+      "precision_mode": "must_keep_origin_dtype",
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "report_sha256": "4019f55720fb8ddd8df3cf95b5ca86cdef071e06ef71cb6889b669383b9ae59f",
+      "plan_sha256": "2ccb9531786f7fa1ab58f195869424e2839257ef640de8d8b09494a05f8edbb8",
+      "status_sha256": "f6148776b8505756faf394313ee30c5e79f137e604607a955acca12b51abeeda",
+      "before_gate_sha256": "262bc3739fb246ad84ca17a814875a416fb3852e4addaa342915cd534928b778"
+    },
+    "fp16_case0": {
+      "name": "fp16-half8-d10-case0-s1-20261027",
+      "qps": 868.3551426676779,
+      "p99_ms": 11.360937,
+      "successes": 26051,
+      "seconds": 30.000398132,
+      "precision_mode": "force_fp16",
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "report_sha256": "363bd2374bad6a466bbe20fa2d7a4160b38d2642d411427c852e76a6ba2a4050",
+      "plan_sha256": "a1302fc71bb7b0ba9b01f12b62d78a106744035f757f91e73c9cb3e7c2113523",
+      "status_sha256": "1c328b4ffa5751a8fa0860ad2b7e3507705d6e8a09bf92ede4c20bbb9ac9441b",
+      "before_gate_sha256": "c7d520ef9ec2f4252af1960be1d628bd9f47d5b9c8a3a0d0f2432e93f0676ab7"
+    },
+    "fp16_random": {
+      "name": "fp16-half8-d10-random-s1-20261027",
+      "qps": 796.6243199235013,
+      "p99_ms": 19.280985,
+      "successes": 23900,
+      "seconds": 30.001594732,
+      "precision_mode": "force_fp16",
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "report_sha256": "c9d1b723032c29b9ff967f06776d03c0cb9f548daa3c416c3787132c3a796ef9",
+      "plan_sha256": "e1ed010d76d1c01f9ce0fef7a2ac59a218c640a867db9398f3bc8b45e59a719d",
+      "status_sha256": "628faf010e37477ba06d62704e081cc41bdce45ea57a6b365a7158f672639a92",
+      "before_gate_sha256": "83a2e6ec8d2266dc001770f20652d716bd4a6cd63fa53ea5bee71066ad931534"
+    }
+  },
+  "pressure": {
+    "kind": "pressure",
+    "passed": true,
+    "requests": 2007,
+    "instances": 8,
+    "per_instance_case_counts": {
+      "0/case-0000": 61,
+      "0/case-0001": 41,
+      "0/case-0002": 53,
+      "0/case-0003": 54,
+      "0/case-0004": 56,
+      "1/case-0000": 51,
+      "1/case-0001": 55,
+      "1/case-0002": 52,
+      "1/case-0003": 44,
+      "1/case-0004": 58,
+      "2/case-0000": 51,
+      "2/case-0001": 42,
+      "2/case-0002": 50,
+      "2/case-0003": 54,
+      "2/case-0004": 41,
+      "3/case-0000": 52,
+      "3/case-0001": 45,
+      "3/case-0002": 42,
+      "3/case-0003": 47,
+      "3/case-0004": 40,
+      "4/case-0000": 47,
+      "4/case-0001": 57,
+      "4/case-0002": 46,
+      "4/case-0003": 54,
+      "4/case-0004": 56,
+      "5/case-0000": 54,
+      "5/case-0001": 50,
+      "5/case-0002": 59,
+      "5/case-0003": 53,
+      "5/case-0004": 46,
+      "6/case-0000": 36,
+      "6/case-0001": 49,
+      "6/case-0002": 57,
+      "6/case-0003": 47,
+      "6/case-0004": 49,
+      "7/case-0000": 50,
+      "7/case-0001": 51,
+      "7/case-0002": 48,
+      "7/case-0003": 53,
+      "7/case-0004": 56
+    },
+    "worst": {
+      "max_abs_error": 0.000568091869354248,
+      "relative_l2": 0.0008140968267763366,
+      "top10_max_abs_error": 0.0005680937499999983
+    },
+    "per_case_metrics": {
+      "case-0002": {
+        "requests": 407,
+        "failed_requests": 0,
+        "cosine_min": 0.9999997990551325,
+        "max_abs_error": 0.0005561113357543945,
+        "relative_l2_max": 0.0006972420869992297,
+        "top10_max_abs_error": 0.0005557187500000449
+      },
+      "case-0004": {
+        "requests": 402,
+        "failed_requests": 0,
+        "cosine_min": 0.9999998013159986,
+        "max_abs_error": 0.00043082237243652344,
+        "relative_l2_max": 0.0007139908753929234,
+        "top10_max_abs_error": 0.00043093750000000597
+      },
+      "case-0003": {
+        "requests": 406,
+        "failed_requests": 0,
+        "cosine_min": 0.9999997796319576,
+        "max_abs_error": 0.0004622936248779297,
+        "relative_l2_max": 0.0006938135452163394,
+        "top10_max_abs_error": 0.0004623124999999506
+      },
+      "case-0001": {
+        "requests": 390,
+        "failed_requests": 0,
+        "cosine_min": 0.9999997097541482,
+        "max_abs_error": 0.000568091869354248,
+        "relative_l2_max": 0.0008140968267763366,
+        "top10_max_abs_error": 0.0005680937499999983
+      },
+      "case-0000": {
+        "requests": 402,
+        "failed_requests": 0,
+        "cosine_min": 0.9999998820380299,
+        "max_abs_error": 0.00031644105911254883,
+        "relative_l2_max": 0.0005176109019162638,
+        "top10_max_abs_error": 0.00030562499999997605
+      }
+    },
+    "first_result_per_case": {
+      "case-0002": {
+        "request_id": 2,
+        "instance": 7,
+        "passed": true,
+        "reasons": [],
+        "cosine": 0.9999997990551325,
+        "relative_l2": 0.0006972420869992297,
+        "max_abs_error": 0.0005561113357543945,
+        "top10_ids_match": true,
+        "top10_order_match": true,
+        "top10_max_abs_error": 0.0005557187500000449,
+        "top10_dense_id": [
+          1,
+          2406,
+          4476,
+          8037,
+          8036,
+          282,
+          8429,
+          1131,
+          2,
+          1861
+        ],
+        "top10_score": [
+          0.9677734375,
+          0.65673828125,
+          0.427490234375,
+          0.4248046875,
+          0.419677734375,
+          0.37548828125,
+          0.32568359375,
+          0.31005859375,
+          0.297119140625,
+          0.28466796875
+        ],
+        "expected_top10_dense_id": [
+          1,
+          2406,
+          4476,
+          8037,
+          8036,
+          282,
+          8429,
+          1131,
+          2,
+          1861
+        ],
+        "expected_top10_score": [
+          0.968026,
+          0.657294,
+          0.427844,
+          0.425135,
+          0.419568,
+          0.37567,
+          0.325776,
+          0.310096,
+          0.297102,
+          0.284842
+        ]
+      },
+      "case-0004": {
+        "request_id": 6,
+        "instance": 0,
+        "passed": true,
+        "reasons": [],
+        "cosine": 0.9999998013159986,
+        "relative_l2": 0.0007139908753929234,
+        "max_abs_error": 0.00043082237243652344,
+        "top10_ids_match": true,
+        "top10_order_match": true,
+        "top10_max_abs_error": 0.00043093750000000597,
+        "top10_dense_id": [
+          184,
+          7714,
+          8948,
+          7708,
+          8945,
+          7849,
+          8947,
+          7516,
+          1123,
+          1745
+        ],
+        "top10_score": [
+          0.8212890625,
+          0.7724609375,
+          0.587890625,
+          0.56787109375,
+          0.53369140625,
+          0.533203125,
+          0.52734375,
+          0.5205078125,
+          0.4873046875,
+          0.47216796875
+        ],
+        "expected_top10_dense_id": [
+          184,
+          7714,
+          8948,
+          7708,
+          8945,
+          7849,
+          8947,
+          7516,
+          1123,
+          1745
+        ],
+        "expected_top10_score": [
+          0.82172,
+          0.77232,
+          0.58786,
+          0.568263,
+          0.533915,
+          0.533346,
+          0.527658,
+          0.520817,
+          0.487496,
+          0.472182
+        ]
+      },
+      "case-0003": {
+        "request_id": 3,
+        "instance": 5,
+        "passed": true,
+        "reasons": [],
+        "cosine": 0.9999997796319576,
+        "relative_l2": 0.0006938135452163394,
+        "max_abs_error": 0.0004622936248779297,
+        "top10_ids_match": true,
+        "top10_order_match": true,
+        "top10_max_abs_error": 0.0004623124999999506,
+        "top10_dense_id": [
+          4951,
+          6587,
+          4950,
+          5890,
+          4953,
+          4954,
+          2569,
+          8154,
+          4955,
+          7991
+        ],
+        "top10_score": [
+          0.9658203125,
+          0.60107421875,
+          0.46044921875,
+          0.447021484375,
+          0.441650390625,
+          0.40869140625,
+          0.403564453125,
+          0.38916015625,
+          0.3740234375,
+          0.35302734375
+        ],
+        "expected_top10_dense_id": [
+          4951,
+          6587,
+          4950,
+          5890,
+          4953,
+          4954,
+          2569,
+          8154,
+          4955,
+          7991
+        ],
+        "expected_top10_score": [
+          0.965358,
+          0.600887,
+          0.460258,
+          0.446975,
+          0.441846,
+          0.40828,
+          0.403394,
+          0.38904,
+          0.373884,
+          0.353106
+        ]
+      },
+      "case-0001": {
+        "request_id": 5,
+        "instance": 1,
+        "passed": true,
+        "reasons": [],
+        "cosine": 0.9999997097541482,
+        "relative_l2": 0.0008140968267763366,
+        "max_abs_error": 0.000568091869354248,
+        "top10_ids_match": true,
+        "top10_order_match": true,
+        "top10_max_abs_error": 0.0005680937499999983,
+        "top10_dense_id": [
+          4854,
+          1830,
+          4856,
+          4621,
+          4855,
+          4857,
+          4859,
+          4960,
+          4858,
+          227
+        ],
+        "top10_score": [
+          0.7568359375,
+          0.63037109375,
+          0.615234375,
+          0.61474609375,
+          0.595703125,
+          0.55859375,
+          0.50439453125,
+          0.47412109375,
+          0.460693359375,
+          0.44287109375
+        ],
+        "expected_top10_dense_id": [
+          4854,
+          1830,
+          4856,
+          4621,
+          4855,
+          4857,
+          4859,
+          4960,
+          4858,
+          227
+        ],
+        "expected_top10_score": [
+          0.757078,
+          0.629803,
+          0.614894,
+          0.614363,
+          0.595743,
+          0.558362,
+          0.504092,
+          0.473758,
+          0.460463,
+          0.442722
+        ]
+      },
+      "case-0000": {
+        "request_id": 8,
+        "instance": 7,
+        "passed": true,
+        "reasons": [],
+        "cosine": 0.9999998820380299,
+        "relative_l2": 0.0005176109019162638,
+        "max_abs_error": 0.00031644105911254883,
+        "top10_ids_match": true,
+        "top10_order_match": true,
+        "top10_max_abs_error": 0.00030562499999997605,
+        "top10_dense_id": [
+          7441,
+          7294,
+          7321,
+          5085,
+          7481,
+          6223,
+          7498,
+          1575,
+          7500,
+          7491
+        ],
+        "top10_score": [
+          0.98974609375,
+          0.54052734375,
+          0.537109375,
+          0.5361328125,
+          0.495849609375,
+          0.45556640625,
+          0.431884765625,
+          0.424072265625,
+          0.423583984375,
+          0.412841796875
+        ],
+        "expected_top10_dense_id": [
+          7441,
+          7294,
+          7321,
+          5085,
+          7481,
+          6223,
+          7498,
+          1575,
+          7500,
+          7491
+        ],
+        "expected_top10_score": [
+          0.990021,
+          0.540332,
+          0.537415,
+          0.536205,
+          0.496038,
+          0.455537,
+          0.431815,
+          0.42409,
+          0.423564,
+          0.412797
+        ]
+      }
+    },
+    "first_failure_per_case": {},
+    "failed_requests": 0,
+    "failures": [],
+    "manifest_sha256": "afe8f5b9ef7652bf2e93fa67a01263d73ff619853ed124bf581374ae4b587cb3",
+    "binary_sha256": "5610f18ee2c7c78f7407cec4930a27584af258b4494eb0cf2cd405d48b0187ee",
+    "events_sha256": "85d347baa472a8df131b91543365af8fa59a893a8a47532b15ea20a141df365a",
+    "reference_sha256": "a59f406eb5782926181963e94cb1f87e1728621dedc3d613f88a7317d8213f35",
+    "thresholds": {
+      "cosine_min": 0.9999,
+      "relative_l2_max": 0.001,
+      "max_abs_error": 0.001,
+      "top10_atol": 0.001,
+      "top10_rtol": 0
+    },
+    "job": "fp16-half8-d10-pressure-20261027"
+  },
+  "graph": {
+    "job": "fp16-graph-d10-r2-20261027",
+    "precision_mode": "force_fp16",
+    "graph_sha256": "e749c3579cd2feb2d4affadd22617bf9b6fbb65775e573975b22ed0188086c53",
+    "operator_count": 4141,
+    "dtype_counts": {
+      "DT_INT64": 1335,
+      "DT_FLOAT": 11,
+      "DT_FLOAT16": 2494,
+      "DT_INT32": 1119,
+      "DT_BOOL": 11
+    },
+    "selected_ops": {
+      "MatMulV2": {
+        "count": 144,
+        "signatures": [
+          {
+            "input_dtypes": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ],
+            "output_dtypes": [
+              "DT_FLOAT16"
+            ],
+            "count": 144
+          }
+        ],
+        "examples": [
+          {
+            "name": "/encoder/backbone/encoder/layer.0/attention/self/key/MatMul/MatMul",
+            "inputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          },
+          {
+            "name": "/encoder/backbone/encoder/layer.0/attention/self/query/MatMul/MatMul",
+            "inputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          },
+          {
+            "name": "/encoder/backbone/encoder/layer.0/attention/self/value/MatMul/MatMul",
+            "inputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          }
+        ]
+      },
+      "BatchMatMulV2": {
+        "count": 55,
+        "signatures": [
+          {
+            "input_dtypes": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              null,
+              null
+            ],
+            "output_dtypes": [
+              "DT_FLOAT16"
+            ],
+            "count": 54
+          },
+          {
+            "input_dtypes": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              null
+            ],
+            "output_dtypes": [
+              "DT_FLOAT16"
+            ],
+            "count": 1
+          }
+        ],
+        "examples": [
+          {
+            "name": "/cid_projection/MatMul",
+            "inputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              null,
+              null
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          },
+          {
+            "name": "/MatMul",
+            "inputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              null,
+              null
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          },
+          {
+            "name": "/MatMul_2",
+            "inputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              null,
+              null
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          }
+        ]
+      },
+      "LayerNorm": {
+        "count": 49,
+        "signatures": [
+          {
+            "input_dtypes": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ],
+            "output_dtypes": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ],
+            "count": 49
+          }
+        ],
+        "examples": [
+          {
+            "name": "/encoder/backbone/embeddings/LayerNorm/Add_1/LayerNorm",
+            "inputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ]
+          },
+          {
+            "name": "/encoder/backbone/encoder/layer.0/attention/output/LayerNorm/Add_1/LayerNorm",
+            "inputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ]
+          },
+          {
+            "name": "/encoder/backbone/encoder/layer.0/output/LayerNorm/Add_1/LayerNorm",
+            "inputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16",
+              "DT_FLOAT16",
+              "DT_FLOAT16"
+            ]
+          }
+        ]
+      },
+      "SoftmaxV2": {
+        "count": 25,
+        "signatures": [
+          {
+            "input_dtypes": [
+              "DT_FLOAT16"
+            ],
+            "output_dtypes": [
+              "DT_FLOAT16"
+            ],
+            "count": 25
+          }
+        ],
+        "examples": [
+          {
+            "name": "/encoder/backbone/encoder/layer.0/attention/self/Softmax",
+            "inputs": [
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          },
+          {
+            "name": "/encoder/backbone/encoder/layer.1/attention/self/Softmax",
+            "inputs": [
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          },
+          {
+            "name": "/encoder/backbone/encoder/layer.2/attention/self/Softmax",
+            "inputs": [
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          }
+        ]
+      },
+      "Gelu": {
+        "count": 24,
+        "signatures": [
+          {
+            "input_dtypes": [
+              "DT_FLOAT16"
+            ],
+            "output_dtypes": [
+              "DT_FLOAT16"
+            ],
+            "count": 24
+          }
+        ],
+        "examples": [
+          {
+            "name": "/encoder/backbone/encoder/layer.0/intermediate/intermediate_act_fn/Mul_1/Gelu",
+            "inputs": [
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          },
+          {
+            "name": "/encoder/backbone/encoder/layer.1/intermediate/intermediate_act_fn/Mul_1/Gelu",
+            "inputs": [
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          },
+          {
+            "name": "/encoder/backbone/encoder/layer.2/intermediate/intermediate_act_fn/Mul_1/Gelu",
+            "inputs": [
+              "DT_FLOAT16"
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          }
+        ]
+      },
+      "Cast": {
+        "count": 37,
+        "signatures": [
+          {
+            "input_dtypes": [
+              "DT_INT64"
+            ],
+            "output_dtypes": [
+              "DT_FLOAT16"
+            ],
+            "count": 24
+          },
+          {
+            "input_dtypes": [
+              "DT_FLOAT"
+            ],
+            "output_dtypes": [
+              "DT_FLOAT16"
+            ],
+            "count": 6
+          },
+          {
+            "input_dtypes": [
+              "DT_BOOL"
+            ],
+            "output_dtypes": [
+              "DT_FLOAT"
+            ],
+            "count": 2
+          },
+          {
+            "input_dtypes": [
+              "DT_FLOAT16"
+            ],
+            "output_dtypes": [
+              "DT_FLOAT"
+            ],
+            "count": 2
+          },
+          {
+            "input_dtypes": [
+              "DT_INT64"
+            ],
+            "output_dtypes": [
+              "DT_FLOAT"
+            ],
+            "count": 2
+          },
+          {
+            "input_dtypes": [
+              "DT_FLOAT16"
+            ],
+            "output_dtypes": [
+              "DT_BOOL"
+            ],
+            "count": 1
+          }
+        ],
+        "examples": [
+          {
+            "name": "/Cast",
+            "inputs": [
+              "DT_BOOL"
+            ],
+            "outputs": [
+              "DT_FLOAT"
+            ]
+          },
+          {
+            "name": "trans_Cast_27",
+            "inputs": [
+              "DT_FLOAT"
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          },
+          {
+            "name": "trans_Cast_0",
+            "inputs": [
+              "DT_FLOAT"
+            ],
+            "outputs": [
+              "DT_FLOAT16"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "formal_rounds": {
+    "fp32_case0": [
+      {
+        "name": "fp16-formal-d10-fp32-case0-r1-20261027",
+        "qps": 583.6324232947501,
+        "p99_ms": 14.249773,
+        "successes": 35018,
+        "seconds": 60.000093556,
+        "precision_mode": "must_keep_origin_dtype",
+        "workload": {
+          "kind": "fixed_case",
+          "case_ids": [
+            "case-0000"
+          ],
+          "sampling": "fixed"
+        },
+        "report_sha256": "b4a9dcd8aa56b0c1a09015e0111c8c3582eb75fb3dfdc62314ff8b16ada06307",
+        "plan_sha256": "c475d539e446936b02583028e7f49997aa17ded04a70bef84e79a9fcfd1be619",
+        "status_sha256": "58be103cf7dd49297e3eaaa1bbec8900d20c069f5ee21d7d782e7726881feaff",
+        "before_gate_sha256": "5fd1d59486cafbcaf08ce49ecb3ea67400dd052a4caef107fdf6826d9290379d"
+      },
+      {
+        "name": "fp16-formal-d10-fp32-case0-r2-20261027",
+        "qps": 584.8649173746899,
+        "p99_ms": 14.746537,
+        "successes": 35092,
+        "seconds": 60.000179456,
+        "precision_mode": "must_keep_origin_dtype",
+        "workload": {
+          "kind": "fixed_case",
+          "case_ids": [
+            "case-0000"
+          ],
+          "sampling": "fixed"
+        },
+        "report_sha256": "a1b8983a176ab04e839b3f966c88d97476e4ec75e8490c72d48a35151969b56e",
+        "plan_sha256": "e58a86273e1696ecfe3345771de6198835049f85d0c0cd2cfe2f6aaed79274c2",
+        "status_sha256": "bc58291d6f385ac3f996165f4b82d9019ce11389834a5afb06559cf536fe10f3",
+        "before_gate_sha256": "83933e5d6622df04e078976d4b542e3e88748b37864db6b2a02250d7a2073ebf"
+      }
+    ],
+    "fp16_case0": [
+      {
+        "name": "fp16-formal-d10-fp16-case0-r1-20261027",
+        "qps": 750.4817504657022,
+        "p99_ms": 22.831497,
+        "successes": 45031,
+        "seconds": 60.002791503,
+        "precision_mode": "force_fp16",
+        "workload": {
+          "kind": "fixed_case",
+          "case_ids": [
+            "case-0000"
+          ],
+          "sampling": "fixed"
+        },
+        "report_sha256": "157086a3da4f72819f84fcb99cc37d08e2e08da71724dcb6de4849f58ef4a205",
+        "plan_sha256": "3abf523bb6ce15f68cd15efa9117fb5fcb2ff79b1b39341bad40c5a06a0eef9c",
+        "status_sha256": "c81b8a5809867e22bb166efe7cdb31cd7a889bff9370d511ec82fd5c1d816229",
+        "before_gate_sha256": "e536cddcea0f54c70574237fbd669804f5df2b7a77d0e5e8e0284fa7f2518f12"
+      },
+      {
+        "name": "fp16-formal-d10-fp16-case0-r2-20261027",
+        "qps": 856.2467502010843,
+        "p99_ms": 13.060652,
+        "successes": 51375,
+        "seconds": 60.000227724,
+        "precision_mode": "force_fp16",
+        "workload": {
+          "kind": "fixed_case",
+          "case_ids": [
+            "case-0000"
+          ],
+          "sampling": "fixed"
+        },
+        "report_sha256": "884548c0b10f3c2db961f186c0789910e181614cfa4f19f7d24791b5e24ceb67",
+        "plan_sha256": "af7a6552e69e12e27156240000a4e98ae01a578ed0b642e4fddeda49a5f3105e",
+        "status_sha256": "ad7dd56840cc93e82a2b98a28ee81a4b7637e9378ed2175c0f6e7528de86e479",
+        "before_gate_sha256": "8329aae9af6816851069e241146ebc6f2239c48a560cdec90330495c24b34cbc"
+      }
+    ],
+    "fp32_random": [
+      {
+        "name": "fp16-formal-d10-fp32-random-r1-20261027",
+        "qps": 582.9399315975207,
+        "p99_ms": 15.355492,
+        "successes": 34977,
+        "seconds": 60.001036306,
+        "precision_mode": "must_keep_origin_dtype",
+        "workload": {
+          "kind": "random_cases",
+          "case_ids": [
+            "case-0000",
+            "case-0001",
+            "case-0002",
+            "case-0003",
+            "case-0004"
+          ],
+          "sampling": "uniform_with_replacement"
+        },
+        "report_sha256": "27aa0e7e2469fd0e842435e5b914d5766c41e39be7a681f144333859f9ea804d",
+        "plan_sha256": "1b79e2413a02f7ae241c0a61dd407715e1d422bd089e3897612d2bdac95deffc",
+        "status_sha256": "d5e5e470bc52b5a0b319ea98cd4127986b7524af1eb2917bbf293fd6a38b55ca",
+        "before_gate_sha256": "d19cec8edc8d061841833517e8bf56e7a9ea5bfd019030ca85868ed5e338f8ca"
+      },
+      {
+        "name": "fp16-formal-d10-fp32-random-r2-20261027",
+        "qps": 590.7186359318596,
+        "p99_ms": 14.633496,
+        "successes": 35445,
+        "seconds": 60.003185686,
+        "precision_mode": "must_keep_origin_dtype",
+        "workload": {
+          "kind": "random_cases",
+          "case_ids": [
+            "case-0000",
+            "case-0001",
+            "case-0002",
+            "case-0003",
+            "case-0004"
+          ],
+          "sampling": "uniform_with_replacement"
+        },
+        "report_sha256": "c0a3a953b7a81cf7f9b42c6e8f5084f2d49e4104c4a12b91409289cd0b14a697",
+        "plan_sha256": "0123bef82c71c3fb2a3026146f05089d5d148fc1c37201f9cb7fef4125357654",
+        "status_sha256": "185cadb8148fc2bca076845d3e64a8d4cc2833a9ebd66821e9846dea5c330691",
+        "before_gate_sha256": "5d0e117bbd79e973df79905311d7868efb9c6f0c4491b880414848aec3b38ee1"
+      }
+    ],
+    "fp16_random": [
+      {
+        "name": "fp16-formal-d10-fp16-random-r1-20261027",
+        "qps": 710.2084640074803,
+        "p99_ms": 20.562587,
+        "successes": 42613,
+        "seconds": 60.000692979,
+        "precision_mode": "force_fp16",
+        "workload": {
+          "kind": "random_cases",
+          "case_ids": [
+            "case-0000",
+            "case-0001",
+            "case-0002",
+            "case-0003",
+            "case-0004"
+          ],
+          "sampling": "uniform_with_replacement"
+        },
+        "report_sha256": "c6ecf08e45b2375bc095f82dfa5e80e33ef9c0fa3e36f037051a809e932ef9fc",
+        "plan_sha256": "8cce136d0ce37b61a242d9dc758c9b75155fbf77cfffb1f3ec9f6e3a501905da",
+        "status_sha256": "516797cf2511672bfc6badd34c56731a7f7624fae99b440f84a5720c3c86a1b5",
+        "before_gate_sha256": "4f6de73989cd589d6b9560756007ac0db6b4912a62aa919922bec45aa9238a2e"
+      },
+      {
+        "name": "fp16-formal-d10-fp16-random-r2-20261027",
+        "qps": 766.0709084852319,
+        "p99_ms": 19.981971,
+        "successes": 45967,
+        "seconds": 60.00358386,
+        "precision_mode": "force_fp16",
+        "workload": {
+          "kind": "random_cases",
+          "case_ids": [
+            "case-0000",
+            "case-0001",
+            "case-0002",
+            "case-0003",
+            "case-0004"
+          ],
+          "sampling": "uniform_with_replacement"
+        },
+        "report_sha256": "a7f89cccf7fdbc211e936c1afb6a24be1a1b3e5b7a4965cf413f351d00526f71",
+        "plan_sha256": "2a0b498c2dd8fd33a88392ead80a8d85c45296e41aa8d460c520d4011f210e90",
+        "status_sha256": "3ed73993c0346a1f536c316b1d7282f39d373566b4798cd8eabeb20011dcd62e",
+        "before_gate_sha256": "ff5ec10ae9194f0612cabee9238e76eb4cc71b9656408b9a304af2ca3e273fcf"
+      }
+    ]
+  },
+  "formal_complete": false,
+  "comparison": {
+    "case0": {
+      "fp32_median_qps": 584.2486703347199,
+      "fp16_median_qps": 803.3642503333933,
+      "qps_change_percent": 37.503821767046674,
+      "fp32_median_p99_ms": 14.498155,
+      "fp16_median_p99_ms": 17.946074499999998,
+      "fp32_qps_spread_percent": 0.21095368162903644,
+      "fp16_qps_spread_percent": 13.16526092510215,
+      "passes_significance_gate": null
+    },
+    "random": {
+      "fp32_median_qps": 586.8292837646902,
+      "fp16_median_qps": 738.1396862463562,
+      "qps_change_percent": 25.78439874557099,
+      "fp32_median_p99_ms": 14.994494,
+      "fp16_median_p99_ms": 20.272279,
+      "fp32_qps_spread_percent": 1.3255480852005308,
+      "fp16_qps_spread_percent": 7.568004473763979,
+      "passes_significance_gate": null
+    }
+  },
+  "interrupted_round": {
+    "job": "fp16-formal-d10-fp32-case0-r3-20261027",
+    "status": {
+      "task_id": "a470ffeaea134b8ba94d01d9a1c180bf",
+      "host": "A03-R40-I191-100-4100007.JD.LOCAL",
+      "supervisor": {
+        "pid": 153670,
+        "linux_start_ticks": "93166483",
+        "linux_boot_id": "d5f0673a-b0e5-4022-93b4-3aa8a60e16b9"
+      },
+      "cwd": "/export/home/ext.hejun23/workspace/bge-opt-100/runner",
+      "argv": [
+        "bash",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/env_run.sh",
+        "/usr/local/python3.11.15/bin/python3",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/tools/control.py",
+        "guarded",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/fp16-formal-d10-fp32-case0-r3-20261027.json",
+        "--job",
+        "fp16-formal-d10-fp32-case0-r3-20261027",
+        "--binary",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/runner/runtime/build/ge_runtime"
+      ],
+      "devices": [
+        "100/0000:89:00.0",
+        "100/0000:8B:00.0"
+      ],
+      "lock_root": "/export/home/ext.hejun23/workspace/.npu-workflow-locks",
+      "started_at": "2026-10-27T03:40:39.984026+00:00",
+      "device_release_checked": false,
+      "state": "finished",
+      "updated_at": "2026-10-27T03:40:43.199389+00:00",
+      "task": {
+        "pid": 153671,
+        "linux_start_ticks": "93166487",
+        "linux_boot_id": "d5f0673a-b0e5-4022-93b4-3aa8a60e16b9"
+      },
+      "pgid": 153671,
+      "reason": "exited",
+      "exit_code": 76,
+      "task_returncode": 76,
+      "process_group_stopped": true,
+      "finished_at": "2026-10-27T03:40:43.199363+00:00",
+      "locks_released_at": "2026-10-27T03:40:43.199380+00:00"
+    },
+    "before_gate": {
+      "at": "2026-10-27T03:40:43.169583+00:00",
+      "logical_device": 10,
+      "pci": "0000:89:00.0",
+      "rows": [
+        {
+          "chip": 0,
+          "returncode": 0,
+          "stdout": "\tGet pid name failed.\n\tProcess id:3990380 Process name:                  Process memory(MB):7938\n",
+          "stderr": ""
+        },
+        {
+          "chip": 1,
+          "returncode": 0,
+          "stdout": "\tNo process in device.\n",
+          "stderr": ""
+        }
+      ],
+      "full_returncode": 0,
+      "full_stdout": "+------------------------------------------------------------------------------------------------+\n| npu-smi 25.5.t6.b001             Version: 25.5.t6.b001                                         |\n+---------------------------+---------------+----------------------------------------------------+\n| NPU   Name                | Health        | Power(W)    Temp(C)           Hugepages-Usage(page)|\n| Chip  Phy-ID              | Bus-Id        | AICore(%)   Memory-Usage(MB)  HBM-Usage(MB)        |\n+===========================+===============+====================================================+\n| 0     Ascend910           | OK            | 167.0       43                0    / 0             |\n| 0     0                   | 0000:9D:00.0  | 0           0    / 0          8245 / 65536         |\n+------------------------------------------------------------------------------------------------+\n| 0     Ascend910           | OK            | -           42                0    / 0             |\n| 1     1                   | 0000:9F:00.0  | 0           0    / 0          59892/ 65536         |\n+===========================+===============+====================================================+\n| 1     Ascend910           | OK            | 169.9       42                0    / 0             |\n| 0     2                   | 0000:99:00.0  | 0           0    / 0          42759/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 1     Ascend910           | OK            | -           40                0    / 0             |\n| 1     3                   | 0000:9B:00.0  | 0           0    / 0          42467/ 65536         |\n+===========================+===============+====================================================+\n| 2     Ascend910           | OK            | 172.2       41                0    / 0             |\n| 0     4                   | 0000:95:00.0  | 0           0    / 0          42751/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 2     Ascend910           | OK            | -           41                0    / 0             |\n| 1     5                   | 0000:97:00.0  | 0           0    / 0          42468/ 65536         |\n+===========================+===============+====================================================+\n| 3     Ascend910           | OK            | 167.7       41                0    / 0             |\n| 0     6                   | 0000:91:00.0  | 0           0    / 0          42882/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 3     Ascend910           | OK            | -           41                0    / 0             |\n| 1     7                   | 0000:93:00.0  | 0           0    / 0          42494/ 65536         |\n+===========================+===============+====================================================+\n| 4     Ascend910           | OK            | 185.5       41                0    / 0             |\n| 0     8                   | 0000:8D:00.0  | 0           0    / 0          42738/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 4     Ascend910           | OK            | -           43                0    / 0             |\n| 1     9                   | 0000:8F:00.0  | 0           0    / 0          42499/ 65536         |\n+===========================+===============+====================================================+\n| 5     Ascend910           | OK            | 195.9       42                0    / 0             |\n| 0     10                  | 0000:89:00.0  | 0           0    / 0          10819/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 5     Ascend910           | OK            | -           41                0    / 0             |\n| 1     11                  | 0000:8B:00.0  | 0           0    / 0          2882 / 65536         |\n+===========================+===============+====================================================+\n| 6     Ascend910           | OK            | 197.2       41                0    / 0             |\n| 0     12                  | 0000:85:00.0  | 0           0    / 0          59490/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 6     Ascend910           | OK            | -           43                0    / 0             |\n| 1     13                  | 0000:87:00.0  | 0           0    / 0          2882 / 65536         |\n+===========================+===============+====================================================+\n| 7     Ascend910           | OK            | 342.3       48                0    / 0             |\n| 0     14                  | 0000:81:00.0  | 100         0    / 0          60124/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 7     Ascend910           | OK            | -           41                0    / 0             |\n| 1     15                  | 0000:83:00.0  | 0           0    / 0          2896 / 65536         |\n+===========================+===============+====================================================+\n+---------------------------+---------------+----------------------------------------------------+\n| NPU     Chip              | Process id    | Process name             | Process memory(MB)      |\n+===========================+===============+====================================================+\n| 0       0                 | 2408354       |                          | 5100                    |\n| 0       1                 | 2168341       |                          | 57033                   |\n+===========================+===============+====================================================+\n| 1       0                 | 3121937       |                          | 39606                   |\n| 1       1                 | 3122373       |                          | 39606                   |\n+===========================+===============+====================================================+\n| 2       0                 | 3122790       |                          | 39606                   |\n| 2       1                 | 3123254       |                          | 39606                   |\n+===========================+===============+====================================================+\n| 3       0                 | 3124057       |                          | 39657                   |\n| 3       1                 | 3124863       |                          | 39657                   |\n+===========================+===============+====================================================+\n| 4       0                 | 3125345       |                          | 39658                   |\n| 4       1                 | 3125716       |                          | 39658                   |\n+===========================+===============+====================================================+\n| No running processes found in NPU 5                                                            |\n+===========================+===============+====================================================+\n| 6       0                 | 3889720       |                          | 56406                   |\n+===========================+===============+====================================================+\n| 7       0                 | 3888927       |                          | 56994                   |\n+===========================+===============+====================================================+\n",
+      "clear": false
+    }
+  }
+}

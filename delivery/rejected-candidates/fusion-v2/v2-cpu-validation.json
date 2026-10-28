@@ -1,0 +1,193 @@
+{
+  "status": "pass",
+  "npu_initialized": false,
+  "fusion_graph_contract_tests": 7,
+  "environment_filter_tests": 11,
+  "integration_checks": [
+    "native maps self but child env excludes self",
+    "native child Python does not map self",
+    "other executable preserves original preload"
+  ],
+  "ldd_r_no_missing_or_undefined": true,
+  "commands": [
+    {
+      "argv": [
+        "g++",
+        "-std=c++17",
+        "-O2",
+        "-D_GLIBCXX_USE_CXX11_ABI=0",
+        "-I/usr/local/Ascend/cann-9.0.0/include",
+        "-fPIC",
+        "-shared",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/add_layernorm_pass_v2.cpp",
+        "-L/usr/local/Ascend/cann-9.0.0/lib64",
+        "-Wl,-rpath,/usr/local/Ascend/cann-9.0.0/lib64",
+        "-lge_compiler",
+        "-lge_common",
+        "-lge_common_base",
+        "-lgraph",
+        "-lgraph_base",
+        "-lregister",
+        "-ldl",
+        "-o",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/libbge_add_layernorm_pass_v2.build.so"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "g++",
+        "-std=c++17",
+        "-O2",
+        "-D_GLIBCXX_USE_CXX11_ABI=0",
+        "-I/usr/local/Ascend/cann-9.0.0/include",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/test_add_layernorm_pass.cpp",
+        "-L/usr/local/Ascend/cann-9.0.0/lib64",
+        "-Wl,-rpath,/usr/local/Ascend/cann-9.0.0/lib64",
+        "-lge_compiler",
+        "-lge_common",
+        "-lge_common_base",
+        "-lgraph",
+        "-lgraph_base",
+        "-lregister",
+        "-ldl",
+        "-o",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/test_add_layernorm_pass_v2"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/test_add_layernorm_pass_v2"
+      ],
+      "returncode": 0,
+      "stdout": "PASS valid\nPASS wrong-epsilon\nPASS nonlast-axis\nPASS shared-residual\nPASS statistics-used\nPASS control-edge\nPASS mixed-input-dtype\n7 CPU graph contract tests passed; no device execution\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "g++",
+        "-std=c++17",
+        "-O2",
+        "-D_GLIBCXX_USE_CXX11_ABI=0",
+        "-I/usr/local/Ascend/cann-9.0.0/include",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/test_preload_scope.cpp",
+        "-o",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/test_preload_scope"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/test_preload_scope",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/v2-filter-fixtures"
+      ],
+      "returncode": 0,
+      "stdout": "PASS self-only\nPASS colon-retain-other\nPASS space-tab-mixed\nPASS symlink-identifies-self\nPASS duplicate-self-only\nPASS unresolved-preserved\nPASS no-self-preserve-verbatim\nPASS non-runtime-python\nPASS similarly-named-runtime\nPASS empty-value\nPASS unknown-self-path\n11 preload filter tests passed\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "g++",
+        "-std=c++17",
+        "-O2",
+        "-D_GLIBCXX_USE_CXX11_ABI=0",
+        "-I/usr/local/Ascend/cann-9.0.0/include",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/preload_probe.cpp",
+        "-o",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/v2-cpu-probes/ge_runtime"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "g++",
+        "-std=c++17",
+        "-O2",
+        "-D_GLIBCXX_USE_CXX11_ABI=0",
+        "-I/usr/local/Ascend/cann-9.0.0/include",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/preload_probe.cpp",
+        "-o",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/v2-cpu-probes/cpu_probe"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/v2-cpu-probes/ge_runtime"
+      ],
+      "returncode": 0,
+      "stdout": "LD_PRELOAD=/usr/lib64/libtcmalloc.so.4.5.16\nSELF_MAPPED=1\n",
+      "stderr": "[BGE_PRELOAD_SCOPE] removed self from child LD_PRELOAD; other entries preserved\n"
+    },
+    {
+      "argv": [
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/v2-cpu-probes/ge_runtime",
+        "--child-python"
+      ],
+      "returncode": 0,
+      "stdout": "CHILD_LD_PRELOAD=/usr/lib64/libtcmalloc.so.4.5.16\nCHILD_SELF_MAPPED=False\n",
+      "stderr": "[BGE_PRELOAD_SCOPE] removed self from child LD_PRELOAD; other entries preserved\n"
+    },
+    {
+      "argv": [
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/v2-cpu-probes/cpu_probe"
+      ],
+      "returncode": 0,
+      "stdout": "LD_PRELOAD=/usr/lib64/libtcmalloc.so.4.5.16 /export/home/ext.hejun23/workspace/bge-opt-100/candidates/libbge_add_layernorm_pass_v2.so\nSELF_MAPPED=1\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "ldd",
+        "-r",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/libbge_add_layernorm_pass_v2.so"
+      ],
+      "returncode": 0,
+      "stdout": "\tlinux-vdso.so.1 (0x0000ffff91770000)\n\t/usr/lib64/libtcmalloc.so.4.5.16 (0x0000ffff91500000)\n\tlibge_compiler.so => /usr/local/Ascend/cann-9.0.0/lib64/libge_compiler.so (0x0000ffff8ffe0000)\n\tlibge_common.so => /usr/local/Ascend/cann-9.0.0/lib64/libge_common.so (0x0000ffff8fea0000)\n\tlibge_common_base.so => /usr/local/Ascend/cann-9.0.0/lib64/libge_common_base.so (0x0000ffff8f930000)\n\tlibgraph.so => /usr/local/Ascend/cann-9.0.0/lib64/libgraph.so (0x0000ffff8f710000)\n\tlibgraph_base.so => /usr/local/Ascend/cann-9.0.0/lib64/libgraph_base.so (0x0000ffff8ef50000)\n\tlibregister.so => /usr/local/Ascend/cann-9.0.0/lib64/libregister.so (0x0000ffff8eb10000)\n\tlibstdc++.so.6 => /lib64/libstdc++.so.6 (0x0000ffff8e8c0000)\n\tlibm.so.6 => /lib64/libm.so.6 (0x0000ffff8e820000)\n\tlibgcc_s.so.1 => /lib64/libgcc_s.so.1 (0x0000ffff8e7e0000)\n\tlibc.so.6 => /lib64/libc.so.6 (0x0000ffff8e630000)\n\tlibunwind.so.8 => /lib64/libunwind.so.8 (0x0000ffff8e5e0000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000ffff91780000)\n\tlibflow_graph.so => /usr/local/Ascend/cann-9.0.0/lib64/libflow_graph.so (0x0000ffff8e550000)\n\tlibaihac_autofusion.so => /usr/local/Ascend/cann-9.0.0/lib64/libaihac_autofusion.so (0x0000ffff8dfa0000)\n\tlibrt.so.1 => /lib64/librt.so.1 (0x0000ffff8df70000)\n\tlibdl.so.2 => /lib64/libdl.so.2 (0x0000ffff8df40000)\n\tlibpthread.so.0 => /lib64/libpthread.so.0 (0x0000ffff8df10000)\n\tlibaihac_codegen.so => /usr/local/Ascend/cann-9.0.0/lib64/libaihac_codegen.so (0x0000ffff8d0a0000)\n\tlibascend_trace.so => /usr/local/Ascend/cann-9.0.0/lib64/libascend_trace.so (0x0000ffff8c670000)\n\tlibaihac_symbolizer.so => /usr/local/Ascend/cann-9.0.0/lib64/libaihac_symbolizer.so (0x0000ffff8c250000)\n\tlibruntime.so => /usr/local/Ascend/cann-9.0.0/lib64/libruntime.so (0x0000ffff8c180000)\n\tlibopp_registry.so => /usr/local/Ascend/cann-9.0.0/lib64/libopp_registry.so (0x0000ffff8c0f0000)\n\tlibascend_protobuf.so.3.13.0.0 => /usr/local/Ascend/cann-9.0.0/lib64/libascend_protobuf.so.3.13.0.0 (0x0000ffff8bbc0000)\n\tlibc_sec.so => /usr/local/Ascend/cann-9.0.0/lib64/libc_sec.so (0x0000ffff8bb80000)\n\tlibascendalog.so => /usr/local/Ascend/cann-9.0.0/lib64/libascendalog.so (0x0000ffff8bb40000)\n\tlibunified_dlog.so => /usr/local/Ascend/cann-9.0.0/lib64/libunified_dlog.so (0x0000ffff8bb00000)\n\tlibplatform.so => /usr/local/Ascend/cann-9.0.0/lib64/libplatform.so (0x0000ffff8ba80000)\n\tlibacl_rt.so => /usr/local/Ascend/cann-9.0.0/lib64/libacl_rt.so (0x0000ffff8ba40000)\n\tlibascend_dump.so => /usr/local/Ascend/cann-9.0.0/lib64/libascend_dump.so (0x0000ffff8b8c0000)\n\tlibexe_graph.so => /usr/local/Ascend/cann-9.0.0/lib64/libexe_graph.so (0x0000ffff8b820000)\n\tliblowering.so => /usr/local/Ascend/cann-9.0.0/lib64/liblowering.so (0x0000ffff8b740000)\n\tlibmetadef.so => /usr/local/Ascend/cann-9.0.0/lib64/libmetadef.so (0x0000ffff8b620000)\n\tliberror_manager.so => /usr/local/Ascend/cann-9.0.0/lib64/liberror_manager.so (0x0000ffff8b5b0000)\n\tlibaihac_ir_register.so => /usr/local/Ascend/cann-9.0.0/lib64/libaihac_ir_register.so (0x0000ffff8b550000)\n\tlibaihac_ir.so => /usr/local/Ascend/cann-9.0.0/lib64/libaihac_ir.so (0x0000ffff8b4a0000)\n\tlibmmpa.so => /usr/local/Ascend/cann-9.0.0/lib64/libmmpa.so (0x0000ffff8b470000)\n\tlibascend_hal.so => /usr/local/Ascend/driver/lib64/driver/libascend_hal.so (0x0000ffff8afd0000)\n\tlibruntime_common.so => /usr/local/Ascend/cann-9.0.0/lib64/libruntime_common.so (0x0000ffff8af70000)\n\tlibprofapi.so => /usr/local/Ascend/cann-9.0.0/lib64/libprofapi.so (0x0000ffff8af20000)\n\tlibacl_rt_impl.so => /usr/local/Ascend/cann-9.0.0/lib64/libacl_rt_impl.so (0x0000ffff8ae30000)\n\tlibascend_watchdog.so => /usr/local/Ascend/cann-9.0.0/lib64/libascend_watchdog.so (0x0000ffff8ae00000)\n",
+      "stderr": ""
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/add_layernorm_pass_v2.cpp",
+      "bytes": 1275,
+      "sha256": "831de3786b4251b1fb26d4e641050dfbb2186229f29a946605671d19fe83bf74"
+    },
+    {
+      "path": "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/preload_scope_filter.h",
+      "bytes": 1745,
+      "sha256": "df898ca1aea1452a4c9b36a54bae241cef423feac80e04558f55648addecdc59"
+    },
+    {
+      "path": "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/test_preload_scope.cpp",
+      "bytes": 2295,
+      "sha256": "826310aaf311e85a65050f1aba8bd01d345eb72d20a76363f0665d190e63157c"
+    },
+    {
+      "path": "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/preload_probe.cpp",
+      "bytes": 846,
+      "sha256": "f324ba62c95d9e74d610cd56af6d985e7e5217fdf084f871e763e64013c1227c"
+    },
+    {
+      "path": "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/build_add_layernorm_v2.py",
+      "bytes": 4273,
+      "sha256": "2a1578df057c010b53a60aae7c893108bc4d86e770c72b144fa4e51c96521aee"
+    },
+    {
+      "path": "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/libbge_add_layernorm_pass_v2.so",
+      "bytes": 90904,
+      "sha256": "76ea9fb0f1800369b023e22d71298e508dcfaa6f69f34bcf952af4a1b5fa48ed"
+    }
+  ]
+}

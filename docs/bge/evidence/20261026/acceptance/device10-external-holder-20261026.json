@@ -1,0 +1,50 @@
+{
+  "checked_at": "2026-10-26T04:00:20.255998+00:00",
+  "device": 10,
+  "physical_npu": 5,
+  "chip": 0,
+  "pci": "0000:89:00.0",
+  "proc_mem": {
+    "code": 187,
+    "stdout": "DrvMngGetConsoleLogLevel failed. (ret=4)\ndcmi module initialize failed. ret is -8005\n",
+    "stderr": ""
+  },
+  "external_process_identity": {
+    "host_pid": 4088730,
+    "comm": "python",
+    "proc_fields": {
+      "Name": "python",
+      "Pid": "4088730",
+      "PPid": "894179",
+      "NSpid": "4088730\t325016",
+      "VmRSS": "1910464 kB"
+    },
+    "expected_holder_config": "/export/home/wangyifan194/runs/dspark-pipeline-validation-20261025T173556/resources/npu-holds-20261025T201930/restore-20261026T115746080483/device-10.json",
+    "expected_config_argument_matched": true,
+    "dspark_holder_token_matched": true,
+    "torch_npu_token_matched": true,
+    "start_time_ps": {
+      "code": 0,
+      "stdout": "    PID    PPID                  STARTED COMMAND\n4088730  894179 Mon Oct 26 11:57:45 2026 python\n",
+      "stderr": ""
+    },
+    "source": "Host /proc/PID/status, comm, cmdline token match and ps. Other command arguments are not archived."
+  },
+  "conclusion": "External holder is not from this task's frozen ge_runtime/launcher process chain; no new NPU task was initiated by this collection.",
+  "container_proc_mem": {
+    "checked_at": "2026-10-26T04:00:54.304994+00:00",
+    "code": 0,
+    "stdout": "\tGet pid name failed.\n\tProcess id:4088730 Process name:                  Process memory(MB):136\n",
+    "stderr": ""
+  },
+  "blocked_before_gate": {
+    "path": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/half8-correctness-before.json",
+    "sha256": "f6da579701669a45b01fd70e9970f60e5e793680c2d764a6e99dd46530d41a48",
+    "content": {
+      "at": "2026-10-26T03:58:14.719463+00:00",
+      "code": 0,
+      "stdout": "\tGet pid name failed.\n\tProcess id:4088730 Process name:                  Process memory(MB):136\n",
+      "stderr": ""
+    }
+  }
+}

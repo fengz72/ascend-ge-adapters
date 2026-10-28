@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-26T03:40:41.707711+00:00",
+  "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+  "plan_sha256": "37ca679bd1eadee5d5ff8b2e1f7c12901c2b394e5af1a978d2bed3125a46a051",
+  "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi4-search.json",
+  "device": 10,
+  "pci": "0000:89:00.0",
+  "env": [],
+  "runtime_env": {},
+  "charged_before_seconds": 996.7366209999999,
+  "launcher_sha256": "8f6c919d6e196016b451aae3085d82c029755d9deb92419f2b82b620a662372b"
+}

@@ -1,0 +1,229 @@
+{
+  "schema": "bge-independent-rounds/1",
+  "passed": true,
+  "runs": [
+    "fusion-v2-search"
+  ],
+  "instances": 1,
+  "device": 10,
+  "rounds": [
+    {
+      "kind": "performance",
+      "passed": true,
+      "statistics_sufficient": true,
+      "errors": 0,
+      "minimum_seconds": 30.0,
+      "minimum_window_successes": 2000,
+      "window_seconds": 30.003212442,
+      "window_successes": 5154,
+      "cohort_successes": 5154,
+      "drain_ms": 0.0,
+      "qps": 171.78160538520112,
+      "p50_ms": 5.881082,
+      "p99_ms": 6.137444,
+      "max_ms": 8.341117,
+      "p99_limit": null,
+      "SLO_acceptance": "not_configured",
+      "per_case": {
+        "case-0001": {
+          "count": 1072,
+          "p50_ms": 5.858991,
+          "p99_ms": 6.104233
+        },
+        "case-0004": {
+          "count": 957,
+          "p50_ms": 5.929952,
+          "p99_ms": 6.183395
+        },
+        "case-0000": {
+          "count": 1061,
+          "p50_ms": 5.865101,
+          "p99_ms": 6.112784
+        },
+        "case-0002": {
+          "count": 1027,
+          "p50_ms": 5.927302,
+          "p99_ms": 6.147475
+        },
+        "case-0003": {
+          "count": 1037,
+          "p50_ms": 5.836871,
+          "p99_ms": 6.080064
+        }
+      },
+      "segments": {
+        "h2d_ms": {
+          "mean": 0.08878405122235156,
+          "p99": 0.104
+        },
+        "desc_ms": {
+          "mean": 0.000942956926658906,
+          "p99": 0.001
+        },
+        "execute_ms": {
+          "mean": 5.690278390376406,
+          "p99": 6.003683
+        },
+        "d2h_ms": {
+          "mean": 0.03800623729142413,
+          "p99": 0.04718
+        },
+        "unattributed_host_ms": {
+          "mean": 0.002736214590609162,
+          "p99": 0.003820999999999408
+        }
+      },
+      "events_sha256": "e8401497eba7219bc1b906284fb935f3f1c7616799116dbef7ef4bc61ba3e28f",
+      "performance_sha256": "08e91e59548dc7cb47212c11e68354dda9309f67028ecc291e9b6b96df1732db",
+      "run_id": "fusion-v2-search",
+      "seed": 42,
+      "plan_sha256": "9b49fcc12bf7cc6a86282a36955b4c0adc43894f8bd53245e6918cecaf33719b",
+      "per_case_counts": {
+        "case-0000": 1061,
+        "case-0001": 1072,
+        "case-0002": 1027,
+        "case-0003": 1037,
+        "case-0004": 957
+      },
+      "ten_second_windows": [
+        {
+          "start_seconds": 0,
+          "seconds": 10.0,
+          "successes": 1785,
+          "qps": 178.5
+        },
+        {
+          "start_seconds": 10,
+          "seconds": 10.0,
+          "successes": 1684,
+          "qps": 168.4
+        },
+        {
+          "start_seconds": 20,
+          "seconds": 10.0,
+          "successes": 1684,
+          "qps": 168.4
+        },
+        {
+          "start_seconds": 30,
+          "seconds": 0.0032124419999988163,
+          "successes": 1,
+          "qps": 311.289666864139
+        }
+      ]
+    }
+  ],
+  "median_qps": 171.78160538520112,
+  "min_qps": 171.78160538520112,
+  "max_qps": 171.78160538520112,
+  "qps_relative_range_percent": 0.0,
+  "merged_request_count": 5154,
+  "merged_p50_ms": 5.881082,
+  "merged_p99_ms": 6.137444,
+  "merged_per_case": {
+    "case-0000": {
+      "count": 1061,
+      "p50_ms": 5.865101,
+      "p99_ms": 6.112784
+    },
+    "case-0001": {
+      "count": 1072,
+      "p50_ms": 5.858991,
+      "p99_ms": 6.104233
+    },
+    "case-0002": {
+      "count": 1027,
+      "p50_ms": 5.927302,
+      "p99_ms": 6.147475
+    },
+    "case-0003": {
+      "count": 1037,
+      "p50_ms": 5.836871,
+      "p99_ms": 6.080064
+    },
+    "case-0004": {
+      "count": 957,
+      "p50_ms": 5.929952,
+      "p99_ms": 6.183395
+    }
+  },
+  "resource_evidence": {
+    "fusion-v2-search": {
+      "sample_count": 5,
+      "device": 10,
+      "npu": 5,
+      "chip": 0,
+      "BDF": "0000:89:00.0",
+      "observed_host_pids": [
+        3604415
+      ],
+      "directly_witnessed_own_host_pids": [
+        3604415,
+        3605001
+      ],
+      "unmapped_host_pids": [],
+      "external_process_observed": false,
+      "identity_limitation": null,
+      "hbm_mb_min": 3132,
+      "hbm_mb_max": 4562,
+      "rss_kib_min": 2688,
+      "rss_kib_max": 4736640,
+      "resource_sha256": "323b7f6bcd8f1beb99ab63318d30a26885fa07ca07ca17bb0622e6f2da5934b1",
+      "samples": [
+        {
+          "monotonic_ns": 2324047515299088,
+          "runtime_container_pid": 2012053,
+          "device10_host_pids": [
+            3604415
+          ]
+        },
+        {
+          "monotonic_ns": 2324059657042154,
+          "runtime_container_pid": 2012053,
+          "device10_host_pids": [
+            3604415
+          ]
+        },
+        {
+          "monotonic_ns": 2324071686514187,
+          "runtime_container_pid": 2012053,
+          "device10_host_pids": [
+            3604415
+          ]
+        },
+        {
+          "monotonic_ns": 2324083429818680,
+          "runtime_container_pid": 2012053,
+          "device10_host_pids": [
+            3604415
+          ]
+        },
+        {
+          "monotonic_ns": 2324095584881185,
+          "runtime_container_pid": 2012053,
+          "device10_host_pids": []
+        }
+      ]
+    }
+  },
+  "plan_identities": [
+    {
+      "run_id": "fusion-v2-search",
+      "seed": 42,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "graph": {
+        "format": "onnx",
+        "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+        "om_path": null
+      },
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d"
+    }
+  ],
+  "p99_limit": null,
+  "SLO_acceptance": "not_configured",
+  "resource_identity_limitations": []
+}

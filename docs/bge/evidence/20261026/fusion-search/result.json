@@ -1,0 +1,108 @@
+{
+  "returncode": 0,
+  "elapsed_seconds": 63.61299269692972,
+  "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/fusion-search.json",
+  "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime",
+  "runtime": {
+    "backend": "ge_session",
+    "events": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/fusion-search/events.jsonl",
+    "mode": "bench",
+    "performance": {
+      "arrival_model": "closed_loop",
+      "capture_enabled": false,
+      "cohort_qps": 162.37432875934758,
+      "cohort_successes": 4872,
+      "d2h_ms": {
+        "avg": 0.03595451744663381
+      },
+      "distinct_shapes": 4,
+      "drain_ms": 0.0,
+      "e2e_ms": {
+        "avg": 6.158018038382581,
+        "max": 7.701001,
+        "min": 5.570948,
+        "p50": 6.126644,
+        "p99": 6.70423
+      },
+      "errors": 0,
+      "exec_ms": {
+        "avg": 6.029155728653548,
+        "p99": 6.570288
+      },
+      "hbm_mb": {
+        "after_setup": 1845.625,
+        "base": 558.33203125
+      },
+      "in_flight_at_end": 0,
+      "instances": [
+        {
+          "desc_ms": {
+            "avg": 0.0006956075533661203
+          },
+          "distinct_shapes": 4,
+          "e2e_ms": {
+            "avg": 6.158018038382581,
+            "max": 7.701001,
+            "min": 5.570948,
+            "p50": 6.126644,
+            "p99": 6.70423
+          },
+          "errors": 0,
+          "exec_ms": {
+            "avg": 6.029155728653548,
+            "p99": 6.570288
+          },
+          "h2d_ms": {
+            "avg": 0.08918165024630509
+          },
+          "load_ms": 1882.188,
+          "name": "instance_0",
+          "qps": 162.37432875934758,
+          "requests": 4872,
+          "specialize_ms": 0.0
+        }
+      ],
+      "last_completed_ns": 2322848185391911,
+      "latency_scope": "h2d_desc_execute_sync_d2h",
+      "profiling_enabled": false,
+      "qps": 162.37432875934758,
+      "requests": 4872,
+      "run_id": "fusion-search",
+      "samples": {
+        "avg": 1.0,
+        "max": 1.0,
+        "min": 1.0,
+        "p50": 1.0,
+        "p99": 1.0
+      },
+      "samples_per_second": 162.37432875934758,
+      "sampling": {
+        "order": "global_request_index",
+        "pool_size": 5,
+        "replacement": true,
+        "seed": 42
+      },
+      "schema": "ge-performance/1",
+      "slo_status": "not_defined",
+      "statistics_sufficient": true,
+      "wall_ms": 30004.742974,
+      "warmup": {
+        "ms": 500.881156,
+        "runs": 50
+      },
+      "window_end_ns": 2322848185392641,
+      "window_start_ns": 2322818180649667,
+      "window_successes": 4872
+    },
+    "replay": {
+      "capture_outputs": false,
+      "max_requests": 2000000,
+      "max_seconds": 180,
+      "min_requests": 2000,
+      "min_seconds": 30,
+      "run_id": "fusion-search",
+      "warmup_per_case": 10
+    },
+    "status": "success"
+  }
+}

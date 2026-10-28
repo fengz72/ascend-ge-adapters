@@ -1,0 +1,168 @@
+--- a/models/bge/replay.py
++++ b/models/bge/replay.py
+@@ -1,4 +1,4 @@
+-"""Prepare a five-sample BGE replay plan; never submits a device job."""
++"""Prepare fixed-case or five-sample BGE replay; never submits a device job."""
+ import argparse
+ import copy
+ import json
+@@ -30,6 +30,7 @@
+     result.add_argument("--output-dir", type=Path, required=True, help="New preparation root; runtime results will use its runtime/ child")
+     result.add_argument("--graph", type=Path, help="Already exported ONNX with embedded IO and external weights; defaults to the config artifact")
+     result.add_argument("--instances", type=int, default=1)
++    result.add_argument("--case-id", help="Repeat one supplied case; omitted means random replay of all five cases")
+     result.add_argument("--precision-mode", default="must_keep_origin_dtype")
+     result.add_argument("--aicore-num", help="Positive AIC|AIV pair; omitted means all cores, overriding any YAML limit")
+     result.add_argument("--min-seconds", type=float, default=60)
+@@ -62,6 +63,8 @@
+             raise ValueError("aicore-num must be a positive AIC|AIV pair")
+     if args.run_id is not None and not args.run_id.strip():
+         raise ValueError("run-id must be nonempty")
++    if args.case_id is not None and not args.case_id.strip():
++        raise ValueError("case-id must be nonempty")
+     for library in args.preload:
+         path = library.expanduser().resolve()
+         if not path.is_file() or re.search(r"[\s:]", str(path)):
+@@ -103,6 +106,10 @@
+     if (len(cases) != 5 or len({case["id"] for case in cases}) != 5
+             or any(case["samples"] != 1 or set(case["payload"]) != set(INPUT_DTYPES) for case in cases)):
+         raise ValueError("BGE replay requires all five supplied batch=1 cases with eight features")
++    if args.case_id is not None:
++        cases = [case for case in cases if case["id"] == args.case_id]
++        if not cases:
++            raise ValueError(f"unknown BGE case-id: {args.case_id}")
+     handle = load_adapter(config["model"]["adapter_file"]).prepare_runtime(config, io)
+     directory = args.output_dir.expanduser().resolve()
+     directory.mkdir(parents=True, exist_ok=False)
+@@ -116,6 +123,9 @@
+             "inputs": packed(directory, records), "device": args.device,
+             "instances": args.instances, "warmup": 0, "iterations": 1,
+             "seed": args.seed, "options": options,
++            "workload": {"kind": "fixed_case" if args.case_id is not None else "random_cases",
++                         "case_ids": [case["id"] for case in cases],
++                         "sampling": "fixed" if args.case_id is not None else "uniform_with_replacement"},
+             "observability": {"profiling": False, "dump": False},
+             "output_dir": str(directory / "runtime"),
+             "replay": {"run_id": args.run_id or directory.name,
+--- a/tests/test_bge_replay_cli.py
++++ b/tests/test_bge_replay_cli.py
+@@ -15,7 +15,7 @@
+ 
+ class BgeReplayPreparation(unittest.TestCase):
+     def setUp(self):
+-        self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
++        self.directory = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
+         self.graph = self.directory / "model.onnx"
+         self.graph.write_bytes(b"small mocked external-weight ONNX")
+         self.config = {"source": {"kind": "onnx", "ref": "${UNSET_SOURCE_MODEL}"},
+@@ -62,6 +62,9 @@
+         self.assertTrue(plan["replay"]["capture_outputs"])
+         self.assertEqual(plan["options"], {"precision_mode": "must_keep_origin_dtype", "graph_run_mode": 0})
+         self.assertEqual(len(plan["inputs"]["cases"]), 5)
++        self.assertEqual(plan["workload"], {"kind": "random_cases",
++                         "case_ids": [case["id"] for case in self.cases],
++                         "sampling": "uniform_with_replacement"})
+         binary = Path(plan["inputs"]["file"])
+         self.assertEqual(binary.stat().st_size, 17304)
+         for case, packed_case in zip(self.cases, plan["inputs"]["cases"]):
+@@ -77,6 +80,50 @@
+         self.native_call.assert_not_called()
+         self.source_load.assert_not_called()
+ 
++    def test_fixed_case_packs_only_the_selected_original_input(self):
++        plan = self.read_plan(self.args("--case-id", "case-0002", "--instances", "8"))
++        self.assertEqual(plan["instances"], 8)
++        self.assertEqual(plan["workload"], {"kind": "fixed_case", "case_ids": ["case-0002"], "sampling": "fixed"})
++        self.assertEqual(len(plan["inputs"]["cases"]), 1)
++        case = plan["inputs"]["cases"][0]
++        self.assertEqual(case["id"], "case-0002")
++        self.assertEqual(case["output_capacities"], {"scores": 40448})
++        binary = Path(plan["inputs"]["file"])
++        self.assertEqual(binary.stat().st_size, 3448)
++        for tensor in case["tensors"]:
++            expected = np.asarray(self.cases[2]["payload"][tensor["name"]], dtype=replay.INPUT_DTYPES[tensor["name"]])
++            self.assertEqual(tensor["dtype"], str(expected.dtype))
++            self.assertEqual(tensor["shape"], list(expected.shape))
++            actual = np.fromfile(binary, dtype=tensor["dtype"], count=expected.size, offset=tensor["offset"]).reshape(tensor["shape"])
++            np.testing.assert_array_equal(actual, expected)
++        self.assertFalse(Path(plan["output_dir"]).exists())
++        self.assertEqual(self.golden.read_bytes(), b"fixed original golden")
++        self.native_call.assert_not_called()
++        self.source_load.assert_not_called()
++
++    def test_unknown_fixed_case_is_rejected_before_output_creation(self):
++        with self.assertRaisesRegex(ValueError, "unknown BGE case-id"):
++            replay.prepare(self.args("--case-id", "case-9999"))
++        self.assertFalse((self.directory / "prepared").exists())
++        self.adapter.assert_not_called()
++
++    def test_fixed_selection_still_requires_all_five_source_cases(self):
++        self.data.return_value = self.cases[:4]
++        with self.assertRaisesRegex(ValueError, "all five"):
++            replay.prepare(self.args("--case-id", "case-0002"))
++        self.assertFalse((self.directory / "prepared").exists())
++
++    def test_fixed_seed_does_not_change_payload_and_repeated_prepare_is_rejected(self):
++        first = self.read_plan(self.args("--case-id", "case-0002", "--seed", "2027"))
++        binary = Path(first["inputs"]["file"]).read_bytes()
++        second = self.read_plan(self.args("--case-id", "case-0002", "--seed", "2028",
++                                         "--output-dir", str(self.directory / "second")))
++        self.assertEqual(Path(second["inputs"]["file"]).read_bytes(), binary)
++        self.assertEqual(first["inputs"]["cases"], second["inputs"]["cases"])
++        with self.assertRaises(FileExistsError):
++            replay.prepare(self.args("--case-id", "case-0002"))
++        self.assertEqual(Path(first["inputs"]["file"]).read_bytes(), binary)
++
+     def test_native_only_preload_appends_original_allocator_without_mutating_python_env(self):
+         library = self.directory / "fusion.so"
+         library.write_bytes(b"mock shared library; never loaded")
+@@ -91,7 +138,7 @@
+         for extra in (("--device", "-1"), ("--instances", "0"), ("--seed", "-1"),
+                       ("--min-seconds", "nan"), ("--min-seconds", "400"),
+                       ("--min-requests", "0"), ("--max-requests", "10"),
+-                      ("--aicore-num", "0|24"), ("--aicore-num", "12"), ("--precision-mode", "")):
++                      ("--aicore-num", "0|24"), ("--aicore-num", "12"), ("--precision-mode", ""), ("--case-id", "")):
+             with self.subTest(extra=extra), self.assertRaises(ValueError):
+                 replay.prepare(self.args(*extra))
+         self.authoring.assert_not_called()
+--- a/models/bge/README.md
++++ b/models/bge/README.md
+@@ -292,3 +292,38 @@
+ ```bash
+ python3 -m unittest discover -s tests -p test_bge_replay_cli.py -v
+ ```
++
++### Fixed-case and random-case performance scenarios
++
++Use `--case-id case-0002` to prepare an actual one-case request pool. The five
++source samples are still validated; only the selected sample is packed into the
++new plan. Omit `--case-id` for uniform random replay with replacement of all five
++samples. Unknown IDs are rejected before creating the output directory.
++
++```bash
++python3 models/bge/replay.py --prepare-only \
++  --config models/bge/config.yaml --device 10 \
++  --output-dir work/bge/replay/fixed-case-0002-new \
++  --case-id case-0002 --instances 1 --seed 2027 \
++  --min-seconds 60 --max-seconds 300 --min-requests 10000
++
++python3 models/bge/replay.py --prepare-only \
++  --config models/bge/config.yaml --device 10 \
++  --output-dir work/bge/replay/random-five-new \
++  --instances 1 --seed 2027 \
++  --min-seconds 60 --max-seconds 300 --min-requests 10000
++```
++
++The plan records `workload.kind`, the actual `case_ids`, and the sampling rule.
++The existing native replay sampler repeats the only entry for a one-case pool;
++changing the seed does not change that fixed input. All requests retain complete
++H2D, execution synchronization and D2H. These commands only prepare files; submit
++plans through the managed launcher after checking device availability.
++
++Build a separate baseline for each scenario and compare like with like. Final
++reports show both scenarios using the same frozen delivery configuration, with
++separate QPS and p99 values and adoption decisions. A per-case subset extracted
++from a random run is not a fixed-case benchmark. All existing 2026-10-26 results
++are random-five measurements; fixed-case performance has not yet been measured.
++Full five-case correctness, request-output pressure and mixed-shape stability
++remain required. Additional runs consume the existing device-time budget.

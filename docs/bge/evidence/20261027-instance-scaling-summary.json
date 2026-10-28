@@ -1,0 +1,247 @@
+{
+  "schema": "bge-instance-scaling-evidence/1",
+  "device": 2,
+  "pci": "0000:99:00.0",
+  "rows": [
+    {
+      "name": "scale10-case0-s1-20261027",
+      "instances": 10,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "window_seconds": 30.00012279,
+      "window_successes": 17583,
+      "errors": 0,
+      "qps": 586.0976011025188,
+      "p99_ms": 18.144186,
+      "hbm_peak_mb": 16713,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 21865472,
+      "resource_samples": 12,
+      "job_state": "finished",
+      "exit_code": 0,
+      "duration_seconds": 139.267474,
+      "gates_clear": [
+        true,
+        true
+      ],
+      "input_identity_passed": true,
+      "run_identity_passed": true,
+      "performance_passed": true,
+      "plan_sha256": "fcd41a5022da289cd99e450f690779d75f080081f9c18e9500cb238923266118",
+      "performance_sha256": "eea115d64fa975fd290d8362d7ce16a30710614c2b87cd53e1b949b3488d7534",
+      "resources_sha256": "ae28e03d02e5e200915611269c2986f57c94ecc068cbbb0eef4839feaca0dd45",
+      "remote_work_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/scale10-case0-s1-20261027",
+      "remote_status": "/export/home/ext.hejun23/workspace/bge-opt-100/work/jobs/scale10-case0-s1-20261027/status.json"
+    },
+    {
+      "name": "scale12-case0-s1-20261027",
+      "instances": 12,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "window_seconds": 30.001419923,
+      "window_successes": 17934,
+      "errors": 0,
+      "qps": 597.7717070068157,
+      "p99_ms": 21.654093,
+      "hbm_peak_mb": 19411,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 25755392,
+      "resource_samples": 14,
+      "job_state": "finished",
+      "exit_code": 0,
+      "duration_seconds": 160.971069,
+      "gates_clear": [
+        true,
+        true
+      ],
+      "input_identity_passed": true,
+      "run_identity_passed": true,
+      "performance_passed": true,
+      "plan_sha256": "eebf1e057535af07df7c295a5a98560e029b32edc50ea5e5c2957ce47c5b7076",
+      "performance_sha256": "c25ba8db102bb4209dd31ff64a1061f3c60fd6fbf3811fc0b7ae0b1945863fee",
+      "resources_sha256": "304ed904da16a46bf323bce300eeebcb843b7113cc5e3e29a11da8f90c75af38",
+      "remote_work_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/scale12-case0-s1-20261027",
+      "remote_status": "/export/home/ext.hejun23/workspace/bge-opt-100/work/jobs/scale12-case0-s1-20261027/status.json"
+    },
+    {
+      "name": "scale16-case0-s1-20261027",
+      "instances": 16,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "window_seconds": 30.002412517,
+      "window_successes": 17551,
+      "errors": 0,
+      "qps": 584.9862903543251,
+      "p99_ms": 29.847604,
+      "hbm_peak_mb": 24802,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 33578496,
+      "resource_samples": 17,
+      "job_state": "finished",
+      "exit_code": 0,
+      "duration_seconds": 203.876437,
+      "gates_clear": [
+        true,
+        true
+      ],
+      "input_identity_passed": true,
+      "run_identity_passed": true,
+      "performance_passed": true,
+      "plan_sha256": "1cd455b54caecbeea33e93ed3f35d7ba4ccf2606fcbaf64c7878c8215d9c104e",
+      "performance_sha256": "09e027ca91d715c9e7d9f5b9beea1deec6677c5e2d275b9e1649932317f45cfe",
+      "resources_sha256": "64b3b2ae949b8034629f409109882ca8e2a82ed57e9eb943916b172b852d05c6",
+      "remote_work_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/scale16-case0-s1-20261027",
+      "remote_status": "/export/home/ext.hejun23/workspace/bge-opt-100/work/jobs/scale16-case0-s1-20261027/status.json"
+    },
+    {
+      "name": "scale8-case0-s2-20261027",
+      "instances": 8,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "window_seconds": 30.000112117,
+      "window_successes": 17490,
+      "errors": 0,
+      "qps": 582.9978212011093,
+      "p99_ms": 14.223762,
+      "hbm_peak_mb": 14014,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 17952768,
+      "resource_samples": 11,
+      "job_state": "finished",
+      "exit_code": 0,
+      "duration_seconds": 126.615459,
+      "gates_clear": [
+        true,
+        true
+      ],
+      "input_identity_passed": true,
+      "run_identity_passed": true,
+      "performance_passed": true,
+      "plan_sha256": "47d94cb2be41762432fbfa1ca02bbea492b5c019331da49bc26063da2b6ea7b4",
+      "performance_sha256": "34f6a312ab811f87f7e7b06220ba40252ac42953ba3a22a94f7bc1f8bd1759fc",
+      "resources_sha256": "3ee5a43a21aa8f618cab38c04bd90d8ec3b36ac8a2712664a2876bdfb2469204",
+      "remote_work_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/scale8-case0-s2-20261027",
+      "remote_status": "/export/home/ext.hejun23/workspace/bge-opt-100/work/jobs/scale8-case0-s2-20261027/status.json"
+    },
+    {
+      "name": "scale12-case0-s2-20261027",
+      "instances": 12,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "window_seconds": 30.000010384,
+      "window_successes": 17986,
+      "errors": 0,
+      "qps": 599.533125814934,
+      "p99_ms": 21.571329,
+      "hbm_peak_mb": 19411,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 25772992,
+      "resource_samples": 13,
+      "job_state": "finished",
+      "exit_code": 0,
+      "duration_seconds": 157.600822,
+      "gates_clear": [
+        true,
+        true
+      ],
+      "input_identity_passed": true,
+      "run_identity_passed": true,
+      "performance_passed": true,
+      "plan_sha256": "eb7b82993b3ad98b7313406d6dd4645612a7ee609b55530cfbb2afd28161971a",
+      "performance_sha256": "2999ffbd4593ab1e2e325c63fa1855bde7a1039862fb7d5158faef22f4dd6109",
+      "resources_sha256": "4e928fea3564592aa49141d42296d222cef2c66f46976698d929539a4835df0e",
+      "remote_work_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/scale12-case0-s2-20261027",
+      "remote_status": "/export/home/ext.hejun23/workspace/bge-opt-100/work/jobs/scale12-case0-s2-20261027/status.json"
+    },
+    {
+      "name": "scale16-case0-s2-20261027",
+      "instances": 16,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "window_seconds": 30.002063409,
+      "window_successes": 17640,
+      "errors": 0,
+      "qps": 587.9595599650777,
+      "p99_ms": 29.624102,
+      "hbm_peak_mb": 24802,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 33577472,
+      "resource_samples": 17,
+      "job_state": "finished",
+      "exit_code": 0,
+      "duration_seconds": 201.661721,
+      "gates_clear": [
+        true,
+        true
+      ],
+      "input_identity_passed": true,
+      "run_identity_passed": true,
+      "performance_passed": true,
+      "plan_sha256": "18460da66c74eac4e0407595b900bfa110b0ffc12dc2236c8fd0a1fe5f080bc3",
+      "performance_sha256": "d2d99c12b9b8f61ab7a349d72ff67fefe59a0805e83712f56c521ee3d18232af",
+      "resources_sha256": "9ecc1409dfa67548dfc484511f8cc84f125af3e99f09b38d2a157d4ee2d67995",
+      "remote_work_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/scale16-case0-s2-20261027",
+      "remote_status": "/export/home/ext.hejun23/workspace/bge-opt-100/work/jobs/scale16-case0-s2-20261027/status.json"
+    }
+  ]
+}

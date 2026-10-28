@@ -1,0 +1,406 @@
+{
+  "as_of": "2026-10-26T04:00:33.753523+00:00",
+  "max_seconds": 7200,
+  "charged_seconds": 1616.6799099999998,
+  "remaining_seconds": 5583.32009,
+  "unique_configs": [
+    {
+      "first_job": "base-pressure",
+      "signature": {
+        "backend": "ge_session",
+        "graph": {
+          "format": "onnx",
+          "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+          "om_path": null
+        },
+        "options": {
+          "precision_mode": "must_keep_origin_dtype",
+          "graph_run_mode": 0
+        },
+        "instances": 1,
+        "ld_preload": [],
+        "runtime_env": {}
+      },
+      "devices": [
+        10,
+        2
+      ]
+    },
+    {
+      "first_job": "fp16-correctness",
+      "signature": {
+        "backend": "ge_session",
+        "graph": {
+          "format": "onnx",
+          "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+          "om_path": null
+        },
+        "options": {
+          "precision_mode": "cube_fp16in_fp32out",
+          "graph_run_mode": 0
+        },
+        "instances": 1,
+        "ld_preload": [],
+        "runtime_env": {}
+      },
+      "devices": [
+        10
+      ]
+    },
+    {
+      "first_job": "fusion-correctness",
+      "signature": {
+        "backend": "ge_session",
+        "graph": {
+          "format": "onnx",
+          "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+          "om_path": null
+        },
+        "options": {
+          "precision_mode": "must_keep_origin_dtype",
+          "graph_run_mode": 0
+        },
+        "instances": 1,
+        "ld_preload": [
+          "LD_PRELOAD=/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass.so"
+        ],
+        "runtime_env": {}
+      },
+      "devices": [
+        10
+      ]
+    },
+    {
+      "first_job": "fusion-v2-correctness",
+      "signature": {
+        "backend": "ge_session",
+        "graph": {
+          "format": "onnx",
+          "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+          "om_path": null
+        },
+        "options": {
+          "precision_mode": "must_keep_origin_dtype",
+          "graph_run_mode": 0
+        },
+        "instances": 1,
+        "ld_preload": [],
+        "runtime_env": {
+          "LD_PRELOAD": "/usr/lib64/libtcmalloc.so.4.5.16:/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass_v2.so"
+        }
+      },
+      "devices": [
+        10
+      ]
+    },
+    {
+      "first_job": "mixed-correctness",
+      "signature": {
+        "backend": "ge_session",
+        "graph": {
+          "format": "onnx",
+          "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+          "om_path": null
+        },
+        "options": {
+          "precision_mode": "allow_mix_precision_fp16",
+          "graph_run_mode": 0
+        },
+        "instances": 1,
+        "ld_preload": [],
+        "runtime_env": {}
+      },
+      "devices": [
+        10
+      ]
+    },
+    {
+      "first_job": "multi16-correctness",
+      "signature": {
+        "backend": "ge_session",
+        "graph": {
+          "format": "onnx",
+          "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+          "om_path": null
+        },
+        "options": {
+          "precision_mode": "must_keep_origin_dtype",
+          "graph_run_mode": 0
+        },
+        "instances": 16,
+        "ld_preload": [],
+        "runtime_env": {}
+      },
+      "devices": [
+        10
+      ]
+    },
+    {
+      "first_job": "multi2-correctness",
+      "signature": {
+        "backend": "ge_session",
+        "graph": {
+          "format": "onnx",
+          "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+          "om_path": null
+        },
+        "options": {
+          "precision_mode": "must_keep_origin_dtype",
+          "graph_run_mode": 0
+        },
+        "instances": 2,
+        "ld_preload": [],
+        "runtime_env": {}
+      },
+      "devices": [
+        10
+      ]
+    },
+    {
+      "first_job": "multi4-correctness",
+      "signature": {
+        "backend": "ge_session",
+        "graph": {
+          "format": "onnx",
+          "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+          "om_path": null
+        },
+        "options": {
+          "precision_mode": "must_keep_origin_dtype",
+          "graph_run_mode": 0
+        },
+        "instances": 4,
+        "ld_preload": [],
+        "runtime_env": {}
+      },
+      "devices": [
+        10
+      ]
+    },
+    {
+      "first_job": "multi8-correctness",
+      "signature": {
+        "backend": "ge_session",
+        "graph": {
+          "format": "onnx",
+          "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+          "om_path": null
+        },
+        "options": {
+          "precision_mode": "must_keep_origin_dtype",
+          "graph_run_mode": 0
+        },
+        "instances": 8,
+        "ld_preload": [],
+        "runtime_env": {}
+      },
+      "devices": [
+        10
+      ]
+    }
+  ],
+  "config_count": 9,
+  "max_unique_configs": 12,
+  "jobs": [
+    {
+      "job": "base-pressure",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "5f191ea491c54ff68432185c48b5b57a",
+      "seconds": 42.35867,
+      "started_at": "2026-10-26T02:40:37.933804+00:00",
+      "finished_at": "2026-10-26T02:41:20.292474+00:00"
+    },
+    {
+      "job": "base-round1",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "119e811546974de39fe929582d9f6592",
+      "seconds": 85.740665,
+      "started_at": "2026-10-26T02:43:19.876294+00:00",
+      "finished_at": "2026-10-26T02:44:45.616959+00:00"
+    },
+    {
+      "job": "base-round2",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "a7fb14bdf8ff466a945e5fb24245b087",
+      "seconds": 82.226298,
+      "started_at": "2026-10-26T02:44:46.900050+00:00",
+      "finished_at": "2026-10-26T02:46:09.126348+00:00"
+    },
+    {
+      "job": "base-round3",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "b16b4238b30749f3b95aa396b24c4114",
+      "seconds": 81.270416,
+      "started_at": "2026-10-26T02:46:10.441575+00:00",
+      "finished_at": "2026-10-26T02:47:31.711991+00:00"
+    },
+    {
+      "job": "fp16-correctness",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "24ad53a179de48afa9521a5fdb401293",
+      "seconds": 54.6173,
+      "started_at": "2026-10-26T02:51:06.350617+00:00",
+      "finished_at": "2026-10-26T02:52:00.967917+00:00"
+    },
+    {
+      "job": "fp16-search",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "a529ffec90ed4c589102ad40cefa2f1c",
+      "seconds": 62.397184,
+      "started_at": "2026-10-26T02:55:12.892042+00:00",
+      "finished_at": "2026-10-26T02:56:15.289226+00:00"
+    },
+    {
+      "job": "fusion-correctness",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "f4bd69874be14f69a5b7c39767ed0340",
+      "seconds": 49.774569,
+      "started_at": "2026-10-26T03:00:09.780649+00:00",
+      "finished_at": "2026-10-26T03:00:59.555218+00:00"
+    },
+    {
+      "job": "fusion-search",
+      "state": "finished",
+      "exit_code": 125,
+      "task_id": "e2aa16318100476b9d669d34511dbd78",
+      "seconds": 64.077955,
+      "started_at": "2026-10-26T03:04:04.355838+00:00",
+      "finished_at": "2026-10-26T03:05:08.433793+00:00"
+    },
+    {
+      "job": "fusion-v2-correctness",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "d6324c2deefc45a0a4067890713c5dc1",
+      "seconds": 37.652023,
+      "started_at": "2026-10-26T03:16:35.402403+00:00",
+      "finished_at": "2026-10-26T03:17:13.054426+00:00"
+    },
+    {
+      "job": "fusion-v2-search",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "993a7f5274f145c28fef9fea31873400",
+      "seconds": 50.546912,
+      "started_at": "2026-10-26T03:24:55.518089+00:00",
+      "finished_at": "2026-10-26T03:25:46.065001+00:00"
+    },
+    {
+      "job": "mixed-correctness",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "c7b7e930fb374c93b348fe1059e01d6b",
+      "seconds": 81.066671,
+      "started_at": "2026-10-26T03:07:28.911269+00:00",
+      "finished_at": "2026-10-26T03:08:49.977940+00:00"
+    },
+    {
+      "job": "mixed-search",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "fb20de68a222450b84035d21d938a330",
+      "seconds": 62.365383,
+      "started_at": "2026-10-26T03:15:04.789834+00:00",
+      "finished_at": "2026-10-26T03:16:07.155217+00:00"
+    },
+    {
+      "job": "multi16-correctness",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "0bc50e18b8064db1b913451bc8e89a23",
+      "seconds": 178.565378,
+      "started_at": "2026-10-26T03:51:30.588339+00:00",
+      "finished_at": "2026-10-26T03:54:29.153717+00:00"
+    },
+    {
+      "job": "multi16-search",
+      "state": "finished",
+      "exit_code": 125,
+      "task_id": "f24186a01ebd484cb5f6812fc8995a94",
+      "seconds": 122.928314,
+      "started_at": "2026-10-26T03:55:05.849790+00:00",
+      "finished_at": "2026-10-26T03:57:08.778104+00:00"
+    },
+    {
+      "job": "multi2-correctness",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "81da919ceb124a749d837184ccc59514",
+      "seconds": 38.309497,
+      "started_at": "2026-10-26T03:28:43.998433+00:00",
+      "finished_at": "2026-10-26T03:29:22.307930+00:00"
+    },
+    {
+      "job": "multi2-search",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "3fda1d5241d042d9824256fac6e3c615",
+      "seconds": 62.611192,
+      "started_at": "2026-10-26T03:33:45.674763+00:00",
+      "finished_at": "2026-10-26T03:34:48.285955+00:00"
+    },
+    {
+      "job": "multi4-correctness",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "f1e89eb93aad4fdbad308bc0f0310cba",
+      "seconds": 61.920573,
+      "started_at": "2026-10-26T03:36:24.241416+00:00",
+      "finished_at": "2026-10-26T03:37:26.161989+00:00"
+    },
+    {
+      "job": "multi4-search",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "908ca8e356aa404ca830ad751e3c652e",
+      "seconds": 88.31002,
+      "started_at": "2026-10-26T03:40:41.800856+00:00",
+      "finished_at": "2026-10-26T03:42:10.110876+00:00"
+    },
+    {
+      "job": "multi8-correctness",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "ba36b0b8afb84c8a9ce301dfa11a3440",
+      "seconds": 103.855386,
+      "started_at": "2026-10-26T03:45:54.694153+00:00",
+      "finished_at": "2026-10-26T03:47:38.549539+00:00"
+    },
+    {
+      "job": "multi8-search",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "9685dfa698624d45a8cff9aba2549f42",
+      "seconds": 126.284191,
+      "started_at": "2026-10-26T03:48:49.076372+00:00",
+      "finished_at": "2026-10-26T03:50:55.360563+00:00"
+    },
+    {
+      "job": "original-correctness",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "ccf2da8ec38841febf4dcd636abfa54d",
+      "seconds": 53.711785,
+      "started_at": "2026-10-26T02:15:48.326642+00:00",
+      "finished_at": "2026-10-26T02:16:42.038427+00:00"
+    },
+    {
+      "job": "original-graph-dump",
+      "state": "finished",
+      "exit_code": 0,
+      "task_id": "f5c341efbd454ae8ad2d0a7d9153dd2c",
+      "seconds": 26.089528,
+      "started_at": "2026-10-26T02:18:17.932279+00:00",
+      "finished_at": "2026-10-26T02:18:44.021807+00:00"
+    }
+  ],
+  "charging": "conservative supervisor start to finished, including wrapper and cleanup",
+  "config_note": "same model/precision/core/instance/preload configuration reused across rounds; device2\u219210 authorized equivalent hardware kept in devices evidence"
+}

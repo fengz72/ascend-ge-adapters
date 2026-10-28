@@ -1,0 +1,61 @@
+{
+  "schema": "bge100-runner-review-fix/1",
+  "date": "2026-10-28",
+  "host": "100",
+  "container": "hejun-cann9-bge",
+  "logical_device": 2,
+  "old_binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+  "new_binary_sha256": "735a3532ecb131de203200a328835af0d58bcddf27f9572eb997b5d6808e43f4",
+  "configuration": {
+    "precision_mode": "force_fp16",
+    "graph_run_mode": 0,
+    "aicore_num": "12|24",
+    "instances": 10
+  },
+  "runs": {
+    "pressure": {
+      "name": "dtypefix-fp16-ten-pressure-20261028",
+      "report_sha256": "cacea686109af6a7970167422957cfb404a74581e4ae249affa0a47b9c138c77",
+      "passed": true,
+      "status": "finished",
+      "exit_code": 0,
+      "before_gate_clear": true,
+      "after_gate_clear": true,
+      "requests": 22274,
+      "failed_requests": 0,
+      "worst": {
+        "max_abs_error": 0.000568091869354248,
+        "relative_l2": 0.0008140968267763366,
+        "top10_max_abs_error": 0.0005680937499999983
+      }
+    },
+    "fixed": {
+      "name": "dtypefix-fp16-ten-fixed-20261028",
+      "report_sha256": "61e4c9bd60daa1e4a7a8590d494592abd5cf9ebdae0c3b502cf660e47fe196ed",
+      "passed": true,
+      "status": "finished",
+      "exit_code": 0,
+      "before_gate_clear": true,
+      "after_gate_clear": true,
+      "window_seconds": 60.000774223,
+      "window_successes": 50977,
+      "qps": 849.6057035953891,
+      "p99_ms": 24.404442,
+      "errors": 0
+    },
+    "random": {
+      "name": "dtypefix-fp16-ten-random-20261028",
+      "report_sha256": "680fbed22660a5da06f3c75b9e258dd3253ee00f0adcf7267dad302850fa1a60",
+      "passed": true,
+      "status": "finished",
+      "exit_code": 0,
+      "before_gate_clear": true,
+      "after_gate_clear": true,
+      "window_seconds": 60.00046119,
+      "window_successes": 51718,
+      "qps": 861.9600412108099,
+      "p99_ms": 22.948039,
+      "errors": 0
+    }
+  }
+}

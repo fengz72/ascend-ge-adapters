@@ -1,0 +1,10 @@
+{
+  "at": "2026-10-26T02:43:19.784609+00:00",
+  "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+  "plan_sha256": "45a73c2bdcefe1a59cd1f7b08b11ee8ee3d1970f517e27267815efb11496dffb",
+  "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/base-round1.json",
+  "device": 10,
+  "pci": "0000:89:00.0",
+  "env": [],
+  "charged_before_seconds": 122.15998299999998
+}

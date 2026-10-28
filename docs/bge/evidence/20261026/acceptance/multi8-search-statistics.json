@@ -1,0 +1,271 @@
+{
+  "schema": "bge-independent-rounds/1",
+  "passed": true,
+  "runs": [
+    "multi8-search"
+  ],
+  "instances": 8,
+  "device": 10,
+  "rounds": [
+    {
+      "kind": "performance",
+      "passed": true,
+      "statistics_sufficient": true,
+      "errors": 0,
+      "minimum_seconds": 30.0,
+      "minimum_window_successes": 2000,
+      "window_seconds": 30.002169569,
+      "window_successes": 13841,
+      "cohort_successes": 13848,
+      "drain_ms": 8.335497,
+      "qps": 461.3333035188673,
+      "p50_ms": 17.32875,
+      "p99_ms": 18.24347,
+      "max_ms": 24.545817,
+      "p99_limit": null,
+      "SLO_acceptance": "not_configured",
+      "per_case": {
+        "case-0001": {
+          "count": 2785,
+          "p50_ms": 17.469623,
+          "p99_ms": 18.28483
+        },
+        "case-0004": {
+          "count": 2703,
+          "p50_ms": 17.189489,
+          "p99_ms": 17.990427
+        },
+        "case-0000": {
+          "count": 2835,
+          "p50_ms": 17.199399,
+          "p99_ms": 18.023138
+        },
+        "case-0002": {
+          "count": 2779,
+          "p50_ms": 17.197789,
+          "p99_ms": 18.043698
+        },
+        "case-0003": {
+          "count": 2746,
+          "p50_ms": 17.607423,
+          "p99_ms": 18.416023
+        }
+      },
+      "segments": {
+        "h2d_ms": {
+          "mean": 0.10413142692085502,
+          "p99": 0.2
+        },
+        "desc_ms": {
+          "mean": 0.0010709127671865977,
+          "p99": 0.003
+        },
+        "execute_ms": {
+          "mean": 17.19095617677643,
+          "p99": 18.077748
+        },
+        "d2h_ms": {
+          "mean": 0.03412915554592721,
+          "p99": 0.06899
+        },
+        "unattributed_host_ms": {
+          "mean": 0.003732730213749158,
+          "p99": 0.007820999999999856
+        }
+      },
+      "events_sha256": "d780328346cf0d562b4397545ffff9a163a50eb3242f6e79142c3c22f2b405e3",
+      "performance_sha256": "9c7b8647954078c1f9cc13ba88385f651b8f41f0d59a314ff53f490f569f9663",
+      "run_id": "multi8-search",
+      "seed": 42,
+      "plan_sha256": "147baa7c7c09230be1af511ce9def5ab12bb78e993a8c0914cd891bba389338f",
+      "per_case_counts": {
+        "case-0000": 2835,
+        "case-0001": 2785,
+        "case-0002": 2779,
+        "case-0003": 2746,
+        "case-0004": 2703
+      },
+      "ten_second_windows": [
+        {
+          "start_seconds": 0,
+          "seconds": 10.0,
+          "successes": 4607,
+          "qps": 460.7
+        },
+        {
+          "start_seconds": 10,
+          "seconds": 10.0,
+          "successes": 4614,
+          "qps": 461.4
+        },
+        {
+          "start_seconds": 20,
+          "seconds": 10.0,
+          "successes": 4619,
+          "qps": 461.9
+        },
+        {
+          "start_seconds": 30,
+          "seconds": 0.002169568999999427,
+          "successes": 1,
+          "qps": 460.92104007766704
+        }
+      ]
+    }
+  ],
+  "median_qps": 461.3333035188673,
+  "min_qps": 461.3333035188673,
+  "max_qps": 461.3333035188673,
+  "qps_relative_range_percent": 0.0,
+  "merged_request_count": 13848,
+  "merged_p50_ms": 17.32875,
+  "merged_p99_ms": 18.24347,
+  "merged_per_case": {
+    "case-0000": {
+      "count": 2835,
+      "p50_ms": 17.199399,
+      "p99_ms": 18.023138
+    },
+    "case-0001": {
+      "count": 2785,
+      "p50_ms": 17.469623,
+      "p99_ms": 18.28483
+    },
+    "case-0002": {
+      "count": 2779,
+      "p50_ms": 17.197789,
+      "p99_ms": 18.043698
+    },
+    "case-0003": {
+      "count": 2746,
+      "p50_ms": 17.607423,
+      "p99_ms": 18.416023
+    },
+    "case-0004": {
+      "count": 2703,
+      "p50_ms": 17.189489,
+      "p99_ms": 17.990427
+    }
+  },
+  "resource_evidence": {
+    "multi8-search": {
+      "sample_count": 11,
+      "device": 10,
+      "npu": 5,
+      "chip": 0,
+      "BDF": "0000:89:00.0",
+      "observed_host_pids": [
+        3897293
+      ],
+      "directly_witnessed_own_host_pids": [
+        3897293,
+        3900912
+      ],
+      "unmapped_host_pids": [],
+      "external_process_observed": false,
+      "identity_limitation": null,
+      "hbm_mb_min": 3191,
+      "hbm_mb_max": 14001,
+      "rss_kib_min": 1600,
+      "rss_kib_max": 18028544,
+      "resource_sha256": "f9139175f26d238c12e1a4099b8c67cb865f2ef83cb98207ef5f462a6502e2f1",
+      "samples": [
+        {
+          "monotonic_ns": 2325481107716497,
+          "runtime_container_pid": 2021640,
+          "device10_host_pids": []
+        },
+        {
+          "monotonic_ns": 2325493131750986,
+          "runtime_container_pid": 2021640,
+          "device10_host_pids": [
+            3897293
+          ]
+        },
+        {
+          "monotonic_ns": 2325504981483705,
+          "runtime_container_pid": 2021640,
+          "device10_host_pids": [
+            3897293
+          ]
+        },
+        {
+          "monotonic_ns": 2325517357118713,
+          "runtime_container_pid": 2021640,
+          "device10_host_pids": [
+            3897293
+          ]
+        },
+        {
+          "monotonic_ns": 2325529303655856,
+          "runtime_container_pid": 2021640,
+          "device10_host_pids": [
+            3897293
+          ]
+        },
+        {
+          "monotonic_ns": 2325541157104445,
+          "runtime_container_pid": 2021640,
+          "device10_host_pids": [
+            3897293
+          ]
+        },
+        {
+          "monotonic_ns": 2325553073197508,
+          "runtime_container_pid": 2021640,
+          "device10_host_pids": [
+            3897293
+          ]
+        },
+        {
+          "monotonic_ns": 2325565489292850,
+          "runtime_container_pid": 2021640,
+          "device10_host_pids": [
+            3897293
+          ]
+        },
+        {
+          "monotonic_ns": 2325577683068941,
+          "runtime_container_pid": 2021640,
+          "device10_host_pids": [
+            3897293
+          ]
+        },
+        {
+          "monotonic_ns": 2325589880245897,
+          "runtime_container_pid": 2021640,
+          "device10_host_pids": [
+            3897293
+          ]
+        },
+        {
+          "monotonic_ns": 2325602101819388,
+          "runtime_container_pid": 2021640,
+          "device10_host_pids": [
+            3897293
+          ]
+        }
+      ]
+    }
+  },
+  "plan_identities": [
+    {
+      "run_id": "multi8-search",
+      "seed": 42,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "graph": {
+        "format": "onnx",
+        "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+        "om_path": null
+      },
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d"
+    }
+  ],
+  "p99_limit": null,
+  "SLO_acceptance": "not_configured",
+  "resource_identity_limitations": []
+}
