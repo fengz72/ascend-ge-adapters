@@ -1,0 +1,21 @@
+{
+  "checked_utc": "2026-10-24T08:12:22.070857+00:00",
+  "kind": "design_and_skill_validation_only",
+  "npu_execution": "NOT_RUN",
+  "optimization_attempts": 0,
+  "preflight_consistency": "passed",
+  "skill_validation": {
+    "exit_code": 0,
+    "output": "Skill is valid!"
+  },
+  "markdown_links": {
+    "checked": 42,
+    "missing": []
+  },
+  "workflow_bundle": {
+    "status": "passed",
+    "files": 44,
+    "sha256": "82a57d40706f550f5db5d8e46804b98836772c4b45dbd30f3c060e210d72ffb6"
+  },
+  "independent_design_review": "analysis/design-final-review.md: no required corrections"
+}

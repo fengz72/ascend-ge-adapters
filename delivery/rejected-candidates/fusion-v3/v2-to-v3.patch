@@ -1,0 +1,38 @@
+--- a/add_layernorm_pass.cpp
++++ b/add_layernorm_attention_pass.cpp
+@@ -1,3 +1,4 @@
++#include "attention_scope.h"
+ #include <graph/graph.h>
+ #include <graph/operator_factory.h>
+ #include <register/register_custom_pass.h>
+@@ -29,7 +30,7 @@
+   for (auto ln : graph.GetDirectNode()) {
+     const auto name = Name(ln);
+     if (Type(ln) != "LayerNorm" ||
+-        name.find("/encoder/backbone/encoder/layer.") == std::string::npos ||
++        !IsAttentionOutputLayerNorm(name) ||
+         !NoControl(ln) || ln.GetInputsSize() != 3 || ln.GetOutputsSize() != 3)
+       continue;
+     if (!ln.GetOutDataNodesAndPortIndexs(1).empty() ||
+@@ -103,18 +104,18 @@
+ ge::Status Run(ge::GraphPtr &graph, ge::CustomPassContext &context) {
+   try {
+     const auto count = Fuse(*graph);
+-    std::cout << "[BGE_FUSION] AddLayerNorm replacements=" << count << std::endl;
++    std::cout << "[BGE_FUSION_V3] attention/output AddLayerNorm replacements=" << count << std::endl;
+     return ge::SUCCESS;
+   } catch (const std::exception &e) {
+     context.SetErrorMessage(ge::AscendString(e.what()));
+-    std::cerr << "[BGE_FUSION] failed: " << e.what() << std::endl;
++    std::cerr << "[BGE_FUSION_V3] failed: " << e.what() << std::endl;
+     return ge::FAILED;
+   }
+ }
+ }
+ 
+ #ifndef BGE_PASS_NO_REGISTER
+-REGISTER_CUSTOM_PASS("BgeResidualAddLayerNormFP32")
++REGISTER_CUSTOM_PASS("BgeAttentionOutputAddLayerNormFP32V3")
+     .CustomPassFn(bge_fusion::Run)
+     .Stage(ge::CustomPassStage::kAfterBuiltinFusionPass);
+ #endif

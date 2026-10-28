@@ -19,6 +19,7 @@ struct GeSessionOptions {
     GeProfilingConfig profiling;    // GE 在线路径经 GEInitialize 全局选项开启 (不走 acl.json)
     const RequestPool *pool = nullptr;   // 必填；所有执行统一使用请求池
     std::function<bool(int, const Request &, const std::vector<HostTensor> &)> capture;
+    std::function<bool(int, const Request &, const RequestRecord &, const std::vector<HostTensor> &)> replayCapture;
     uint64_t seed = 0;
 };
 

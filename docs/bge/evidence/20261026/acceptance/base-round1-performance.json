@@ -1,0 +1,123 @@
+{
+  "kind": "performance",
+  "passed": true,
+  "statistics_sufficient": true,
+  "errors": 0,
+  "minimum_seconds": 60,
+  "minimum_window_successes": 10000,
+  "window_seconds": 62.586816903,
+  "window_successes": 10000,
+  "cohort_successes": 10000,
+  "drain_ms": 0.0,
+  "qps": 159.77805702275083,
+  "p50_ms": 6.245016,
+  "p99_ms": 6.730881,
+  "max_ms": 7.876352,
+  "p99_limit": null,
+  "SLO_acceptance": "not_configured",
+  "per_case": {
+    "case-0003": {
+      "count": 2014,
+      "p50_ms": 6.217855,
+      "p99_ms": 6.70157
+    },
+    "case-0002": {
+      "count": 1994,
+      "p50_ms": 6.278115,
+      "p99_ms": 6.744551
+    },
+    "case-0004": {
+      "count": 1958,
+      "p50_ms": 6.275826,
+      "p99_ms": 6.75875
+    },
+    "case-0001": {
+      "count": 1949,
+      "p50_ms": 6.211595,
+      "p99_ms": 6.6963
+    },
+    "case-0000": {
+      "count": 2085,
+      "p50_ms": 6.221345,
+      "p99_ms": 6.67986
+    }
+  },
+  "segments": {
+    "h2d_ms": {
+      "mean": 0.08788889999999999,
+      "p99": 0.101
+    },
+    "desc_ms": {
+      "mean": 0.0005872000000000002,
+      "p99": 0.001
+    },
+    "execute_ms": {
+      "mean": 6.1345087330000005,
+      "p99": 6.602499
+    },
+    "d2h_ms": {
+      "mean": 0.032152109,
+      "p99": 0.03961
+    },
+    "unattributed_host_ms": {
+      "mean": 0.0029871468999999287,
+      "p99": 0.004140999999999728
+    }
+  },
+  "events_sha256": "5dd522168767ef23c31544132de255415f09d8e9ea5d98b67383b5ec8787b6f2",
+  "performance_sha256": "9120650670faaad8dffa1253b6601518ad0fbd9496924b97a945ecb3e860e2d2",
+  "run_id": "base-round1",
+  "seed": 2027,
+  "plan_sha256": "45a73c2bdcefe1a59cd1f7b08b11ee8ee3d1970f517e27267815efb11496dffb",
+  "per_case_counts": {
+    "case-0000": 2085,
+    "case-0001": 1949,
+    "case-0002": 1994,
+    "case-0003": 2014,
+    "case-0004": 1958
+  },
+  "ten_second_windows": [
+    {
+      "start_seconds": 0,
+      "seconds": 10.0,
+      "successes": 1547,
+      "qps": 154.7
+    },
+    {
+      "start_seconds": 10,
+      "seconds": 10.0,
+      "successes": 1659,
+      "qps": 165.9
+    },
+    {
+      "start_seconds": 20,
+      "seconds": 10.0,
+      "successes": 1547,
+      "qps": 154.7
+    },
+    {
+      "start_seconds": 30,
+      "seconds": 10.0,
+      "successes": 1634,
+      "qps": 163.4
+    },
+    {
+      "start_seconds": 40,
+      "seconds": 10.0,
+      "successes": 1616,
+      "qps": 161.6
+    },
+    {
+      "start_seconds": 50,
+      "seconds": 10.0,
+      "successes": 1599,
+      "qps": 159.9
+    },
+    {
+      "start_seconds": 60,
+      "seconds": 2.586816902999999,
+      "successes": 398,
+      "qps": 153.8570432017933
+    }
+  ]
+}

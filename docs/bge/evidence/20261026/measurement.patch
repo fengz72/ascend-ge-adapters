@@ -1,0 +1,537 @@
+--- a/runtime/bench.h
++++ b/runtime/bench.h
+@@ -20,10 +20,21 @@
+     return std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000.0;
+ }
+ 
++struct ReplayOptions {
++    bool enabled = false;
++    double minSeconds = 0, maxSeconds = 0;
++    size_t minRequests = 0, maxRequests = 2000000;
++    int warmupPerCase = 10;
++    bool captureOutputs = false;
++    std::string runId;
++    std::function<Clock::time_point()> now; // Controlled clock for CPU contract tests.
++};
++
+ struct BenchOptions {
+     int warmup = 0;
+     int threads = 1;              // >1 → 吞吐模式 (闭环并发)
+     int requests = 1;             // 测量段总调用次数
++    ReplayOptions replay;
+ };
+ 
+ // ---------------------------------------------------------------- 变长负载 (请求池回放)
+@@ -39,7 +50,10 @@
+     std::string inputSet;
+     std::string shapeKey;
+     int64_t samples = 0;
+-    double h2dMs = 0.0, descMs = 0.0, execMs = 0.0, e2eMs = 0.0;
++    double h2dMs = 0.0, descMs = 0.0, execMs = 0.0, e2eMs = 0.0, d2hMs = 0.0;
++    int64_t startedNs = 0, completedNs = 0;
++    size_t h2dBytes = 0, d2hBytes = 0;
++    std::string phase = "measure", errorStage;
+     bool firstHit = false;    // 该实例首次遇到这个 shape (GE 会在此付特化代价)
+     int error = 0;
+ };
+@@ -56,6 +70,12 @@
+ 
+ struct PerfResult {
+     std::vector<RequestRecord> records;
++    std::vector<RequestRecord> warmupRecords;
++    bool replay = false, statisticsSufficient = false;
++    std::string runId;
++    int64_t windowStartNs = 0, windowEndNs = 0, lastCompletedNs = 0;
++    size_t windowSuccesses = 0, inFlightAtEnd = 0;
++    double drainMs = 0, d2hAvgMs = 0;
+     std::vector<InstancePerf> instances;
+     size_t requests = 0, errors = 0, samples = 0;
+     double wallMs = 0.0, qps = 0.0;
+@@ -70,6 +90,8 @@
+ struct PoolResources {
+     std::function<bool(int tid)> setup;                                  // 建第 tid 份实例资源
+     std::function<bool(int tid, const Request &, PhaseTime &)> setInputs; // 每请求: H2D + desc
++    std::function<bool(int tid, const Request &, RequestRecord &)> finishOutputs; // Full D2H, in timed boundary.
++    std::function<bool(int tid, const Request &, const RequestRecord &)> captureRequest; // After completion, pressure only.
+     std::function<bool(int tid)> execute;                                // execute + sync
+     std::function<void(int tid)> release;
+     std::function<void(int tid)> threadEnter;
+@@ -87,6 +109,11 @@
+ bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
+                const RequestPool &pool, const PoolResources &res, PerfResult &out);
+ 
++size_t NearestRankIndex(size_t count, double quantile);
++bool ReplayPool(int instances, uint64_t seed, const ReplayOptions &options,
++                const RequestPool &pool, const PoolResources &res, PerfResult &out);
++bool WriteRequestEvents(const std::string &path, const PerfResult &perf);
++
+ void PrintPerfResult(const std::string &label, const PerfResult &perf);
+ nlohmann::json PerfToJson(const PerfResult &perf);            // 调用方合并 meta 后落盘
+ bool WriteRequestsCsv(const std::string &path, const PerfResult &perf);
+--- a/runtime/bench.cpp
++++ b/runtime/bench.cpp
+@@ -31,9 +31,8 @@
+     p.avg = std::accumulate(times.begin(), times.end(), 0.0) / static_cast<double>(times.size());
+     p.min = times.front();
+     p.max = times.back();
+-    p.p50 = times[times.size() / 2];
+-    size_t idx = static_cast<size_t>(static_cast<double>(times.size()) * 0.99);
+-    p.p99 = times[std::min(idx, times.size() - 1)];
++    p.p50 = times[NearestRankIndex(times.size(), 0.50)];
++    p.p99 = times[NearestRankIndex(times.size(), 0.99)];
+     return p;
+ }
+ 
+@@ -391,14 +390,28 @@
+                              {"distinct_shapes", ip.distinctShapes},
+                              {"specialize_ms", ip.specializeMs}});
+     }
++    // Replay rates count only completions inside the common measurement window.
++    size_t windowSamples=0;
++    for(const auto &record:p.records)
++        if(!record.error && record.completedNs<=p.windowEndNs) windowSamples+=record.samples;
+     // Public metrics consumed by core/results.py.
+     return Json{{"schema", "ge-performance/1"},
+                 {"requests", p.requests},
+                 {"errors", p.errors},
+                 {"wall_ms", p.wallMs},
+                 {"qps", p.qps},
+-                {"samples_per_second", p.wallMs>0 ? p.samples/(p.wallMs/1000.0) : 0.0},
+-                {"latency_scope", "h2d_desc_execute_sync"},
++                {"samples_per_second", p.wallMs>0 ? (p.replay ? windowSamples : p.samples)/(p.wallMs/1000.0) : 0.0},
++                {"latency_scope", p.replay ? "h2d_desc_execute_sync_d2h" : "h2d_desc_execute_sync"},
++                {"arrival_model", "closed_loop"},
++                {"slo_status", "not_defined"},
++                {"run_id", p.runId},
++                {"statistics_sufficient", p.replay ? Json(p.statisticsSufficient) : Json(nullptr)},
++                {"window_start_ns", p.windowStartNs}, {"window_end_ns", p.windowEndNs},
++                {"last_completed_ns", p.lastCompletedNs},
++                {"window_successes", p.windowSuccesses}, {"cohort_successes", p.requests},
++                {"in_flight_at_end", p.inFlightAtEnd}, {"drain_ms", p.drainMs},
++                {"cohort_qps", p.wallMs > 0 ? p.requests / (p.wallMs/1000) : 0},
++                {"d2h_ms", {{"avg", p.d2hAvgMs}}},
+                 {"e2e_ms", {{"avg", p.avgMs}, {"min", p.minMs}, {"p50", p.p50Ms},
+                             {"p99", p.p99Ms}, {"max", p.maxMs}}},
+                 {"exec_ms", {{"avg", p.execAvgMs}, {"p99", p.execP99Ms}}},
+--- /dev/null
++++ b/runtime/replay.cpp
+@@ -0,0 +1,181 @@
++#include "bench.h"
++#include <algorithm>
++#include <atomic>
++#include <cmath>
++#include <cstdio>
++#include <condition_variable>
++#include <fstream>
++#include <mutex>
++#include <numeric>
++#include <set>
++#include <stdexcept>
++#include <thread>
++
++namespace ge_runtime {
++size_t NearestRankIndex(size_t count, double quantile) {
++    if (!count || !(quantile > 0 && quantile <= 1)) throw std::invalid_argument("invalid percentile");
++    return std::min(count-1, static_cast<size_t>(std::ceil(quantile*count))-1);
++}
++namespace {
++int64_t Ns(Clock::time_point point) {
++    return std::chrono::duration_cast<std::chrono::nanoseconds>(point.time_since_epoch()).count();
++}
++void Summarize(const std::vector<double> &values, double &avg, double &lo, double &p50, double &p99, double &hi) {
++    if (values.empty()) return;
++    auto sorted=values; std::sort(sorted.begin(),sorted.end());
++    avg=std::accumulate(sorted.begin(),sorted.end(),0.0)/sorted.size();
++    lo=sorted.front(); hi=sorted.back();
++    p50=sorted[NearestRankIndex(sorted.size(),.50)]; p99=sorted[NearestRankIndex(sorted.size(),.99)];
++}
++}
++bool ReplayPool(int instances, uint64_t seed, const ReplayOptions &opt,
++                const RequestPool &pool, const PoolResources &res, PerfResult &out) {
++    if (instances<1 || pool.Empty() || !res.setup || !res.setInputs || !res.execute || !res.finishOutputs ||
++        !std::isfinite(opt.minSeconds) || !std::isfinite(opt.maxSeconds) ||
++        opt.minSeconds<=0 || opt.maxSeconds<opt.minSeconds || !opt.minRequests ||
++        opt.maxRequests<opt.minRequests || opt.maxRequests>10000000 || opt.warmupPerCase<1 ||
++        opt.runId.empty() || (opt.captureOutputs && !res.captureRequest)) return false;
++    out=PerfResult{}; out.replay=true; out.runId=opt.runId; out.distinctShapes=pool.distinctShapes;
++    auto now=opt.now ? opt.now : [](){return Clock::now();};
++    std::vector<bool> created(static_cast<size_t>(instances));
++    auto release=[&](){for(int t=0;t<instances;++t) if(created[t] && res.release) {res.release(t);created[t]=false;}};
++    try {
++        out.hbmBaseMb=res.hbmUsedMb ? res.hbmUsedMb() : -1;
++        for(int t=0;t<instances;++t) {if(!res.setup(t)){release();return false;}created[t]=true;}
++        out.hbmPeakMb=res.hbmUsedMb ? res.hbmUsedMb() : -1;
++    } catch(...) {release();throw;}
++    Sampler sampler(pool.requests.size(),seed);
++    std::vector<size_t> sequence(opt.maxRequests);
++    for(auto &index:sequence) index=sampler.Next();
++    std::vector<std::vector<RequestRecord>> records(instances),warmRecords(instances);
++    std::atomic<bool> stop{false}; std::atomic<size_t> completed{0},errors{0};
++    std::mutex barrier,dispatch; std::condition_variable cv;
++    size_t ready=0,next=0; bool started=false,warmFailed=false,closed=false;
++    Clock::time_point windowBegin,windowEnd,deadline;
++    auto warmBegin=now();
++    auto run=[&](int tid,const Request &req,RequestRecord &rec,bool capture) {
++        PhaseTime phase;
++        // Measurement requests are admitted and timestamped under the dispatcher lock.
++        // This includes the short dispatch-to-H2D gap and keeps tail requests in their send cohort.
++        if(!rec.startedNs) rec.startedNs=Ns(now());
++        bool ok=false;
++        try {
++            rec.errorStage="h2d_desc";
++            for(const auto &plan:req.plans) rec.h2dBytes+=plan.Bytes();
++            ok=res.setInputs(tid,req,phase); rec.h2dMs=phase.h2dMs;rec.descMs=phase.descMs;
++            if(ok) {
++                rec.errorStage="execute_sync";auto execBegin=now();ok=res.execute(tid);
++                rec.execMs=std::chrono::duration<double,std::milli>(now()-execBegin).count();
++            }
++            if(ok) {
++                rec.errorStage="d2h";auto copyBegin=now();ok=res.finishOutputs(tid,req,rec);
++                rec.d2hMs=std::chrono::duration<double,std::milli>(now()-copyBegin).count();
++            }
++        } catch(const std::exception &e) {fprintf(stderr,"[ERROR] replay instance=%d stage=%s: %s\n",tid,rec.errorStage.c_str(),e.what());ok=false;}
++          catch(...) {ok=false;}
++        rec.completedNs=Ns(now());rec.e2eMs=(rec.completedNs-rec.startedNs)/1e6;
++        if(ok && capture) {
++            rec.errorStage="capture";
++            try {ok=res.captureRequest(tid,req,rec);}catch(...) {ok=false;}
++        }
++        rec.error=ok ? 0 : 1;
++        if(ok) rec.errorStage.clear(); else {++errors;stop=true;}
++        return ok;
++    };
++    std::vector<std::thread> workers;
++    try {
++        for(int tid=0;tid<instances;++tid) workers.emplace_back([&,tid](){
++            bool warmOk=true;
++            try {
++                if(res.threadEnter) res.threadEnter(tid);
++                for(int round=0;round<opt.warmupPerCase && warmOk;++round) for(size_t i=0;i<pool.requests.size();++i) {
++                    const auto &req=pool.requests[i];RequestRecord rec;
++                    rec.instance=tid;rec.req=static_cast<size_t>(round)*pool.requests.size()+i;
++                    rec.inputSet=req.name;rec.shapeKey=req.shapeKey;rec.samples=req.samples;rec.phase="warmup";
++                    warmOk=run(tid,req,rec,false);warmRecords[tid].push_back(std::move(rec));
++                    if(!warmOk) break;
++                }
++            }catch(...) {warmOk=false;stop=true;++errors;}
++            {
++                std::unique_lock<std::mutex> lock(barrier);warmFailed=warmFailed||!warmOk;++ready;cv.notify_all();
++                cv.wait(lock,[&](){return started;});if(warmFailed) return;
++            }
++            while(!stop.load()) {
++                size_t index=0;int64_t admittedNs=0;
++                {
++                    std::lock_guard<std::mutex> lock(dispatch);auto time=now();
++                    if(closed || stop.load()) break;
++                    double elapsed=std::chrono::duration<double>(time-windowBegin).count();
++                    if(time>=deadline || (elapsed>=opt.minSeconds && completed.load()>=opt.minRequests) || next>=sequence.size()) {
++                        closed=true;windowEnd=std::min(time,deadline);break;
++                    }
++                    index=next++;admittedNs=Ns(time);
++                }
++                const auto &req=pool.requests[sequence[index]];RequestRecord rec;
++                rec.instance=tid;rec.req=index;rec.startedNs=admittedNs;rec.inputSet=req.name;rec.shapeKey=req.shapeKey;rec.samples=req.samples;
++                bool ok=run(tid,req,rec,opt.captureOutputs);
++                records[tid].push_back(std::move(rec));if(ok) ++completed;
++            }
++        });
++    }catch(...) {
++        {std::lock_guard<std::mutex> lock(barrier);warmFailed=true;started=true;}
++        stop=true;cv.notify_all();for(auto &worker:workers) worker.join();release();throw;
++    }
++    {
++        std::unique_lock<std::mutex> lock(barrier);cv.wait(lock,[&](){return ready==static_cast<size_t>(instances);});
++        out.warmupMs=std::chrono::duration<double,std::milli>(now()-warmBegin).count();
++        windowBegin=now();windowEnd=windowBegin;
++        deadline=windowBegin+std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(opt.maxSeconds));started=true;
++    }
++    cv.notify_all();for(auto &worker:workers) worker.join();
++    if(!closed) windowEnd=std::min(now(),deadline);
++    out.windowStartNs=Ns(windowBegin);out.windowEndNs=Ns(windowEnd);
++    out.wallMs=std::max(0.0,(out.windowEndNs-out.windowStartNs)/1e6);
++    std::vector<double> latency,exec,d2h,samples;
++    for(int tid=0;tid<instances;++tid) {
++        for(auto &rec:warmRecords[tid]) out.warmupRecords.push_back(std::move(rec));
++        InstancePerf ip;ip.name="instance_"+std::to_string(tid);ip.loadMs=res.loadMs ? res.loadMs(tid) : 0;
++        std::vector<double> local,localExec;std::set<std::string> shapes;
++        for(const auto &rec:records[tid]) {
++            out.records.push_back(rec);shapes.insert(rec.shapeKey);
++            out.lastCompletedNs=std::max(out.lastCompletedNs,rec.completedNs);
++            if(rec.startedNs<=out.windowEndNs && rec.completedNs>out.windowEndNs) ++out.inFlightAtEnd;
++            if(rec.error) {++ip.errors;continue;}
++            if(rec.completedNs<=out.windowEndNs) {++out.windowSuccesses;ip.qps+=1;}
++            ++ip.requests;out.samples+=rec.samples;
++            latency.push_back(rec.e2eMs);exec.push_back(rec.execMs);d2h.push_back(rec.d2hMs);samples.push_back(rec.samples);
++            local.push_back(rec.e2eMs);localExec.push_back(rec.execMs);
++            ip.h2dAvgMs+=rec.h2dMs;ip.descAvgMs+=rec.descMs;
++        }
++        Summarize(local,ip.avgMs,ip.minMs,ip.p50Ms,ip.p99Ms,ip.maxMs);
++        double unused=0;Summarize(localExec,ip.execAvgMs,unused,unused,ip.execP99Ms,unused);
++        if(ip.requests){ip.h2dAvgMs/=ip.requests;ip.descAvgMs/=ip.requests;}
++        ip.qps=out.wallMs>0 ? ip.qps/(out.wallMs/1000) : 0;ip.distinctShapes=shapes.size();out.instances.push_back(ip);
++    }
++    out.warmupRuns=out.warmupRecords.size();out.requests=latency.size();out.errors=errors.load();
++    out.qps=out.wallMs>0 ? out.windowSuccesses/(out.wallMs/1000) : 0;
++    out.drainMs=std::max(0.0,(out.lastCompletedNs-out.windowEndNs)/1e6);
++    out.statisticsSufficient=!warmFailed && !out.errors && out.wallMs/1000>=opt.minSeconds && out.windowSuccesses>=opt.minRequests;
++    Summarize(latency,out.avgMs,out.minMs,out.p50Ms,out.p99Ms,out.maxMs);
++    double unused=0;Summarize(exec,out.execAvgMs,unused,unused,out.execP99Ms,unused);
++    Summarize(samples,out.tokAvg,out.tokMin,out.tokP50,out.tokP99,out.tokMax);
++    out.d2hAvgMs=d2h.empty()?0:std::accumulate(d2h.begin(),d2h.end(),0.0)/d2h.size();
++    std::sort(out.records.begin(),out.records.end(),[](const auto &a,const auto &b){return a.req<b.req;});
++    release();return !warmFailed && !out.errors;
++}
++bool WriteRequestEvents(const std::string &path,const PerfResult &perf) {
++    std::ofstream file(path);if(!file) return false;
++    auto write=[&](const RequestRecord &r){
++        nlohmann::json event={{"run_id",perf.runId},{"request_id",r.phase=="warmup" ? nlohmann::json("warmup-"+std::to_string(r.instance)+"-"+std::to_string(r.req)) : nlohmann::json(r.req)},{"instance",r.instance},{"case_id",r.inputSet},
++            {"shape_key",r.shapeKey},{"phase",r.phase},{"status",r.error?"failed":"success"},
++            {"error_stage",r.errorStage.empty()?nlohmann::json(nullptr):nlohmann::json(r.errorStage)},
++            {"started_ns",r.startedNs},{"scheduled_ns",r.startedNs},{"sent_ns",r.startedNs},{"received_ns",r.startedNs},
++            {"completed_ns",r.completedNs},{"h2d_ms",r.h2dMs},{"desc_ms",r.descMs},{"execute_ms",r.execMs},
++            {"d2h_ms",r.d2hMs},{"e2e_ms",r.e2eMs},{"h2d_bytes",r.h2dBytes},{"d2h_bytes",r.d2hBytes}};
++        file<<event.dump()<<'\n';
++    };
++    for(const auto &record:perf.warmupRecords) write(record);
++    for(const auto &record:perf.records) write(record);
++    return static_cast<bool>(file);
++}
++} // namespace ge_runtime
+--- a/runtime/main.cpp
++++ b/runtime/main.cpp
+@@ -1,3 +1,4 @@
++#include <cmath>
+ #include <fstream>
+ #include <iostream>
+ #include <map>
+@@ -54,12 +55,49 @@
+         bench.warmup=mode=="infer"?0:plan.at("warmup").get<int>();
+         bench.requests=plan.at("iterations").get<int>();
+         if(bench.threads<1 || bench.requests<1 || bench.warmup<0) throw std::runtime_error("invalid execution counts");
++        if(plan.contains("replay")) {
++            if(mode!="bench" || graph.backend!="ge_session") throw std::runtime_error("replay requires GE Session bench");
++            const auto &replay=plan.at("replay"); bench.replay.enabled=true;
++            bench.replay.runId=replay.at("run_id").get<std::string>();
++            bench.replay.minSeconds=replay.at("min_seconds").get<double>();
++            bench.replay.maxSeconds=replay.at("max_seconds").get<double>();
++            bench.replay.minRequests=replay.at("min_requests").get<size_t>();
++            bench.replay.maxRequests=replay.value("max_requests",size_t{2000000});
++            bench.replay.warmupPerCase=replay.value("warmup_per_case",10);
++            bench.replay.captureOutputs=replay.value("capture_outputs",false);
++            if(bench.replay.runId.empty() || !std::isfinite(bench.replay.minSeconds) || !std::isfinite(bench.replay.maxSeconds) ||
++                bench.replay.minSeconds<=0 || bench.replay.maxSeconds<bench.replay.minSeconds || !bench.replay.minRequests ||
++                bench.replay.maxRequests<bench.replay.minRequests || bench.replay.maxRequests>10000000 || bench.replay.warmupPerCase<1)
++                throw std::runtime_error("invalid replay timing/counts");
++        }
+         const auto &options=plan.at("options");const auto &observe=plan.at("observability");
+         bool profile=observe.value("profiling",false),dump=observe.value("dump",false);
+         if(profile&&dump) throw std::runtime_error("collect profiling and dump separately");
+         if(graph.backend=="ge_session" && dump) throw std::runtime_error("GE Session dump is unsupported");
+         Json captured=Json::object();std::mutex captureMutex;std::ofstream binary;
+-        if(mode!="bench") binary.open(output+"/outputs.bin",std::ios::binary);
++        std::ofstream manifest;
++        if(mode!="bench" || bench.replay.captureOutputs) {
++            binary.open(output+"/outputs.bin",std::ios::binary);
++            if(!binary) throw std::runtime_error("cannot open output binary");
++        }
++        if(bench.replay.captureOutputs) {
++            manifest.open(output+"/manifest.jsonl");
++            if(!manifest) throw std::runtime_error("cannot open capture manifest");
++        }
++        auto replayCapture=[&](int instance,const Request &request,const RequestRecord &record,const std::vector<HostTensor> &tensors) {
++            std::lock_guard<std::mutex> guard(captureMutex);
++            if(tensors.size()!=io.outputs.size() || !binary || !manifest) return false;
++            Json row={{"run_id",bench.replay.runId},{"request_id",record.req},{"instance",instance},
++                {"case_id",request.name},{"phase","measure"},{"tensors",Json::array()}};
++            for(const auto &tensor:tensors) {
++                auto offset=binary.tellp();if(offset<0) return false;
++                binary.write(tensor.data.data(),tensor.data.size());
++                row["tensors"].push_back({{"name",tensor.logical},{"dtype",tensor.dtype},{"shape",tensor.shape},
++                    {"offset",static_cast<size_t>(offset)},{"bytes",tensor.data.size()}});
++            }
++            binary.flush();if(!binary) return false;
++            manifest<<row.dump()<<'\n';manifest.flush();return static_cast<bool>(manifest);
++        };
+         auto capture=[&](int instance,const Request &request,const std::vector<HostTensor> &tensors) {
+             std::lock_guard<std::mutex> guard(captureMutex);
+             if(tensors.size()!=io.outputs.size() || !binary) return false;
+@@ -83,6 +121,7 @@
+             opt.profiling.enabled=profile;opt.profiling.outputPath=output+"/"+mode+"-profiling";
+             opt.profiling.aicMetrics=observe.value("aic_metrics",std::string("PipeUtilization"));
+             if(mode!="bench") opt.capture=capture;
++            if(bench.replay.captureOutputs) opt.replayCapture=replayCapture;
+             ok=RunGeSessionBackend(graph,io,opt,&perf);
+         } else if(graph.backend=="atc_om") {
+             AclOptions opt;opt.device=graph.device;opt.bench=bench;opt.pool=&pool;opt.seed=plan.at("seed").get<uint64_t>();
+@@ -95,12 +134,20 @@
+             }
+             ok=RunAclBackend(graph,io,opt,&perf);
+         } else throw std::runtime_error("unknown backend");
+-        if(!ok && (mode!="bench" || perf.records.empty())) throw std::runtime_error("backend execution failed");
++        if(!ok && (mode!="bench" || (perf.records.empty() && perf.warmupRecords.empty()))) throw std::runtime_error("backend execution failed");
+         Json result={{"status",ok?"success":"failed"},{"mode",mode},{"backend",graph.backend}};
+         if(!ok) result["error"]="backend execution failed; partial measurements retained";
+         if(mode=="bench") {
++            binary.close();manifest.close();
+             result["performance"]=PerfToJson(perf);
++            if(bench.replay.enabled) {
++                result["replay"]=plan.at("replay");
++                if(!WriteRequestEvents(output+"/events.jsonl",perf)) throw std::runtime_error("cannot save replay events");
++                result["events"]=output+"/events.jsonl";
++                if(bench.replay.captureOutputs) result["manifest"]=output+"/manifest.jsonl";
++            }
+             result["performance"]["profiling_enabled"]=profile;
++            result["performance"]["capture_enabled"]=bench.replay.captureOutputs;
+             result["performance"]["sampling"]={{"seed",plan.at("seed")},{"replacement",true},{"pool_size",pool.requests.size()},{"order","global_request_index"}};
+             if(!WriteRequestsCsv(output+"/requests.csv",perf)) throw std::runtime_error("cannot save request metrics");
+         } else {binary.close();result["outputs"]=captured;}
+--- a/runtime/backends/gesession_backend.h
++++ b/runtime/backends/gesession_backend.h
+@@ -19,6 +19,7 @@
+     GeProfilingConfig profiling;    // GE 在线路径经 GEInitialize 全局选项开启 (不走 acl.json)
+     const RequestPool *pool = nullptr;   // 必填；所有执行统一使用请求池
+     std::function<bool(int, const Request &, const std::vector<HostTensor> &)> capture;
++    std::function<bool(int, const Request &, const RequestRecord &, const std::vector<HostTensor> &)> replayCapture;
+     uint64_t seed = 0;
+ };
+ 
+--- a/runtime/backends/gesession_backend.cpp
++++ b/runtime/backends/gesession_backend.cpp
+@@ -443,7 +443,7 @@
+         return true;
+     }
+ 
+-    bool CollectOutputs(int tid, const IoSpec &spec, std::vector<HostTensor> &outputs) {
++    bool CollectOutputs(int tid, const IoSpec &spec, std::vector<HostTensor> &outputs, bool quiet = false) {
+         GeContext *ctx = FindContext(tid);
+         if (ctx == nullptr) {
+             fprintf(stderr, "[ERROR] tid=%d 无执行资源, 无法取输出\n", tid);
+@@ -463,6 +463,14 @@
+             for (size_t d = 0; d < shape.GetDimNum(); d++) {
+                 out.shape.push_back(shape.GetDim(d));
+             }
++            if (i >= spec.outputs.size() || out.dtype != spec.outputs[i].dtype ||
++                out.shape.size() != spec.outputs[i].shape.size()) return false;
++            TensorPlan logical; logical.dtype=out.dtype; logical.shape=out.shape;
++            size_t logicalBytes=logical.Bytes();
++            for(size_t dim=0;dim<out.shape.size();++dim)
++                if(spec.outputs[i].shape[dim]!=-1 && spec.outputs[i].shape[dim]!=out.shape[dim]) return false;
++            if(logicalBytes>bytes || (logicalBytes && t.GetAddr()==nullptr)) return false;
++            bytes=logicalBytes;
+             out.data.resize(bytes);
+             if (bytes > 0 && t.GetAddr() != nullptr) {
+                 aclError ret = aclrtMemcpy(out.data.data(), bytes, t.GetAddr(), bytes,
+@@ -472,7 +480,7 @@
+                     return false;
+                 }
+             }
+-            std::cout << "[INFO] Output[" << i << "] '" << out.logical << "' shape="
++            if (!quiet) std::cout << "[INFO] Output[" << i << "] '" << out.logical << "' shape="
+                       << ShapeToString(out.shape) << " dtype=" << out.dtype
+                       << " bytes=" << bytes << std::endl;
+             outputs.push_back(std::move(out));
+@@ -591,8 +599,18 @@
+         return runner.CollectOutputs(tid, spec, tensors) && opt.capture(tid, request, tensors);
+     });
+ 
++    std::vector<std::vector<HostTensor>> hostOutputs(static_cast<size_t>(opt.bench.threads));
++    pres.finishOutputs = [&](int tid, const Request &, RequestRecord &record) {
++        auto &tensors=hostOutputs.at(static_cast<size_t>(tid));tensors.clear();
++        if(!runner.CollectOutputs(tid,spec,tensors,true)) return false;
++        for(const auto &tensor:tensors) record.d2hBytes+=tensor.data.size();
++        return true;
++    };
++    if(opt.replayCapture) pres.captureRequest = [&](int tid,const Request &request,const RequestRecord &record) {
++        return opt.replayCapture(tid,request,record,hostOutputs.at(static_cast<size_t>(tid)));
++    };
+     PerfResult result;
+-    bool ok = BenchPool(opt.bench.threads, opt.bench.requests, opt.bench.warmup, opt.seed,
++    bool ok = opt.bench.replay.enabled ? ReplayPool(opt.bench.threads,opt.seed,opt.bench.replay,*opt.pool,pres,result) : BenchPool(opt.bench.threads, opt.bench.requests, opt.bench.warmup, opt.seed,
+                         *opt.pool, pres, result);
+     if (ok) {
+         PrintPerfResult("GeSession 变长负载 (请求池回放)", result);
+--- a/runtime/CMakeLists.txt
++++ b/runtime/CMakeLists.txt
+@@ -20,7 +20,7 @@
+ 
+ include(CTest)
+ if(BUILD_TESTING)
+-    add_executable(runtime_contracts ../tests/runtime_contracts.cpp bench.cpp io_spec.cpp pool.cpp)
++    add_executable(runtime_contracts ../tests/runtime_contracts.cpp bench.cpp replay.cpp io_spec.cpp pool.cpp)
+     target_include_directories(runtime_contracts PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${THIRD_PARTY_DIR})
+     target_link_libraries(runtime_contracts PRIVATE pthread)
+     add_test(NAME runtime_contracts COMMAND runtime_contracts ${CMAKE_CURRENT_BINARY_DIR}/test-data)
+@@ -31,6 +31,7 @@
+     io_spec.cpp
+     pool.cpp
+     bench.cpp
++    replay.cpp
+     acl_json.cpp
+     backends/acl_backend.cpp
+     backends/gesession_backend.cpp
+--- a/tests/runtime_contracts.cpp
++++ b/tests/runtime_contracts.cpp
+@@ -124,5 +124,63 @@
+     PerfResult unmeasured;
+     CHECK(!BenchPool(1,10,0,42,pool,resources,unmeasured));
+     CHECK(unmeasured.records.empty());
++    // Nearest rank must not move p99 up one sample at exact hundredths.
++    CHECK(NearestRankIndex(100,.99)==98 && NearestRankIndex(1000,.99)==989);
++    CHECK(NearestRankIndex(1,.99)==0);
++    {
++        RequestPool cases;cases.distinctShapes=2;
++        for(int i=0;i<5;++i){Request req;req.name="sample-"+std::to_string(i);req.shapeKey=std::to_string(i%2);req.samples=1;cases.requests.push_back(req);}
++        PoolResources fake;fake.setup=[](int){return true;};fake.release=[](int){};
++        fake.setInputs=[](int,const Request &,PhaseTime &){return true;};fake.execute=[](int){return true;};
++        std::atomic<int64_t> ticks{0};size_t finished=0,captured=0;
++        ReplayOptions options;options.runId="cpu";options.enabled=true;options.minSeconds=.010;options.maxSeconds=.100;
++        options.minRequests=3;options.maxRequests=100;options.warmupPerCase=1;options.captureOutputs=true;
++        options.now=[&](){return Clock::time_point(std::chrono::milliseconds(ticks.fetch_add(1)));};
++        fake.finishOutputs=[&](int,const Request &,RequestRecord &r){++finished;r.d2hBytes=40448;ticks.fetch_add(7);return true;};
++        fake.captureRequest=[&](int,const Request &req,const RequestRecord &r){
++            CHECK(r.inputSet==req.name && r.completedNs>r.startedNs && r.d2hBytes==40448);++captured;return true;
++        };
++        PerfResult replay;CHECK(ReplayPool(1,42,options,cases,fake,replay));
++        CHECK(replay.statisticsSufficient && replay.warmupRuns==5 && replay.requests>=3);
++        CHECK(finished==replay.requests+5 && captured==replay.requests);
++        CHECK(replay.records.size()==replay.requests && replay.windowSuccesses<=replay.requests);
++        for(size_t i=0;i<replay.records.size();++i){const auto &r=replay.records[i];CHECK(r.req==i && r.d2hMs>=7 && r.e2eMs>=r.d2hMs && !r.error);}
++        CHECK(PerfToJson(replay)["latency_scope"]=="h2d_desc_execute_sync_d2h");
++        CHECK(WriteRequestEvents(dir+"/events.jsonl",replay));
++        {std::ifstream f(dir+"/events.jsonl");std::string line;size_t lines=0;while(std::getline(f,line)){auto e=nlohmann::json::parse(line);CHECK(e["d2h_bytes"]==40448);++lines;}CHECK(lines==replay.requests+5);}
++        // Multiple independent workers must retain case/request/output association, including equal shapes.
++        {
++            ReplayOptions parallel=options;parallel.now={};parallel.minSeconds=.001;parallel.maxSeconds=1;
++            parallel.minRequests=100;parallel.maxRequests=200;
++            PoolResources isolated;std::string current[2];size_t captures[2]={0,0};
++            isolated.setup=[](int){return true;};isolated.release=[](int){};
++            isolated.setInputs=[&](int tid,const Request &req,PhaseTime &){current[tid]=req.name;return true;};
++            isolated.execute=[](int){return true;};
++            isolated.finishOutputs=[&](int tid,const Request &req,RequestRecord &r){CHECK(current[tid]==req.name);r.d2hBytes=40448;return true;};
++            isolated.captureRequest=[&](int tid,const Request &req,const RequestRecord &r){CHECK(current[tid]==req.name && r.inputSet==req.name && r.instance==tid);++captures[tid];return true;};
++            PerfResult concurrent;CHECK(ReplayPool(2,42,parallel,cases,isolated,concurrent));
++            CHECK(concurrent.requests>=100 && concurrent.requests<=200 && captures[0]+captures[1]==concurrent.requests);
++            Sampler expected(cases.requests.size(),42);
++            for(size_t i=0;i<concurrent.records.size();++i){CHECK(concurrent.records[i].req==i);CHECK(concurrent.records[i].inputSet==cases.requests[expected.Next()].name);}
++        }
++        // A copy failure must retain its stage/terminal record, stop dispatch, and never call capture.
++        captured=0;finished=0;ticks=0;
++        fake.finishOutputs=[&](int,const Request &,RequestRecord &r){r.d2hBytes=40448;return ++finished!=7;};
++        PerfResult failed;CHECK(!ReplayPool(1,42,options,cases,fake,failed));
++        CHECK(failed.requests==1 && failed.errors==1 && failed.records.size()==2 && captured==1);
++        CHECK(failed.records.back().error && failed.records.back().errorStage=="d2h");
++        CHECK(!failed.statisticsSufficient);
++        // A bounded window drains a slow request but does not count its late completion as window QPS.
++        ticks=0;options.minRequests=1;options.maxRequests=50;options.maxSeconds=.025;options.minSeconds=.010;options.captureOutputs=false;
++        fake.finishOutputs=[&](int,const Request &,RequestRecord &r){r.d2hBytes=40448;ticks.fetch_add(20);return true;};
++        PerfResult limited;CHECK(ReplayPool(1,42,options,cases,fake,limited));
++        CHECK(!limited.statisticsSufficient && limited.windowSuccesses==0 && limited.requests==1 && limited.inFlightAtEnd==1 && limited.drainMs>0);
++        CHECK(PerfToJson(limited)["samples_per_second"]==0 && PerfToJson(limited)["cohort_qps"].get<double>()>0);
++        // Sink failures stay terminal failures, rather than a successful D2H turning into a claimed successful response.
++        ticks=0;options.captureOutputs=true;options.minRequests=1;options.maxRequests=10;
++        fake.captureRequest=[](int,const Request &,const RequestRecord &){throw std::runtime_error("sink failure");return true;};
++        PerfResult sinkFailed;CHECK(!ReplayPool(1,42,options,cases,fake,sinkFailed));
++        CHECK(sinkFailed.errors==1 && sinkFailed.records.size()==1 && sinkFailed.records[0].errorStage=="capture");
++    }
+     std::cout<<"runtime contract checks passed\n";
+ }

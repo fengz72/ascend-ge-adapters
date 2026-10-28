@@ -1,0 +1,7 @@
+{
+  "models/bge/replay.py": "3c0af6fdaae170563198e614075a45b6860c12ff69320d7f9d3c947ae0ecb00e",
+  "tests/test_bge_replay_cli.py": "279332434fd6cdb3c86a56925f07cf2dad63067c439f97f06095ad964b9a68e8",
+  "models/bge/README.md": "e49415f5a17834e4411d502094a5b9040612f72a82230c11283daf74e1dae014",
+  "patch_sha256": "be2ba9daa19453f1e1c0c596ff3771bcde35390c1ab1f7d831ff55af55fa53c7",
+  "unchanged_runtime_binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d"
+}

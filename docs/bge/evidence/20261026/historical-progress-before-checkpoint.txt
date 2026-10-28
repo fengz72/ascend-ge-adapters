@@ -1,0 +1,117 @@
+# BGE 工作进度
+
+当前阶段：2026-10-26已授权恢复；设备2门禁核查、测量实现和独立CPU参考准备中。设计：[design.md](design.md)，2026-10-24 v1。主控：本聊天主 Agent，唯一全局进度写者。
+
+## 当前版本与任务
+
+- 远端：`99` / `hejun-cann9-bge` / `/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters`。
+- 代码：`441b245fc18ee2a78156becf80488ee16ad3474d`，分支 `codex/seven-stage-framework`，预检时工作区干净、领先 origin 1 提交；本次归档新增 `docs/bge/`，不改变该模型代码基线。
+- 模型/样例/expected 及实际图接口：[preflight.json](evidence/preflight.json)。五例 B=1、S=6/9/8/13/8、L=128；原图保留 30 Slice、无 Range。
+- 首个可信性能基线：尚未建立。当前父基线为上述代码身份；最佳已验收性能版本：无本轮新证据。
+- 用户契约：无 p99 硬上限；计时 H2D+GE+D2H；五样例回放；全核起步，核数和多实例参与调优；最多 12 组配置/2 小时累计设备占用。
+- 最新用户指示：先完成设计；全部 NPU 被其他进程占用时暂不进行性能测试，并将该门禁写入通用工作流。
+
+| 任务 | 当前状态 | 负责人/证据 |
+|---|---|---|
+| 材料、代码与设备只读预检 | 完成；无设备执行 | 主控；preflight.json |
+| SE 可执行设计与候选建议 | 完成，只读调查 | [SE 报告](analysis/se-design-review.md) |
+| 测试计时与输出关联审查 | 完成，已识别 D2H 与多实例验证缺口 | [测试报告](analysis/test-contract-audit.md) |
+| 开发最小修改设计 | 完成；未改 runner | [开发计划](analysis/development-plan.md) |
+| 主设计与 brief 同步 | v1 完成，独立复审无必须修正项 | [最终独立复审](analysis/design-final-review.md) |
+| 原始 ONNX 融合候选静态分析 | 完成；六类结构与本机CANN已有实现已核查，未改模型或执行设备 | [融合分析](analysis/fusion-static-analysis.md)、[CANN核查](analysis/cann-fusion-inventory.md)、[独立复核](analysis/fusion-independent-audit.md) |
+| 工作流设备占用门禁 | 已写入；skill 格式校验通过，分发包已同步 | 协调端 `.agents/skills/npu-model-workflow/SKILL.md` 及 `references/orchestration.md`；工作流包不属于本模型仓库依赖 |
+| 测量入口补齐 D2H/时间窗/请求事件 | 未实施 | 后续开发任务；现有 bench 不能作本轮基线 |
+| 新设备正确性、压力、稳定性 | 未运行 | 等待可独占设备及测量/采集入口 |
+| 可信性能基线、搜索、独立验收 | 未运行 | 不使用历史 6 请求冒烟数据替代 |
+
+## 设备任务与恢复
+
+2026-10-24 只读预检显示 16 个逻辑 NPU 均有外部进程占用；完整 npu-smi 输出和 UTC 观察时间随 preflight.json 保存。AICore 瞬时为 0 不等于可用，容器 PID namespace 看不到外部进程也不等于空闲。
+
+当前无本轮 NPU 作业、run 目录、进程组或持有设备锁；没有请求设备释放或终止其他进程。性能阶段为“未运行：等待可独占设备”；这不表示已验收或自动后台排队。
+
+后续恢复先重新核查设备占用、预约、物理映射与旧任务；确认共享锁和独立副本后，由主控按设计串行派发。恢复不跳过五例新正确性，也不将旧缺 D2H 的口径当成新基线。
+
+## 调优清单
+
+优化尝试数：0
+
+尚未分配或运行真实优化点。测量契约前置修正未实施，不计算模型性能提升；每个候选开始前再分配 OPT 并创建固定七节记录，所有结果进入最终 acceptance 汇总。
+
+新增静态候选：49组LayerNorm、24组Erf-GELU、145组MatMul+bias、48组重叠的residual Add+LayerNorm、24组attention、5组L2Normalize（1组纯常量）。它们不是已确认未融合的kernel数，也没有性能接纳决定。原图opset14、LN epsilon≈1e-12、GELU近似差异、L2 epsilon平方、FA的FP32/mask/scale/短S与GE接入限制见融合分析。后续先检查同次编译最终图，再决定哪些模式需要实施。
+
+| 优化编号 | 一句话内容 | 父版本 | 当前状态/负责人 | 完整记录 |
+|---|---|---|---|---|
+
+## 预算与下一步
+
+已用候选配置：0/12；累计设备占用：0/7200 秒。设计、源文件读取、静态 ONNX 检查和设备只读查询不计设备执行占用。没有本轮吞吐或 p99 数值。
+
+本轮设计交付完成；独立审查未发现必须修正项。skill 格式、文档链接、材料身份和分发包完整性检查见 [design-validation.json](evidence/design-validation.json)，这些检查不等于模型运行验收。工作流本体和分发包保留在协调端 `/Users/ext.hejun23/Documents/Codex/2026-10-19/ssh`，分发文件为该目录的 `outputs/npu-workflow-bundle.zip` 与 `outputs/npu-workflow-bundle-manifest.json`，本模型仓库只归档模型设计资料。
+
+设计资料已归档到远端仓库 `docs/bge/`；逐文件内容校验与仓库内链接检查见 [transfer-validation.json](evidence/transfer-validation.json)。
+
+获得可用设备并明确恢复后，再实施/验证测量修正、独立正确性、全核单实例可信基线、有限搜索和冻结后验收。当前不继续等待设备，不创建计划任务或后台性能作业。
+
+## 2026-10-26 恢复记录
+
+用户授权逻辑设备2继续，优先原图mode=0新正确性、完整搬运基线、FP16和算子融合。当前只读观测设备2/NPU1 Chip0/PCI0000:99:00.0无运行进程；每次启动前再核查。新实验根为`/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026`。
+
+开发、SE和测试分别准备测量入口、精度/融合候选和独立CPUgolden；禁止子Agent自行使用设备。原repo源代码尚未改变。设备预算初值0/7200秒，配置初值0/12；后续逐任务更新到本节，前文是历史设计阶段记录。
+
+- 原始模型本轮正确性PASS：五条完整输出FP32[1,10112]，Top10 ID+1与顺序全部一致；max Top10误差9.595939636231066e-5，max full abs 0.00021588802337646484，worst relativeL2 0.0004473780329645363，min cosine 0.9999999058732865。独立测试证据在远端acceptance/original-mode0-correctness.json。
+- CPUgolden重新生成且绑定原模型/输入/expectedSHA、ORT配置；与历史golden逐bit相等。原图与打包图3137节点、400权重、opset/IO逐项一致，均30Slice/0Range。
+- 两个设备任务均exit0：original-correctness 53.711785秒；original-graph-dump 26.089528秒；累计79.801313/7200秒，配置1/12。编译最终图含49LayerNorm和24Gelu，已自动融合；OPT-002改为针对实测未覆盖结构选择。
+- 10:20左右设备2出现新PID2657057，226MB；来源待核查，不启动新设备/性能任务。测量代码和候选继续离线准备。
+
+| 优化编号 | 一句话内容 | 父版本 | 当前状态/负责人 | 完整记录 |
+|---|---|---|---|---|
+| OPT-001 | 尝试Cube FP16输入/FP32输出或混合精度，保持外部IO和精度门槛 | 原FP32全核单实例 | 准备中 / SE+开发 | [OPT-001](experiments/OPT-001.md) |
+| OPT-002 | 对同次最终图未命中的合法结构使用CANN已有融合算子 | 原FP32全核单实例 | 准备中 / SE+开发 | [OPT-002](experiments/OPT-002.md) |
+
+## 2026-10-26 设备调整
+
+用户确认16个逻辑设备性能一致、卡间差异在误差范围内，并授权改用逻辑设备10。此前设备2新正确性证据保留原设备身份；后续正式基线、候选及复测统一设备10（NPU5/Chip0，PCI0000:89:00.0），启动前重新核查。设备2因外部xllm占用不再发任务，不终止外部进程。总预算不重置。
+
+- 已按用户授权转设备10：10:24预检NPU5/Chip0、PCI0000:89:00.0，proc-mem=No process，HBM4%、AIcore0%。同一卡另一芯片状态不代替本芯片门禁；后续前后核查。
+- 最终GE图进一步核实144个MatMulV2均已有第三路bias输入，后续不重复这些融合。OPT-002优先48个residual Add+LayerNorm→已有CANN AddLayerNorm，需插件编译、生效图与精度实证。
+
+- 新测量二进制8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d；8源文件冻结。开发与独立C++契约构建测试通过。Host输出每请求分配保持计时内；窗口末排空不计窗口QPS、nearest-rank统计、完整D2H及请求输出manifest已核对。
+- device10新路径2000请求压力独立PASS：case次数430/421/394/422/333，所有完整分数和Top10通过，无错误/丢失/重复/错配。
+- device10正式基线3轮原始观察：QPS159.778057/175.321044/179.851523，p99(ms)6.730881/7.111864/7.153775；各轮≥60秒且≥10000请求、0错误，H2D+GE+D2H，capture/profiling均false。独立统计复核中；不能挑最好一轮报告收益，最终需考虑约11.45%轮间相对极差并交错复测。
+
+- 正式基线独立PASS：3轮合计31312请求，QPS中位数175.32104416967806，合并p99 6.819411ms、p50 5.660719ms，range11.4495%。FP16 OPT-001已启动device10原图cube_fp16in_fp32out正确性；2配置已实际启动，预算保留原账本不重置。
+
+| OPT-003 | 按CANN白黑灰名单自动FP16混精，探索减少转换 | 原FP32全核单实例 | 准备中，尚未运行 / SE | [OPT-003](experiments/OPT-003.md) |
+
+OPT-001完整正确性2000请求已PASS，30秒纯性能搜索157.29115096 QPS/p998.852352ms（非正式验收），无收益暂不纳入推荐；OPT-002 FP32融合正确性已在设备执行成功并释放，等待独立完整分数与真实融合生效图核验。
+
+- OPT-002真实48 AddLayerNorm FP32 kernel已生效、2000请求独立精度PASS；纯性能搜索执行中。编译日志11条Python signal TypeError已保留，未修改冻结插件，进入交付前按实际收益决定是否修复继承环境副作用。
+
+- OPT-002 fusion-search外层125/background_children，runtime虽然exit0但生命周期失败，性能观察无效且原插件不接纳。已分配OPT-004隔离修正插件加载与子进程继承，保留原so不覆盖。OPT-003自动混精正确性已启动，原图/IO不变、不加载插件。
+| OPT-004 | 限定融合插件加载到GE进程并清除自身子进程继承，修复OPT-002清理失败 | 原FP32+OPT-002融合逻辑 | 离线修复中 / SE开发 | [OPT-004](experiments/OPT-004.md) |
+
+| OPT-005 | 原FP32全核双实例闭环并发，提高同芯片成功吞吐 | 原FP32全核单实例 | 离线准备，当前尚未启动 / 主控 | [OPT-005](experiments/OPT-005.md) |
+
+- OPT003自动混精2000精度PASS，30秒纯性能152.631777QPS/p997.450638ms（观察相对基线-12.94%），无收益暂不接纳。OPT004 V2首设备复验outer0/native0、48融合命中、signal TypeError为0，独立精度复核及纯性能待完成。已向用户说明后续使用原授权的FP32多实例方向继续探索，物理设备仍10。
+
+| OPT-006 | 原FP32全核四实例闭环并发，继续同芯片吞吐搜索 | 原FP32全核单实例；参照OPT005 | 设备正确性准备 / 主控 | [OPT-006](experiments/OPT-006.md) |
+
+OPT005双实例2001请求完整数值/Top10独立PASS，instance×case最少159次；30秒纯性能原始观察269.899590QPS/p997.914773ms、8097窗口成功/零错，外层0并释放，待独立统计。原FP32新canonical二进制与隔离8efca完全相同；CLI真实prepare-only17,304byte输入身份通过，未启动设备。
+
+| OPT-007 | 原FP32全核八实例闭环并发，在预算内继续同芯片吞吐搜索 | 原FP32全核单实例；参照OPT006 | 离线准备，未启动 / 主控 | [OPT-007](experiments/OPT-007.md) |
+
+- OPT006四实例压力2003个完整输出PASS、每实例×case最少69次；30秒纯性能独立PASS：370.212634QPS / p99 11.448209ms，相对首个基线观察+111.16%。进入OPT007八实例有限搜索；此处仍是搜索值，最终独立复测另计。累计1085.046641秒、7/12配置。
+
+- OPT007八实例压力2007请求完整数值/Top10 PASS；纯性能30.002169569秒13841窗口成功/0错误，461.333304QPS/p99 18.243470ms（搜索观察）。按SE建议继续有限16实例搜索，再最佳N半核；单实例精度候选不盲目与全部并发组合。
+
+| OPT-008 | 原FP32全核十六实例闭环并发 | 原FP32单实例，参照OPT007 | 准备，尚未启动 / 主控 | [OPT-008](experiments/OPT-008.md) |
+
+- OPT008十六实例5015请求/80组合完整输出全部PASS；随后multi16-search在编译15/16后native SIGKILL(-9)，outer125/background_children，清理本组并确认device10释放。未测得性能，不用压力数字替代，原因核查中；停止增加并发，不重试16，回到8实例。
+| OPT-009 | 原FP32八实例半核12\|24 | OPT007八实例全核 | 准备，未启动 / 主控 | [OPT-009](experiments/OPT-009.md) |
+
+## 2026-10-26 11:58 新占用导致暂停
+
+half8-correctness启动前实际门禁发现device10外部PID4088730、136MB，未创建设备job，也未执行半核图。宿主ps确认是11:57:45新起的torch_npu idle-context-and-allocation / dspark-validation-holder，输出路径属于wangyifan194/dspark-pipeline-validation资源占位，非本任务。不终止该进程；暂停所有设备性能/正确性任务，已通过异步问题向用户报告资源变化。
+
+OPT009为未运行/资源阻塞，不虚构退化或0%提升；三轮最终冻结候选复测、交错基线和10分钟稳定性尚未执行，最佳八实例只通过压力与单轮搜索，不标最终接纳。现继续离线归档，预算按全部真实作业累计，无新半核配置计数。

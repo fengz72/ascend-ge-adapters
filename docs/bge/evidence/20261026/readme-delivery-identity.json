@@ -1,0 +1,9 @@
+{
+  "changed_files": [
+    "models/bge/README.md"
+  ],
+  "readme_before_sha256": "e49415f5a17834e4411d502094a5b9040612f72a82230c11283daf74e1dae014",
+  "readme_after_sha256": "3670b40d05530f2500f07e28b8b9b8502d6f7b05163f60fc644384ba3ed56c86",
+  "patch_sha256": "6263125f11271890951f61290c742869f903e7e70663879d0aa3fbc0206ebf13",
+  "unchanged_binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d"
+}

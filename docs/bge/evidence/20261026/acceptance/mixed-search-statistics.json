@@ -1,0 +1,234 @@
+{
+  "schema": "bge-independent-rounds/1",
+  "passed": true,
+  "runs": [
+    "mixed-search"
+  ],
+  "instances": 1,
+  "device": 10,
+  "rounds": [
+    {
+      "kind": "performance",
+      "passed": true,
+      "statistics_sufficient": true,
+      "errors": 0,
+      "minimum_seconds": 30.0,
+      "minimum_window_successes": 2000,
+      "window_seconds": 30.000305847,
+      "window_successes": 4579,
+      "cohort_successes": 4579,
+      "drain_ms": 0.0,
+      "qps": 152.63177726762726,
+      "p50_ms": 6.502108,
+      "p99_ms": 7.450638,
+      "max_ms": 8.311057,
+      "p99_limit": null,
+      "SLO_acceptance": "not_configured",
+      "per_case": {
+        "case-0001": {
+          "count": 937,
+          "p50_ms": 6.514758,
+          "p99_ms": 7.439318
+        },
+        "case-0004": {
+          "count": 845,
+          "p50_ms": 6.495898,
+          "p99_ms": 7.387748
+        },
+        "case-0000": {
+          "count": 953,
+          "p50_ms": 6.495088,
+          "p99_ms": 7.486549
+        },
+        "case-0002": {
+          "count": 917,
+          "p50_ms": 6.497538,
+          "p99_ms": 7.458557
+        },
+        "case-0003": {
+          "count": 927,
+          "p50_ms": 6.516848,
+          "p99_ms": 7.476298
+        }
+      },
+      "segments": {
+        "h2d_ms": {
+          "mean": 0.09323039965057871,
+          "p99": 0.11
+        },
+        "desc_ms": {
+          "mean": 0.0009373225595108102,
+          "p99": 0.001
+        },
+        "execute_ms": {
+          "mean": 6.415168428041057,
+          "p99": 7.302896
+        },
+        "d2h_ms": {
+          "mean": 0.03873169556671762,
+          "p99": 0.050321
+        },
+        "unattributed_host_ms": {
+          "mean": 0.0029333406857392414,
+          "p99": 0.004340999999999262
+        }
+      },
+      "events_sha256": "262bf30e3c57c449725d69f59ae030b2212a8d059a584b682aad5a7d36748cd5",
+      "performance_sha256": "0aa6afa7695e5009044969e068e6ca19eaf8de63fafb2bb977d57a545c1375db",
+      "run_id": "mixed-search",
+      "seed": 42,
+      "plan_sha256": "921364d163bc44ae291ac2040d23a900442f52aac86a8afe98c3ec27779c1972",
+      "per_case_counts": {
+        "case-0000": 953,
+        "case-0001": 937,
+        "case-0002": 917,
+        "case-0003": 927,
+        "case-0004": 845
+      },
+      "ten_second_windows": [
+        {
+          "start_seconds": 0,
+          "seconds": 10.0,
+          "successes": 1517,
+          "qps": 151.7
+        },
+        {
+          "start_seconds": 10,
+          "seconds": 10.0,
+          "successes": 1529,
+          "qps": 152.9
+        },
+        {
+          "start_seconds": 20,
+          "seconds": 10.0,
+          "successes": 1532,
+          "qps": 153.2
+        },
+        {
+          "start_seconds": 30,
+          "seconds": 0.0003058469999999147,
+          "successes": 1,
+          "qps": 3269.6086605403316
+        }
+      ]
+    }
+  ],
+  "median_qps": 152.63177726762726,
+  "min_qps": 152.63177726762726,
+  "max_qps": 152.63177726762726,
+  "qps_relative_range_percent": 0.0,
+  "merged_request_count": 4579,
+  "merged_p50_ms": 6.502108,
+  "merged_p99_ms": 7.450638,
+  "merged_per_case": {
+    "case-0000": {
+      "count": 953,
+      "p50_ms": 6.495088,
+      "p99_ms": 7.486549
+    },
+    "case-0001": {
+      "count": 937,
+      "p50_ms": 6.514758,
+      "p99_ms": 7.439318
+    },
+    "case-0002": {
+      "count": 917,
+      "p50_ms": 6.497538,
+      "p99_ms": 7.458557
+    },
+    "case-0003": {
+      "count": 927,
+      "p50_ms": 6.516848,
+      "p99_ms": 7.476298
+    },
+    "case-0004": {
+      "count": 845,
+      "p50_ms": 6.495898,
+      "p99_ms": 7.387748
+    }
+  },
+  "resource_evidence": {
+    "mixed-search": {
+      "sample_count": 6,
+      "device": 10,
+      "npu": 5,
+      "chip": 0,
+      "BDF": "0000:89:00.0",
+      "observed_host_pids": [
+        3507537
+      ],
+      "directly_witnessed_own_host_pids": [
+        3507537,
+        3509009
+      ],
+      "unmapped_host_pids": [],
+      "external_process_observed": false,
+      "identity_limitation": null,
+      "hbm_mb_min": 3132,
+      "hbm_mb_max": 4615,
+      "rss_kib_min": 2752,
+      "rss_kib_max": 4894400,
+      "resource_sha256": "63e615bc095befcc7e266567042e429d53519542658978e9a6aaffd70185b0ed",
+      "samples": [
+        {
+          "monotonic_ns": 2323456787329092,
+          "runtime_container_pid": 2010257,
+          "device10_host_pids": []
+        },
+        {
+          "monotonic_ns": 2323468574775350,
+          "runtime_container_pid": 2010257,
+          "device10_host_pids": [
+            3507537
+          ]
+        },
+        {
+          "monotonic_ns": 2323480529408868,
+          "runtime_container_pid": 2010257,
+          "device10_host_pids": [
+            3507537
+          ]
+        },
+        {
+          "monotonic_ns": 2323492736529174,
+          "runtime_container_pid": 2010257,
+          "device10_host_pids": [
+            3507537
+          ]
+        },
+        {
+          "monotonic_ns": 2323504518960721,
+          "runtime_container_pid": 2010257,
+          "device10_host_pids": [
+            3507537
+          ]
+        },
+        {
+          "monotonic_ns": 2323516761871592,
+          "runtime_container_pid": 2010257,
+          "device10_host_pids": []
+        }
+      ]
+    }
+  },
+  "plan_identities": [
+    {
+      "run_id": "mixed-search",
+      "seed": 42,
+      "options": {
+        "precision_mode": "allow_mix_precision_fp16",
+        "graph_run_mode": 0
+      },
+      "graph": {
+        "format": "onnx",
+        "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+        "om_path": null
+      },
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d"
+    }
+  ],
+  "p99_limit": null,
+  "SLO_acceptance": "not_configured",
+  "resource_identity_limitations": []
+}

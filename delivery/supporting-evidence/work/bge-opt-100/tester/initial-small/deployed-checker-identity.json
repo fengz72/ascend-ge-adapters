@@ -1,0 +1,17 @@
+{
+  "verify_outputs.py": {
+    "local_sha256": "9ed38845ff0fec81133699c8558150aba2e2d5491c978ee5cf3f827c9b06f1f5",
+    "deployed_sha256": "9ed38845ff0fec81133699c8558150aba2e2d5491c978ee5cf3f827c9b06f1f5",
+    "identical": true
+  },
+  "workload_identity.py": {
+    "local_sha256": "fdbd79bd5497a6c4a0cc528b760921dc6b81081587b592f69245c4902fd34708",
+    "deployed_sha256": "fdbd79bd5497a6c4a0cc528b760921dc6b81081587b592f69245c4902fd34708",
+    "identical": true
+  },
+  "validate_run_identity.py": {
+    "local_sha256": "fd409b6ec90cdf10bf0e70f60063954d403aa0f658c21dffe7c54c9ec7385136",
+    "deployed_sha256": "fd409b6ec90cdf10bf0e70f60063954d403aa0f658c21dffe7c54c9ec7385136",
+    "identical": true
+  }
+}

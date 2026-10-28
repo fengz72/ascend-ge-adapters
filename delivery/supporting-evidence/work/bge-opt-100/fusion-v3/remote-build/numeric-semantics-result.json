@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "numpy": "1.26.4",
+  "npu_initialized": false,
+  "scope": "NumPy semantic check only, not CANN AddLayerNorm or full BGE",
+  "numeric_cases": [
+    {
+      "sequence": 6,
+      "scale": 1.0,
+      "max_abs_vs_fp64": 5.296969547430308e-07
+    },
+    {
+      "sequence": 8,
+      "scale": 1e-07,
+      "max_abs_vs_fp64": 2.1910497682853247e-07
+    },
+    {
+      "sequence": 13,
+      "scale": 10.0,
+      "max_abs_vs_fp64": 5.362536796837958e-07
+    }
+  ],
+  "wrong_epsilon_detectable_max_diff": 0.09980180114507675
+}

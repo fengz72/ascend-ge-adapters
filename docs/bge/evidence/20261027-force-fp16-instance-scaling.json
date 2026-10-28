@@ -1,0 +1,181 @@
+{
+  "schema": "bge100-force-fp16-instance-scaling/1",
+  "host": "100",
+  "container": "hejun-cann9-bge",
+  "device": 10,
+  "pci": "0000:89:00.0",
+  "measurement_level": "two 30-second search rounds per configuration",
+  "correctness_at_new_instance_counts": "not_tested",
+  "rows": [
+    {
+      "name": "fp16-scale8-d10-case0-s1-20261027",
+      "instances": 8,
+      "round": 1,
+      "seed": 2031,
+      "qps": 686.7235535429718,
+      "p50_ms": 11.236026,
+      "p99_ms": 18.889141,
+      "window_seconds": 30.000427237,
+      "window_successes": 20602,
+      "errors": 0,
+      "hbm_peak_mb": 8679,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 12709824,
+      "target_pids": [
+        444161
+      ],
+      "job_duration_seconds": 217.181294,
+      "plan_sha256": "f020f2c7c028bdd8207cf2065d6017bcb664320317d91006ea1b11f404f15a88",
+      "performance_sha256": "6c27637ad5923a1ceb88dcc74c062fbad5336d71832e1fa3defc8dd52eda1f78",
+      "events_sha256": "fdbf925f6c4f3e8853297c34621707c2dd7398df55deba3a0f705eab51eadbdf",
+      "resources_sha256": "37ca6f69404d938ddc47160222a1bf588fbad5a4dd24b09e842e98768d7af627",
+      "job_status_sha256": "48df555e19cfcfbeece9a27430668d62b7afa4f3be38b8d56f05471dde310f64",
+      "remote_run_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-scale8-d10-case0-s1-20261027"
+    },
+    {
+      "name": "fp16-scale8-d10-case0-s2-20261027",
+      "instances": 8,
+      "round": 2,
+      "seed": 2032,
+      "qps": 604.7026798711853,
+      "p50_ms": 10.576981,
+      "p99_ms": 76.441612,
+      "window_seconds": 30.003174459,
+      "window_successes": 18143,
+      "errors": 0,
+      "hbm_peak_mb": 8695,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 12746240,
+      "target_pids": [
+        937080
+      ],
+      "job_duration_seconds": 236.817535,
+      "plan_sha256": "8e4ca644bfb70635c684cd1ebc1904f10036d4d7efc412f9e2c20b0af4c51447",
+      "performance_sha256": "1658a75fe2af81bc99a7677c828c79820d7a1364ac8cdce5dfdc138006b45f4c",
+      "events_sha256": "5f7aa34ec7995c0d429a7495831ade419e4b89ba06d1f4ffda35e3d3e82403d0",
+      "resources_sha256": "d8b6a9144ae4f6c68dc3eabe5d421c0f3688017814ca0fbe14e3e4c3f6b7abeb",
+      "job_status_sha256": "ae3e72c7844fbdc04e3504c6dbec7695da69b21534aafdcb7cadd645ee0ea203",
+      "remote_run_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-scale8-d10-case0-s2-20261027"
+    },
+    {
+      "name": "fp16-scale10-d10-case0-s1-20261027",
+      "instances": 10,
+      "round": 1,
+      "seed": 2031,
+      "qps": 903.4241262068077,
+      "p50_ms": 11.012544,
+      "p99_ms": 13.203042,
+      "window_seconds": 30.000305741,
+      "window_successes": 27103,
+      "errors": 0,
+      "hbm_peak_mb": 9997,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 15333248,
+      "target_pids": [
+        519907
+      ],
+      "job_duration_seconds": 210.839753,
+      "plan_sha256": "163247993747893148d6844a7d6f9d6e8ded1d2fab8bc6876ee0e6e6c0c39a10",
+      "performance_sha256": "09bf32a6e337998aca4a8b35953aa1879ef6ea4f0905653f21500ecc4d7094fb",
+      "events_sha256": "395758e4944faad57ce35865ded0438d37b077340191bec03b1a6a0c95bcbebc",
+      "resources_sha256": "2489795583d8689e04e3884a3529a16e6b248915455a88c9782bee32ccfcab2c",
+      "job_status_sha256": "65411d5d9ab03dacbe48baa55bdf2d9ada2c49a8443abe95d741bdf2b6bb77aa",
+      "remote_run_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-scale10-d10-case0-s1-20261027"
+    },
+    {
+      "name": "fp16-scale10-d10-case0-s2-20261027",
+      "instances": 10,
+      "round": 2,
+      "seed": 2032,
+      "qps": 623.087369665934,
+      "p50_ms": 12.291315,
+      "p99_ms": 55.822796,
+      "window_seconds": 30.000608117,
+      "window_successes": 18693,
+      "errors": 0,
+      "hbm_peak_mb": 10045,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 15342080,
+      "target_pids": [
+        814397
+      ],
+      "job_duration_seconds": 278.314709,
+      "plan_sha256": "49a0ea485ea369fcb34b8c779c2f9bccf37e6b45b26d20eecb52c7171c7b8d86",
+      "performance_sha256": "ad93b8c8f9663f415a2f6a476ba51dde32fcd8e3b6db5e3cb086df18c898a647",
+      "events_sha256": "c0a8bd3dae26c740954de40859b983d7b65574423fe1d19adb7359f85dd70ace",
+      "resources_sha256": "d069341a8be8f6f2f9647204e14677fa938edee6f007ed6e3121728e20e477f5",
+      "job_status_sha256": "8eac30e36d11ccd195aa97546224192ed7a2b7d7a14a7ab61606cdc0d36d2bf8",
+      "remote_run_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-scale10-d10-case0-s2-20261027"
+    },
+    {
+      "name": "fp16-scale12-d10-case0-s1-20261027",
+      "instances": 12,
+      "round": 1,
+      "seed": 2031,
+      "qps": 715.6286670886362,
+      "p50_ms": 13.325424,
+      "p99_ms": 44.549,
+      "window_seconds": 30.00299036,
+      "window_successes": 21471,
+      "errors": 0,
+      "hbm_peak_mb": 11415,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 17923904,
+      "target_pids": [
+        591990
+      ],
+      "job_duration_seconds": 289.195127,
+      "plan_sha256": "1c5399c07b18beb8a017a2dcd728f9e4113a1de3279aaccd26a0946065c2c0b8",
+      "performance_sha256": "2d86fbe4ba66ef90c81ced7f743c2de0d47a93e3db9ae25785510e2a19aada7e",
+      "events_sha256": "274a3fff11f6c349ccbe22a0052fb99e9f805e892d273236945e5b2b87f71355",
+      "resources_sha256": "fbe997848072a097b9f9b9298dc5b206c0c4301a47cbfc3e4347ca1aed1e3876",
+      "job_status_sha256": "bb6b2de98fab43572acbe80635c938f4af62d6525de9942906aeb373e84a614d",
+      "remote_run_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-scale12-d10-case0-s1-20261027"
+    },
+    {
+      "name": "fp16-scale12-d10-case0-s2-20261027",
+      "instances": 12,
+      "round": 2,
+      "seed": 2032,
+      "qps": 750.513125854143,
+      "p50_ms": 13.817588,
+      "p99_ms": 37.237539,
+      "window_seconds": 30.00347259,
+      "window_successes": 22518,
+      "errors": 0,
+      "hbm_peak_mb": 11399,
+      "hbm_capacity_mb": 65536,
+      "host_rss_peak_kib": 17923776,
+      "target_pids": [
+        703510
+      ],
+      "job_duration_seconds": 347.264291,
+      "plan_sha256": "006776354ac54a5f8f3ca96fc92e68e234aee30f70dad98ff8f2748fd4bb4612",
+      "performance_sha256": "21a45f9c7faa79c7e63fe0522678602e80de120b01996b585a62a39781688f0f",
+      "events_sha256": "58239faa3dafcacf81c967068be739943b5a03e43f80331c0a7853db7459a259",
+      "resources_sha256": "09ffadb100c85cc8d730e1d9e1a0b45ae534c8ff06ed099c8f4557d8f83e9f36",
+      "job_status_sha256": "c091a70500db3631b962e684130db19417252bf1c5193dd06712bc34b2a306f3",
+      "remote_run_dir": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-scale12-d10-case0-s2-20261027"
+    }
+  ],
+  "summary": {
+    "8": {
+      "qps_median": 645.7131167070786,
+      "qps_spread_percent": 12.702370689024496,
+      "p99_median_ms": 47.6653765,
+      "hbm_peak_mb": 8695
+    },
+    "10": {
+      "qps_median": 763.2557479363709,
+      "qps_spread_percent": 36.729072437230315,
+      "p99_median_ms": 34.512919,
+      "hbm_peak_mb": 10045
+    },
+    "12": {
+      "qps_median": 733.0708964713897,
+      "qps_spread_percent": 4.758674629346476,
+      "p99_median_ms": 40.8932695,
+      "hbm_peak_mb": 11415
+    }
+  }
+}

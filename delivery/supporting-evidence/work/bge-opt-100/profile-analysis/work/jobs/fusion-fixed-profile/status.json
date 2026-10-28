@@ -1,0 +1,43 @@
+{
+  "task_id": "f85742db5a2046baa0068cd98d21980d",
+  "host": "A03-R40-I191-100-4100007.JD.LOCAL",
+  "supervisor": {
+    "pid": 12529,
+    "linux_start_ticks": "87911137",
+    "linux_boot_id": "d5f0673a-b0e5-4022-93b4-3aa8a60e16b9"
+  },
+  "cwd": "/export/home/ext.hejun23/workspace/bge-opt-100/runner",
+  "argv": [
+    "bash",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/tools/env_run.sh",
+    "/usr/local/python3.11.15/bin/python3",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/tools/control.py",
+    "guarded",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/fusion-fixed-profile.json",
+    "--job",
+    "fusion-fixed-profile",
+    "--binary",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/runner/runtime/build/ge_runtime"
+  ],
+  "devices": [
+    "100/0000:99:00.0",
+    "100/0000:9B:00.0"
+  ],
+  "lock_root": "/export/home/ext.hejun23/workspace/.npu-workflow-locks",
+  "started_at": "2026-10-26T13:04:46.520718+00:00",
+  "device_release_checked": false,
+  "state": "finished",
+  "updated_at": "2026-10-26T13:05:21.545262+00:00",
+  "task": {
+    "pid": 12530,
+    "linux_start_ticks": "87911141",
+    "linux_boot_id": "d5f0673a-b0e5-4022-93b4-3aa8a60e16b9"
+  },
+  "pgid": 12530,
+  "reason": "exited",
+  "exit_code": 0,
+  "task_returncode": 0,
+  "process_group_stopped": true,
+  "finished_at": "2026-10-26T13:05:21.545237+00:00",
+  "locks_released_at": "2026-10-26T13:05:21.545253+00:00"
+}

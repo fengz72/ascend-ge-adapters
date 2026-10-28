@@ -1,0 +1,333 @@
+{
+  "schema": "bge100-force-fp16-variance-audit/1",
+  "device": 10,
+  "pci": "0000:89:00.0",
+  "host_loadavg_scope": "host-wide; not per container or NPU",
+  "jobs": [
+    {
+      "name": "fp16-formal-d10-fp16-case0-r1-20261027",
+      "started_at": "2026-10-27T03:19:55.732880+00:00",
+      "qps": 750.4817504657022,
+      "p50_ms": 10.209898,
+      "p99_ms": 22.831497,
+      "segment_mean_ms": {
+        "h2d_ms": 0.12403681335760915,
+        "desc_ms": 0.0012762334029042146,
+        "execute_ms": 10.483935065344818,
+        "d2h_ms": 0.044328348328078505,
+        "unattributed_host_ms": 0.003810365291531575
+      },
+      "window_seconds": 60.002791503,
+      "window_successes": 45031,
+      "in_window_resource_samples": 5,
+      "in_window_sample_offsets_seconds": [
+        8.904826592,
+        20.739848184,
+        32.611971455,
+        44.372857393,
+        56.635684595
+      ],
+      "host_loadavg_1min": [
+        43.39306640625,
+        44.26171875,
+        46.12158203125,
+        47.51025390625,
+        48.421875
+      ],
+      "target_process_pids": [
+        3654610
+      ],
+      "sibling_process_pids": [],
+      "target_hbm_mb": [
+        8670,
+        8671,
+        8670,
+        8674,
+        8675
+      ],
+      "before_gate_clear": true,
+      "after_gate_clear": true,
+      "performance_sha256": "157086a3da4f72819f84fcb99cc37d08e2e08da71724dcb6de4849f58ef4a205",
+      "resources_sha256": "1ee69b187a7eb020311f435f96044a0ef5994dbd7e728583a7f4340384e78133",
+      "events_sha256": "b59cf3e4102a95a6dabbfd9069af264ef12b736f841f2efcf559d38a1e813e50"
+    },
+    {
+      "name": "fp16-formal-d10-fp16-case0-r2-20261027",
+      "started_at": "2026-10-27T03:29:00.828115+00:00",
+      "qps": 856.2467502010843,
+      "p50_ms": 9.106948,
+      "p99_ms": 13.060652,
+      "segment_mean_ms": {
+        "h2d_ms": 0.10645973298042116,
+        "desc_ms": 0.001065275777509634,
+        "execute_ms": 9.194932141703319,
+        "d2h_ms": 0.036017149196216576,
+        "unattributed_host_ms": 0.003080888540734044
+      },
+      "window_seconds": 60.000227724,
+      "window_successes": 51375,
+      "in_window_resource_samples": 5,
+      "in_window_sample_offsets_seconds": [
+        4.673402718,
+        16.806935417,
+        28.609489705,
+        40.402604683,
+        52.163053769
+      ],
+      "host_loadavg_1min": [
+        42.81640625,
+        46.31201171875,
+        47.16748046875,
+        49.23388671875,
+        49.8134765625
+      ],
+      "target_process_pids": [
+        3808312
+      ],
+      "sibling_process_pids": [],
+      "target_hbm_mb": [
+        8634,
+        8633,
+        8635,
+        8675,
+        8674
+      ],
+      "before_gate_clear": true,
+      "after_gate_clear": true,
+      "performance_sha256": "884548c0b10f3c2db961f186c0789910e181614cfa4f19f7d24791b5e24ceb67",
+      "resources_sha256": "9363661f4e05cf913bc654dfa8b8fb7ea695a1bf7e99b14231d79fe586f377f5",
+      "events_sha256": "cd4ab4b37a7523c9e1d06fea77d453690cefcba86f5def8af5b5271c48b2508c"
+    },
+    {
+      "name": "fp16-scale8-d10-case0-s1-20261027",
+      "started_at": "2026-10-27T06:38:11.903063+00:00",
+      "qps": 686.7235535429718,
+      "p50_ms": 11.236026,
+      "p99_ms": 18.889141,
+      "segment_mean_ms": {
+        "h2d_ms": 0.1316722791013635,
+        "desc_ms": 0.0014228249793779423,
+        "execute_ms": 11.458329192779853,
+        "d2h_ms": 0.04999556698529768,
+        "unattributed_host_ms": 0.004306870784608652
+      },
+      "window_seconds": 30.000427237,
+      "window_successes": 20602,
+      "in_window_resource_samples": 2,
+      "in_window_sample_offsets_seconds": [
+        10.865495686,
+        23.31371222
+      ],
+      "host_loadavg_1min": [
+        205.3017578125,
+        202.00048828125
+      ],
+      "target_process_pids": [
+        444161
+      ],
+      "sibling_process_pids": [],
+      "target_hbm_mb": [
+        8670,
+        8679
+      ],
+      "before_gate_clear": true,
+      "after_gate_clear": true,
+      "performance_sha256": "6c27637ad5923a1ceb88dcc74c062fbad5336d71832e1fa3defc8dd52eda1f78",
+      "resources_sha256": "37ca6f69404d938ddc47160222a1bf588fbad5a4dd24b09e842e98768d7af627",
+      "events_sha256": "fdbf925f6c4f3e8853297c34621707c2dd7398df55deba3a0f705eab51eadbdf"
+    },
+    {
+      "name": "fp16-scale10-d10-case0-s1-20261027",
+      "started_at": "2026-10-27T06:42:02.240198+00:00",
+      "qps": 903.4241262068077,
+      "p50_ms": 11.012544,
+      "p99_ms": 13.203042,
+      "segment_mean_ms": {
+        "h2d_ms": 0.10932350988492182,
+        "desc_ms": 0.001030466214222485,
+        "execute_ms": 10.91836290598259,
+        "d2h_ms": 0.033957005495721455,
+        "unattributed_host_ms": 0.0030069676895839097
+      },
+      "window_seconds": 30.000305741,
+      "window_successes": 27103,
+      "in_window_resource_samples": 2,
+      "in_window_sample_offsets_seconds": [
+        9.799880599,
+        22.376695287
+      ],
+      "host_loadavg_1min": [
+        359.65087890625,
+        357.505859375
+      ],
+      "target_process_pids": [
+        519907
+      ],
+      "sibling_process_pids": [],
+      "target_hbm_mb": [
+        9996,
+        9996
+      ],
+      "before_gate_clear": true,
+      "after_gate_clear": true,
+      "performance_sha256": "09bf32a6e337998aca4a8b35953aa1879ef6ea4f0905653f21500ecc4d7094fb",
+      "resources_sha256": "2489795583d8689e04e3884a3529a16e6b248915455a88c9782bee32ccfcab2c",
+      "events_sha256": "395758e4944faad57ce35865ded0438d37b077340191bec03b1a6a0c95bcbebc"
+    },
+    {
+      "name": "fp16-scale12-d10-case0-s1-20261027",
+      "started_at": "2026-10-27T06:45:48.274968+00:00",
+      "qps": 715.6286670886362,
+      "p50_ms": 13.325424,
+      "p99_ms": 44.549,
+      "segment_mean_ms": {
+        "h2d_ms": 0.18363150544642026,
+        "desc_ms": 0.0014274741644167213,
+        "execute_ms": 16.532634690438506,
+        "d2h_ms": 0.05590611875058188,
+        "unattributed_host_ms": 0.0047471479843589895
+      },
+      "window_seconds": 30.00299036,
+      "window_successes": 21471,
+      "in_window_resource_samples": 2,
+      "in_window_sample_offsets_seconds": [
+        12.084524276,
+        24.928951522
+      ],
+      "host_loadavg_1min": [
+        513.67041015625,
+        498.234375
+      ],
+      "target_process_pids": [
+        591990
+      ],
+      "sibling_process_pids": [],
+      "target_hbm_mb": [
+        11414,
+        11415
+      ],
+      "before_gate_clear": true,
+      "after_gate_clear": true,
+      "performance_sha256": "2d86fbe4ba66ef90c81ced7f743c2de0d47a93e3db9ae25785510e2a19aada7e",
+      "resources_sha256": "fbe997848072a097b9f9b9298dc5b206c0c4301a47cbfc3e4347ca1aed1e3876",
+      "events_sha256": "274a3fff11f6c349ccbe22a0052fb99e9f805e892d273236945e5b2b87f71355"
+    },
+    {
+      "name": "fp16-scale12-d10-case0-s2-20261027",
+      "started_at": "2026-10-27T06:51:03.840685+00:00",
+      "qps": 750.513125854143,
+      "p50_ms": 13.817588,
+      "p99_ms": 37.237539,
+      "segment_mean_ms": {
+        "h2d_ms": 0.13785445425895512,
+        "desc_ms": 0.0015275422788406058,
+        "execute_ms": 15.784192965422346,
+        "d2h_ms": 0.052892332282835464,
+        "unattributed_host_ms": 0.00461609685294507
+      },
+      "window_seconds": 30.00347259,
+      "window_successes": 22518,
+      "in_window_resource_samples": 2,
+      "in_window_sample_offsets_seconds": [
+        9.8805662,
+        21.77142877
+      ],
+      "host_loadavg_1min": [
+        249.6640625,
+        234.35400390625
+      ],
+      "target_process_pids": [
+        703510
+      ],
+      "sibling_process_pids": [],
+      "target_hbm_mb": [
+        11398,
+        11399
+      ],
+      "before_gate_clear": true,
+      "after_gate_clear": true,
+      "performance_sha256": "21a45f9c7faa79c7e63fe0522678602e80de120b01996b585a62a39781688f0f",
+      "resources_sha256": "09ffadb100c85cc8d730e1d9e1a0b45ae534c8ff06ed099c8f4557d8f83e9f36",
+      "events_sha256": "58239faa3dafcacf81c967068be739943b5a03e43f80331c0a7853db7459a259"
+    },
+    {
+      "name": "fp16-scale10-d10-case0-s2-20261027",
+      "started_at": "2026-10-27T06:57:06.953158+00:00",
+      "qps": 623.087369665934,
+      "p50_ms": 12.291315,
+      "p99_ms": 55.822796,
+      "segment_mean_ms": {
+        "h2d_ms": 0.30610341139985026,
+        "desc_ms": 0.0020745909528392687,
+        "execute_ms": 15.642309569992513,
+        "d2h_ms": 0.09024474644423056,
+        "unattributed_host_ms": 0.0043480225644316065
+      },
+      "window_seconds": 30.000608117,
+      "window_successes": 18693,
+      "in_window_resource_samples": 3,
+      "in_window_sample_offsets_seconds": [
+        0.193603872,
+        12.418304218,
+        24.267618321
+      ],
+      "host_loadavg_1min": [
+        182.6376953125,
+        168.3095703125,
+        177.458984375
+      ],
+      "target_process_pids": [
+        814397
+      ],
+      "sibling_process_pids": [],
+      "target_hbm_mb": [
+        10033,
+        10036,
+        10045
+      ],
+      "before_gate_clear": true,
+      "after_gate_clear": true,
+      "performance_sha256": "ad93b8c8f9663f415a2f6a476ba51dde32fcd8e3b6db5e3cb086df18c898a647",
+      "resources_sha256": "d069341a8be8f6f2f9647204e14677fa938edee6f007ed6e3121728e20e477f5",
+      "events_sha256": "c0a8bd3dae26c740954de40859b983d7b65574423fe1d19adb7359f85dd70ace"
+    },
+    {
+      "name": "fp16-scale8-d10-case0-s2-20261027",
+      "started_at": "2026-10-27T07:02:23.490248+00:00",
+      "qps": 604.7026798711853,
+      "p50_ms": 10.576981,
+      "p99_ms": 76.441612,
+      "segment_mean_ms": {
+        "h2d_ms": 0.9827745454545455,
+        "desc_ms": 0.001609972451790634,
+        "execute_ms": 12.063228246336088,
+        "d2h_ms": 0.1759444194490358,
+        "unattributed_host_ms": 0.004537035426997213
+      },
+      "window_seconds": 30.003174459,
+      "window_successes": 18143,
+      "in_window_resource_samples": 2,
+      "in_window_sample_offsets_seconds": [
+        4.299962616,
+        17.734733941
+      ],
+      "host_loadavg_1min": [
+        703.90576171875,
+        717.0478515625
+      ],
+      "target_process_pids": [
+        937080
+      ],
+      "sibling_process_pids": [],
+      "target_hbm_mb": [
+        8667,
+        8694
+      ],
+      "before_gate_clear": true,
+      "after_gate_clear": true,
+      "performance_sha256": "1658a75fe2af81bc99a7677c828c79820d7a1364ac8cdce5dfdc138006b45f4c",
+      "resources_sha256": "d8b6a9144ae4f6c68dc3eabe5d421c0f3688017814ca0fbe14e3e4c3f6b7abeb",
+      "events_sha256": "5f7aa34ec7995c0d429a7495831ade419e4b89ba06d1f4ffda35e3d3e82403d0"
+    }
+  ]
+}

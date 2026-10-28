@@ -1,0 +1,38 @@
+{
+  "task_id": "ccf2da8ec38841febf4dcd636abfa54d",
+  "host": "A03-R40-I191-99-4100006.JD.LOCAL",
+  "supervisor": {
+    "pid": 1993629,
+    "linux_start_ticks": "231990010",
+    "linux_boot_id": "f0591928-db84-4529-a570-0cecb5b946dc"
+  },
+  "cwd": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters",
+  "argv": [
+    "bash",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/env_run.sh",
+    "python3",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/run_runtime.py",
+    "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/runtime/build/ge_runtime",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/original-plan.json"
+  ],
+  "devices": [
+    "A03-R40-I191-99-4100006.JD.LOCAL/0000:99:00.0"
+  ],
+  "lock_root": "/export/home/ext.hejun23/workspace/bge/.npu-workflow-locks",
+  "started_at": "2026-10-26T02:15:48.326642+00:00",
+  "device_release_checked": false,
+  "state": "finished",
+  "updated_at": "2026-10-26T02:16:42.038446+00:00",
+  "task": {
+    "pid": 1993630,
+    "linux_start_ticks": "231990015",
+    "linux_boot_id": "f0591928-db84-4529-a570-0cecb5b946dc"
+  },
+  "pgid": 1993630,
+  "reason": "exited",
+  "exit_code": 0,
+  "task_returncode": 0,
+  "process_group_stopped": true,
+  "finished_at": "2026-10-26T02:16:42.038427+00:00",
+  "locks_released_at": "2026-10-26T02:16:42.038439+00:00"
+}

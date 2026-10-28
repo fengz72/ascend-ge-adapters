@@ -1,0 +1,1362 @@
+{
+  "schema": "bge100-fp16-scale-recompare/1",
+  "host": "100",
+  "container": "hejun-cann9-bge",
+  "rows": [
+    {
+      "name": "fp16-compare-d2-r1-fixed8-20261027",
+      "round": 1,
+      "scenario": "fixed",
+      "instances": 8,
+      "seed_requested": 2051,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 807.325684541422,
+      "p50_ms": 9.154189,
+      "p99_ms": 19.717898,
+      "window_seconds": 60.000568454,
+      "window_successes": 48440,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "6a6fe4cbd2e443001ed12a34bfca48483b3d7dfa7c0c02c11361f30db501d5c7",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 14,
+      "host_loadavg_1min_min": 37.00048828125,
+      "host_loadavg_1min_max": 44.17236328125,
+      "host_rss_peak_kib": 12759168,
+      "target_hbm_peak_mb": 8681,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.154690374969505,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        3212460
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "30d567fc61a3334e2401d7c397c08c7a0289f0ad0755c78282db1cd9f7b13044",
+        "performance": "5e200249459a3211a33df56e74b9a8e810c9c554696f9d7afa1d5710c3064247",
+        "resources": "03379967923cfd0a338054b820130eaa7fb15dfa85cca5417a6721472e6c12d5",
+        "events": "12513e581b20e2a73faa704e83af4459b422de751147e5f7aa25c4cf9f267c82",
+        "result": "ac49a6784b91e00b2b8dde9bc44525599d4dc7d5577533e9a469ae07fd8d2fec",
+        "status": "9ca8b117b89201842b2c37cdddd32948f6609adf5367f91e2cd1dfbed568c360",
+        "identity": "4fc1e7398c99a367c535ed9d866d184b8984102d08ea2542f030c306dc4de02f",
+        "before_gate": "0ade0ecb20c68f30e15b03731aec258ea05f8248107cba265dd6694b417d0b31",
+        "after_gate": "b381fb8b7a389d5c9dedcbf4f2b4dd4fea24c9958ccdcea02f30e82363db63d9"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r1-fixed8-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r1-fixed10-20261027",
+      "round": 1,
+      "scenario": "fixed",
+      "instances": 10,
+      "seed_requested": 2051,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 867.4130696821555,
+      "p50_ms": 11.124135,
+      "p99_ms": 21.257381,
+      "window_seconds": 60.001401661,
+      "window_successes": 52046,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "6a6fe4cbd2e443001ed12a34bfca48483b3d7dfa7c0c02c11361f30db501d5c7",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 16,
+      "host_loadavg_1min_min": 32.34912109375,
+      "host_loadavg_1min_max": 42.18896484375,
+      "host_rss_peak_kib": 15352128,
+      "target_hbm_peak_mb": 10055,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.172430858947337,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        3264443
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "eef8a7412a963a627c38e97b2d840920bd01f1e0e84bd8c825d808c250b8dfa7",
+        "performance": "a45a13d4e2bcd4ed3805480d174bdc8d69540bc2094f5de698282e41b2511d11",
+        "resources": "6adee8a342028a64d9645bd5cc46bb476a9e63ec5259154fb76b25ed10a8b804",
+        "events": "eef3d7a7244c2a38d06a290e4820e3446ac6627cb9aef3db78b2fc73e8266d86",
+        "result": "80606b8a4e7ce1a6afb6845d833c64f8f41ad28c2e9afa4a4b574e52f11a748f",
+        "status": "7bc03ba7d22b74a449850ccc45d9535dfbcd84fe2b6977ffde2732cae6db48f5",
+        "identity": "93b6a6009303e362ab92570dc624832a66ed097b09a1f40609e5abee2250c6a2",
+        "before_gate": "7b65113ac26e0361f927ebc0087f2169a6a972adc8518a1aa7d9cd2f0be14f88",
+        "after_gate": "3fa9565dafec53e1548b3a198f6fe814287122ad1e7c33741e7af6b5ebdcafa4"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r1-fixed10-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r1-fixed12-20261027",
+      "round": 1,
+      "scenario": "fixed",
+      "instances": 12,
+      "seed_requested": 2051,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 840.6087404419925,
+      "p50_ms": 13.150971,
+      "p99_ms": 35.4033,
+      "window_seconds": 60.001755363,
+      "window_successes": 50438,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "6a6fe4cbd2e443001ed12a34bfca48483b3d7dfa7c0c02c11361f30db501d5c7",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 17,
+      "host_loadavg_1min_min": 26.21435546875,
+      "host_loadavg_1min_max": 34.267578125,
+      "host_rss_peak_kib": 17946880,
+      "target_hbm_peak_mb": 11413,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.257032352034003,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        3323335
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "cf16f28fbed4c5eaebc16f496da6a924ebf111c6e8cb24db3dc34b8ead593758",
+        "performance": "0243c6707f7717aed32a90d86555807324d4f63d8bd8cca08b984be16aca1cec",
+        "resources": "a3de975b71bb4bd563ce3d167bd0e773ca0aab535db364720c3d6e1596060e71",
+        "events": "897bb5da8ba314f9cd39eb877ba800dfbe92050f3b693b921fdd7ce035220370",
+        "result": "dc307488a01bce7e6f817795ca5fdb926d59842ae15323549d717135da29fe8e",
+        "status": "0b94ecd4a074c183cbe544ac5c4374a617e99a5ef9eddbf024c67ba51fd5584c",
+        "identity": "cfd5e7cfc795ad9df3a31ef33b272321bffefe1710913345342c3211b68261cc",
+        "before_gate": "ed4b66885af9521a2e5b591e67817c9e25940c3ece0ed5d1ecf57e684e8ce60c",
+        "after_gate": "d6a83e13898558299fbd513faf93ba6f50f42d5cee7066033452577b4a0f4067"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r1-fixed12-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r1-random8-20261027",
+      "round": 1,
+      "scenario": "random",
+      "instances": 8,
+      "seed_requested": 2051,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 865.3688389677703,
+      "p50_ms": 9.159578,
+      "p99_ms": 11.935412,
+      "window_seconds": 60.001004961,
+      "window_successes": 51923,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 14,
+      "host_loadavg_1min_min": 49.44287109375,
+      "host_loadavg_1min_max": 65.8037109375,
+      "host_rss_peak_kib": 12808448,
+      "target_hbm_peak_mb": 8645,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.186231627012603,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        3669635
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "98480fa429331d55ab7d259b43373116b12b1c9323d0d3e0bf823867ab2fd3cd",
+        "performance": "051bf96b2b45cbcdb3eec681e926143f638c282c5e456fb73202fdba5697eff2",
+        "resources": "f8c801bb75ebbe9b80b34be51f390d4c11cf811f11b4e97dea1cde121cdb7fa4",
+        "events": "e8a58b6c927bbf4c665272a455b8aa41784e1e8ef37350612f2f1b6762bb64f4",
+        "result": "268ec66d386c64a124ad90e8f1db33c57651ee38262e6e2167da8fabd6fcb943",
+        "status": "4799efa7a2322cf2213b5da8631322b7e3f9debcaf73b9371f367f42fcb82897",
+        "identity": "ee2df6661ac814a75b8027d57937ae4c1d26f94dfbf69a452bda766773d3a560",
+        "before_gate": "dbd7272a4af2acff33b649d1475ac65387da1888f5ed0cc9b9b3692b6777e400",
+        "after_gate": "332927bfdb0baf86e0664d45c26f2f0511ee2b946a24384d4b0e2e53ebce885a"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r1-random8-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r1-random10-20261027",
+      "round": 1,
+      "scenario": "random",
+      "instances": 10,
+      "seed_requested": 2051,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 903.5818837922156,
+      "p50_ms": 10.925363,
+      "p99_ms": 19.284515,
+      "window_seconds": 60.000096253,
+      "window_successes": 54215,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 16,
+      "host_loadavg_1min_min": 28.35595703125,
+      "host_loadavg_1min_max": 64.115234375,
+      "host_rss_peak_kib": 15417600,
+      "target_hbm_peak_mb": 10047,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.258882706984878,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        3556718
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "afb3d7efb079782d55da8b0bf3c2a2dab4991ba9c9a13eadab4136e27d61d60a",
+        "performance": "c46781ae529b73ce92500730dc423662c4efc7d19a646da1ae93fb211b8cb29b",
+        "resources": "7ac587523d9c61e120e562aa5171a1a126b450b892c8acada0c7614049c484f6",
+        "events": "a5387f9a52b8a555ac3607d5935c190ca303718f4a6f5c81e736dc2346142b9c",
+        "result": "8f4ae5200857e6a6db046b6040971b8977256f7ed5e284f7dacdd47ccc2c8516",
+        "status": "915542d5504fb214fe6c710efdb1b212fb78dd97ca28f47f9f9b370a4be2fa7e",
+        "identity": "e7c602146f1397e2c000c4269b2d3c58622852cde9c697e4c5e150a03cfeec03",
+        "before_gate": "075821435092524556acf91dacd9d850994593146b366dd7853f112270444f7a",
+        "after_gate": "a47e5ad9b434dc636ad4f15c1ba768984324a7c410a60c028c57e062880f7b20"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r1-random10-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r1-random12-20261027",
+      "round": 1,
+      "scenario": "random",
+      "instances": 12,
+      "seed_requested": 2051,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 879.70332627362,
+      "p50_ms": 13.067572,
+      "p99_ms": 35.958057,
+      "window_seconds": 60.000909879,
+      "window_successes": 52783,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 18,
+      "host_loadavg_1min_min": 23.7294921875,
+      "host_loadavg_1min_max": 31.81591796875,
+      "host_rss_peak_kib": 18023296,
+      "target_hbm_peak_mb": 11413,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.208387880004011,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        3495037
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "899cdb5c83e52ef5ad5d67c32d8e00b19ffa2a92ad53985d11b45ce6cdb2333d",
+        "performance": "374f14956ce11b206eaae0fdb02a1dae2682a2f12b39a34b9363bd0021191ccc",
+        "resources": "3bebb686c3a608e7f31c95341071f557899d36be22e110fcd8ea0ee89db6e2fb",
+        "events": "b95cc5f0c43f1580ff07855bc1eadf246a4dce13842371ec6e2bf444b33b234b",
+        "result": "816d976d27250c1958b8b35b24f380759ecfae55ca39ebf163548ac2616c49cc",
+        "status": "477088af733686f45961206b43b6f22009bb17fe801d1be8d0d24eda8d915dd1",
+        "identity": "093b8d097a08f51051b616ff281e403f1884ce9016303d472c3a3abf5cc75e62",
+        "before_gate": "0b69cfef6601698672649db94e364041b00ac60fc0140130d17081dcc87d0394",
+        "after_gate": "70c10bd3ef8388984dbd43b827470a54a4daeea0710b1ded355d99eea680e8b1"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r1-random12-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r2-fixed8-20261027",
+      "round": 2,
+      "scenario": "fixed",
+      "instances": 8,
+      "seed_requested": 2052,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 806.4690788982758,
+      "p50_ms": 9.193588,
+      "p99_ms": 20.298963,
+      "window_seconds": 60.001060507,
+      "window_successes": 48389,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "6a6fe4cbd2e443001ed12a34bfca48483b3d7dfa7c0c02c11361f30db501d5c7",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 14,
+      "host_loadavg_1min_min": 41.365234375,
+      "host_loadavg_1min_max": 53.697265625,
+      "host_rss_peak_kib": 12737856,
+      "target_hbm_peak_mb": 8689,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.22183054802008,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        4074700
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "314ea8afe57e6e3d3cf9240da184beba6882219ce21626e1c7c8e928904b5e53",
+        "performance": "a350966845f18103f92308cb77d4396e2a8975c35ddfe5979e6448d2d1df46a8",
+        "resources": "9851f031ba411a3880c89ad47db012455f4212ea82827f8b462a6d8c9b2afbce",
+        "events": "ba90a597da821e132f25a95501b4cc056ed99ac90d3e69b0754546fe81f5eb45",
+        "result": "fca5b24851733bd5c53ca3f3eebdf8e565fa919760f0f6a77be21bffd13bce53",
+        "status": "0105b99420378a5178b5d5339f2e7756b579e2e840de64a9271e142ffbfbf49c",
+        "identity": "c7f48bec5867d51a4e4ba4f0f6a9f9b74887345f43ae7f6f7f736a0b96530bf5",
+        "before_gate": "ef9e0dfaf21d3ebcae0ed01acb71aec764b50f49905b9d1b19f1a12bdd91ea7f",
+        "after_gate": "250e60d5f119cd6be659e2ce13fb970ce8251ab7a65c9d356b3e4a29b2fbdedb"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r2-fixed8-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r2-fixed10-20261027",
+      "round": 2,
+      "scenario": "fixed",
+      "instances": 10,
+      "seed_requested": 2052,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 884.1774069574277,
+      "p50_ms": 11.165235,
+      "p99_ms": 14.262482,
+      "window_seconds": 60.000402162,
+      "window_successes": 53051,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "6a6fe4cbd2e443001ed12a34bfca48483b3d7dfa7c0c02c11361f30db501d5c7",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 16,
+      "host_loadavg_1min_min": 33.6142578125,
+      "host_loadavg_1min_max": 51.07666015625,
+      "host_rss_peak_kib": 15333056,
+      "target_hbm_peak_mb": 10046,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.201652630930766,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        4035528
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "4781fba122a8c89eae7cd737c8ca486c2069384e5a1187b5ff964307ca62f1c1",
+        "performance": "c0ac3f8fd9e93b30d102b4a819910a3d1693572cba572ca8288e006838642188",
+        "resources": "71a8777668f0b320a9f26b4dac31a6785c7fe9bcd6676c208208e2244937ae6b",
+        "events": "98e4f4eb0dbd6681aa1be877b09ebf27e3c9070382ca65a837c4595a3824c7a3",
+        "result": "72d1ae843aa86d9927a009bc8e2960b24a01cc2cc33d0e0a6f353f42bb1247e0",
+        "status": "62ccbe4b29a906571905416f36639bfefe72603108539775f86398ab448232a0",
+        "identity": "8bc80ef0747962a81971238aa8c6ee8a785f3f51834d90d9af09f91066437a79",
+        "before_gate": "21ab3355550de1a4114990ad8dee38aba688b984fa050c1b791b5f44a464cf95",
+        "after_gate": "550af145b72e5cbbc5db240c6fb999b5d00004f84d7fa0d9e4492b31ba0ed28f"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r2-fixed10-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r2-fixed12-20261027",
+      "round": 2,
+      "scenario": "fixed",
+      "instances": 12,
+      "seed_requested": 2052,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 903.7243896249114,
+      "p50_ms": 13.173852,
+      "p99_ms": 14.734495,
+      "window_seconds": 60.00059379,
+      "window_successes": 54224,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "6a6fe4cbd2e443001ed12a34bfca48483b3d7dfa7c0c02c11361f30db501d5c7",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 17,
+      "host_loadavg_1min_min": 35.69189453125,
+      "host_loadavg_1min_max": 43.10400390625,
+      "host_rss_peak_kib": 17956736,
+      "target_hbm_peak_mb": 11413,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.31411554897204,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        3990552
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "09a19c4cdb7e0dd4fc17294847b2674ac935469c1998263a29214ccff2d995fc",
+        "performance": "a422dc0015995b5dd8d9a07badaa3cada1fea3a77ae17237db375b651834b3d1",
+        "resources": "0b799541f681353165b898e92b1b4f601fc2670384819e34eed2871921fa7d0c",
+        "events": "8ae20744dc340252e6429f13efc7cdb68e2dfd28486a1e90b50c88f0ba92fca7",
+        "result": "3da34ba89633e58ceeb7a8c623543bda5e8cd378072aededa05b9220883e106c",
+        "status": "f6214bb5af99923a05f37e7d9bd551abfa32f862e42d2bbc55c27bf16beb5177",
+        "identity": "5f005c865ab76c52230f9ebb0cdb437df03661abd69a32b01219c7402cb636ee",
+        "before_gate": "710b1a1dd665535f689315e7f11e11dfc6162e6624ea9129ea5e4e80c9c0cbfe",
+        "after_gate": "d52212968cc5233e941fe971cc1a55d2b0a1d025d8ab53b254e21d0b058d91c1"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r2-fixed12-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r2-random8-20261027",
+      "round": 2,
+      "scenario": "random",
+      "instances": 8,
+      "seed_requested": 2052,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 861.5917512785318,
+      "p50_ms": 9.074037,
+      "p99_ms": 15.32096,
+      "window_seconds": 60.000574429,
+      "window_successes": 51696,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 17,
+      "host_loadavg_1min_min": 158.87744140625,
+      "host_loadavg_1min_max": 274.19921875,
+      "host_rss_peak_kib": 12615296,
+      "target_hbm_peak_mb": 8657,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.354425134020858,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        3786505
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "139fa63602bba427434877c31cd2f3fb9953489815ea2157992bceb97194473c",
+        "performance": "bb07d9ec85cf5ef1b46dcef87ca0ef70edad7c145540d5fd2342546c75f8aeb5",
+        "resources": "9956684817c184f1cd1d4f055b12280dc52f4f1cd248c9690457ddd764790875",
+        "events": "5b0ac173d9e6fc2be5a0f876d6f6d1abac78605ab9cd600737499706c8c5f397",
+        "result": "f338bdb7c78076252ab9c8fdf103cccd9d62bba3dc6a823faf7035926576d181",
+        "status": "6c9a0b06109c5fc99ba27ace2245b95a816db9e2ad3ca777480d43613f55a28b",
+        "identity": "0bf161c8f20da933f74752f2c5a168d95a9ed16fac7bae7ef8f530faad1e71bb",
+        "before_gate": "851a7d80eee5669f2b6eae08905c7786d75109e459ec9aeaba00108fd0f35027",
+        "after_gate": "85889e6b681f21b8ffd080ecd7ffb7af33105ebbdd51a385866080eaeb692267"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r2-random8-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r2-random10-20261027",
+      "round": 2,
+      "scenario": "random",
+      "instances": 10,
+      "seed_requested": 2052,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 730.6395116454557,
+      "p50_ms": 11.852511,
+      "p99_ms": 31.623959,
+      "window_seconds": 60.000861302,
+      "window_successes": 43839,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 16,
+      "host_loadavg_1min_min": 43.78466796875,
+      "host_loadavg_1min_max": 98.83349609375,
+      "host_rss_peak_kib": 15397888,
+      "target_hbm_peak_mb": 10047,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.174571824958548,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        3840345
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "48ca07a6fd96385d749ef7b3af846fec5c6df5cb73162b6bd669f42c6c7312cd",
+        "performance": "65c22265c37fa0a0c8cc6d59cdffaa92861a87bb7ac9d67f8e65cb5a9fe6b827",
+        "resources": "0aee4ca331860718c22021105b18789a268da39bca80b364ba9145a1d05bd56a",
+        "events": "304cf90f96b3ba6f8f733c4da093a503d7e69da49950baebb6233e78b12e47e3",
+        "result": "0eebb4487367c6ebf8a2458fea1429a8527178f8762e986146c92641a1d36be3",
+        "status": "82930b20419dc2899324fe66571bed3cb029499a452486b1eea80fe776819627",
+        "identity": "c301e56bb4422f0217dbe8af56ca29722308134e1da67ebd642164f4afc28e72",
+        "before_gate": "99ea7ac30353aaaf2cbc2cd578909fbcf6ca7c0b302338890283de0c069daf8f",
+        "after_gate": "bbd21069d64700261f42abd8db20b568a00fa895da37fedcd19f8500b6885f69"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r2-random10-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r2-random12-20261027",
+      "round": 2,
+      "scenario": "random",
+      "instances": 12,
+      "seed_requested": 2052,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 850.0073610410802,
+      "p50_ms": 13.342843,
+      "p99_ms": 33.132792,
+      "window_seconds": 60.000656862,
+      "window_successes": 51001,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 20,
+      "host_loadavg_1min_min": 50.71875,
+      "host_loadavg_1min_max": 182.66845703125,
+      "host_rss_peak_kib": 18007296,
+      "target_hbm_peak_mb": 11412,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.43808682600502,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        3911414
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "6b17c6f4e746233e892f4f52bf0341569af776c65c52c2aea24b5d5e1ae9875b",
+        "performance": "1941be9330f40322b120b76b61eafdb5583102445f04cefdb09b9f4971996c24",
+        "resources": "d212bb495745ab281d3975128ea9da85894191eafb58093124a1124fd9efcb6c",
+        "events": "51cd2842ec11f70eb76dc890a8a53106120d66bc03c51d3d32860249a826506b",
+        "result": "fd2304ed945d464e27173b368490954066a3ec1c5f83dff714502f007bfd9821",
+        "status": "44ff211055ad526a00e6ff6ea0b06587f0dd867e90d78f31f52709e6e32c30ac",
+        "identity": "daf073954324e5e02c5ca9d59047809c5bdcaf8265d362ffb9367e3c5f4fa345",
+        "before_gate": "032a6f0b8f80c3ef0a0086cea91094735222b9b24ad55643d5b4e30b990fdbfd",
+        "after_gate": "6b1bec41516bb4a701e823b9576e0c286fb7edb09799002da7bf914002e52715"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r2-random12-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r3-fixed8-20261027",
+      "round": 3,
+      "scenario": "fixed",
+      "instances": 8,
+      "seed_requested": 2053,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 860.3165754991928,
+      "p50_ms": 9.229019,
+      "p99_ms": 11.297057,
+      "window_seconds": 60.001168721,
+      "window_successes": 51620,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "6a6fe4cbd2e443001ed12a34bfca48483b3d7dfa7c0c02c11361f30db501d5c7",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 14,
+      "host_loadavg_1min_min": 32.39892578125,
+      "host_loadavg_1min_max": 41.72705078125,
+      "host_rss_peak_kib": 12740224,
+      "target_hbm_peak_mb": 8680,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.361734307021834,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        175230
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "3be8534ae44ada7f72125cdcee1c4d2496c8a633cd33fc87af8e90cc3bdf7580",
+        "performance": "675701b7263ce1ff802187b2dd0802e632497e37430816848465fc48a4e128f3",
+        "resources": "daf0cd2d475daf46af1547a93892e6e2b54c586c779aa88fd86f9da8aa466405",
+        "events": "d3000aeda88de5308e2698c12d10920395c814d4fd6386c20fc3cde6e7d3ff8e",
+        "result": "9fe29243498a582cf0097df80520f7d3af2ffef0050bde84976a61ba966614b7",
+        "status": "1d7c42e3ff566287414d9c2f3efe32284452ca9b75d959b110a6770331e39f25",
+        "identity": "61218bd088149ee58f45bcd46926d4f682a925b22ff59d003004438905204d3c",
+        "before_gate": "3adbf2df9c18eca6b05b82e06f37253fcf2d7e424399e102068310dba732d9cb",
+        "after_gate": "30ebc67ab5110742de4e5955c65da917232a6237e8bc4af0a002e44208aa4d46"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r3-fixed8-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r3-fixed10-20261027",
+      "round": 3,
+      "scenario": "fixed",
+      "instances": 10,
+      "seed_requested": 2053,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 891.6131319555664,
+      "p50_ms": 11.163125,
+      "p99_ms": 13.766297,
+      "window_seconds": 60.000237864,
+      "window_successes": 53497,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "6a6fe4cbd2e443001ed12a34bfca48483b3d7dfa7c0c02c11361f30db501d5c7",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 21,
+      "host_loadavg_1min_min": 190.12158203125,
+      "host_loadavg_1min_max": 1217.97802734375,
+      "host_rss_peak_kib": 15355392,
+      "target_hbm_peak_mb": 10039,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 14.807522536953911,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        4166636
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "89b5d7187949c02671ad6180b68f29503cbd001b568ca64690ea4a8f44a752fa",
+        "performance": "e026d3adbc8473db95bb44f0bf82173dcdbf96bb9dff046b56a0f09c80d44f0a",
+        "resources": "3d747f9afa007309a5f7d85a1c8bb55673557a4331b4ae790f61f4a49f214a57",
+        "events": "5b3db6a8fbb901f3acd0528a172ea1cb2c7e66345dbc43ad34113ef3266a8607",
+        "result": "fa5951215a45c8e03475d7c25b305afc93e03d29dbd57619aa36d736b4f7c3b8",
+        "status": "d4495e5cfc81615558081becdbb75662067e70cac48f8a3107013662a6818a90",
+        "identity": "b0a2c92b9610809ccbfa0eee962a3131ee512678182f59dd7e165e9844cd5838",
+        "before_gate": "d8dde45b4d7267a03063e202cfa44ffdc1230bcaa89dd4ca1a29eaedf241afa7",
+        "after_gate": "5f7d43d3c6eb9947d4229358e00c3d9a42cc282f05cdf61a6c9df76197732a2e"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r3-fixed10-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r3-fixed12-20261027",
+      "round": 3,
+      "scenario": "fixed",
+      "instances": 12,
+      "seed_requested": 2053,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "fixed_case",
+        "case_ids": [
+          "case-0000"
+        ],
+        "sampling": "fixed"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 851.1688972534853,
+      "p50_ms": 13.428415,
+      "p99_ms": 33.053155,
+      "window_seconds": 60.001017618,
+      "window_successes": 51071,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "6a6fe4cbd2e443001ed12a34bfca48483b3d7dfa7c0c02c11361f30db501d5c7",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 17,
+      "host_loadavg_1min_min": 41.21875,
+      "host_loadavg_1min_max": 75.34716796875,
+      "host_rss_peak_kib": 17946688,
+      "target_hbm_peak_mb": 11409,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.193652390036732,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        264907
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "d24b61959c1fe9bfaea811be465e7c76207c3fed3414631f750d20ff7ce01469",
+        "performance": "efbd2ce1a922ed7a9d86447de07f278a6d55fdb4c7c6867da7fd652a59cf8cdf",
+        "resources": "1f421eb012c437a22b4b77a4d98bebc93a8bcc2a8b31fc6e1920118017339029",
+        "events": "94e019abc678c9468e0b9c046647509573596199cb010deaf4cc2411ceaed1ff",
+        "result": "e510af068db1390958bf7586e0ca745055dd74e4f7a12177e257caf0a90832ee",
+        "status": "4638380b0fe0bfef4bcad40f7062fa5ffb0c0891dc72dae61c1af350e7cd9056",
+        "identity": "d53d25f3bb73b93493b5cec63a731ff291a019202e86acd7f5fbdbc3176d9ec0",
+        "before_gate": "9a77508afb83c2c57f9cb61de66d9337551ce5fbf815da23c393c9ebf77ce0b4",
+        "after_gate": "6f081175abfc9ce1caf62da7babac5b889239f8be91557a0ae1bd2c7f142303d"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r3-fixed12-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r3-random8-20261027",
+      "round": 3,
+      "scenario": "random",
+      "instances": 8,
+      "seed_requested": 2053,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 843.6564857373534,
+      "p50_ms": 9.276459,
+      "p99_ms": 13.504755,
+      "window_seconds": 60.001909374,
+      "window_successes": 50621,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 14,
+      "host_loadavg_1min_min": 40.5302734375,
+      "host_loadavg_1min_max": 58.02490234375,
+      "host_rss_peak_kib": 12813184,
+      "target_hbm_peak_mb": 8681,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.257957093999721,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        215376
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "ec9924b1c811ac731b2ee22c2397b8890125466c0f66e712c60342276bd16553",
+        "performance": "da188a692c61c6f474c7e206d2f46fe9c76b3bc04fe5438a7e8ed7d42681d7ff",
+        "resources": "a4356de5d617e4dc454656a84345a2680967c42216a37023f9e238742d522495",
+        "events": "1fdf13d0ed1e65f8e4697c921a01423db6469957980b43d28056a30938b0cd61",
+        "result": "639cc9b50f9a8e00bfeca32357eee260c5a0d601e35095fcecff2e6a481bfa4d",
+        "status": "6c38e449ccc624cc94664702d5b059879829646a6b6cb7670824878010065e16",
+        "identity": "6199ecc81c6e6eaf4226b96709fa3a6f01ab53de99965c25f0dee508b2f442b0",
+        "before_gate": "a11baa6147b306733bb6b39571d9f575ea8a853e81d782a04223e5c9c15fadf8",
+        "after_gate": "84832c14c563f73f57b7143ce76c24ac7722af0bc71258e289f386b6d72f90a6"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r3-random8-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r3-random10-20261027",
+      "round": 3,
+      "scenario": "random",
+      "instances": 10,
+      "seed_requested": 2053,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 905.9826838796464,
+      "p50_ms": 11.015454,
+      "p99_ms": 11.967152,
+      "window_seconds": 60.000043011,
+      "window_successes": 54359,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 16,
+      "host_loadavg_1min_min": 41.89404296875,
+      "host_loadavg_1min_max": 122.23291015625,
+      "host_rss_peak_kib": 15416448,
+      "target_hbm_peak_mb": 9995,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.12989200593438,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        119669
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "7582d039d8ce67b702cf85b78517f2305fd4be326201b250529a5e3549008015",
+        "performance": "c17ee7cf13f7263dd6b1ee623b5a4b82448df2ce06f43e29064a303839e7c75d",
+        "resources": "c2aa9046269671b9f647c0a7094d4b5b501a3ce8e0d2a4fbb4d059239da116a6",
+        "events": "57a8990fec043731ea5068ea2cd5f2a24d589a02e7c10211e7ac1422f00c8df1",
+        "result": "8d059b15d10baf1683f9fc7ba4a2c2ce457255814f4732439c781e491fb9e4c4",
+        "status": "37101afbcce94e4205a7bc940f634cf1a88ff72549263eee50f8f454da87549c",
+        "identity": "680103ff7e80ce1839a245a3915dd903b4eca93b4e826b245d3f49059e734997",
+        "before_gate": "406f8223dce7eee1c360f506a5eaea40cbd2d066f82cf7e405feb78b33189291",
+        "after_gate": "1b21b5e20e82311a633efb38d1454da115cc34c01c62dece85fb4b642c0cc880"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r3-random10-20261027"
+    },
+    {
+      "name": "fp16-compare-d2-r3-random12-20261027",
+      "round": 3,
+      "scenario": "random",
+      "instances": 12,
+      "seed_requested": 2053,
+      "replay_seed_in_plan": null,
+      "device": 2,
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "workload": {
+        "kind": "random_cases",
+        "case_ids": [
+          "case-0000",
+          "case-0001",
+          "case-0002",
+          "case-0003",
+          "case-0004"
+        ],
+        "sampling": "uniform_with_replacement"
+      },
+      "profiling": false,
+      "capture_outputs": false,
+      "qps": 862.4945298440681,
+      "p50_ms": 12.996232,
+      "p99_ms": 36.855968,
+      "window_seconds": 60.000380535,
+      "window_successes": 51750,
+      "errors": 0,
+      "performance_passed": true,
+      "input_identity_passed": true,
+      "input_binary_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+      "run_identity_passed": true,
+      "status_state": "finished",
+      "exit_code": 0,
+      "resource_samples": 17,
+      "host_loadavg_1min_min": 35.69921875,
+      "host_loadavg_1min_max": 50.97021484375,
+      "host_rss_peak_kib": 18027648,
+      "target_hbm_peak_mb": 11417,
+      "target_hbm_capacity_mb": 65536,
+      "resource_max_gap_seconds": 12.19075413106475,
+      "chip0_max_concurrent_pids": 1,
+      "chip1_max_concurrent_pids": 0,
+      "chip0_observed_pids": [
+        319231
+      ],
+      "chip1_observed_pids": [],
+      "gates": {
+        "before": true,
+        "after": true
+      },
+      "sha256": {
+        "plan": "330d279ccd88a4c5f91194e7ad6d1ec07209f3b801a727938d6b44956778c851",
+        "performance": "fd39853f8280b3178accf292b7fee0389c094b2cca0e42773baf7a72dedc7f34",
+        "resources": "f653332c82a152d599aedbcb199fc18ca35ff94d1ac4b643027d9cd2056872d1",
+        "events": "3edf590257fe3965cbef8ec04ddc4daf91fc4ce9eaa7bf979588503b97a62ee2",
+        "result": "cc9d5855627ca3ab32384d3a93bab5fede8efb80aab7ae8abf942c7167ba7112",
+        "status": "c834283dc43751ca2d385867bb2e95794927404b81684eecc963076452a29acb",
+        "identity": "3a6054d91e638e9c4145773b57d4a5dc289e93664f2b6dfb96c3f8f3815d2443",
+        "before_gate": "c202e616ae8596cf9fbbe3671cfce72a0be594cf3f83911c29c7f1b600d07d25",
+        "after_gate": "b33dcc837d5295ebd24da24ec5d362cc582ef3b666bf309e81398cbd97bc6e10"
+      },
+      "raw_directory": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fp16-compare-d2-r3-random12-20261027"
+    }
+  ],
+  "measurement": {
+    "model": "original BGE ONNX, external weights",
+    "runtime": "GE Session graph_run_mode=0",
+    "precision_mode": "force_fp16",
+    "io_dtype": "original INT64/FP32 inputs and FP32 scores output",
+    "aicore_num": "12|24",
+    "boundary": "H2D + descriptor + GE completion sync + full D2H",
+    "workload": "fixed case-0000 and uniform random replay of 5 provided cases",
+    "seed_by_round": {
+      "1": 2051,
+      "2": 2052,
+      "3": 2053
+    },
+    "sampling": "closed-loop, one in-flight request per instance",
+    "minimum_seconds_per_round": 60,
+    "minimum_successes_per_round": 10000,
+    "profiling": false,
+    "capture_outputs": false,
+    "p99_slo": null
+  },
+  "aggregates": {
+    "fixed": {
+      "instances": {
+        "8": {
+          "qps_rounds": [
+            807.325684541422,
+            806.4690788982758,
+            860.3165754991928
+          ],
+          "qps_median": 807.325684541422,
+          "qps_relative_range_percent": 6.669860458050893,
+          "p99_ms_rounds": [
+            19.717898,
+            20.298963,
+            11.297057
+          ],
+          "p99_ms_median": 19.717898,
+          "successful_requests_total": 148449,
+          "target_hbm_peak_mb": 8689
+        },
+        "10": {
+          "qps_rounds": [
+            867.4130696821555,
+            884.1774069574277,
+            891.6131319555664
+          ],
+          "qps_median": 884.1774069574277,
+          "qps_relative_range_percent": 2.7370143234813544,
+          "p99_ms_rounds": [
+            21.257381,
+            14.262482,
+            13.766297
+          ],
+          "p99_ms_median": 14.262482,
+          "successful_requests_total": 158594,
+          "target_hbm_peak_mb": 10055
+        },
+        "12": {
+          "qps_rounds": [
+            840.6087404419925,
+            903.7243896249114,
+            851.1688972534853
+          ],
+          "qps_median": 851.1688972534853,
+          "qps_relative_range_percent": 7.415173344159746,
+          "p99_ms_rounds": [
+            35.4033,
+            14.734495,
+            33.053155
+          ],
+          "p99_ms_median": 33.053155,
+          "successful_requests_total": 155733,
+          "target_hbm_peak_mb": 11413
+        }
+      },
+      "comparisons": {
+        "10_vs_8": {
+          "qps_change_percent": 9.51929610162956,
+          "variability_threshold_percent": 6.669860458050893,
+          "exceeds_threshold": true
+        },
+        "12_vs_10": {
+          "qps_change_percent": -3.7332450981222287,
+          "variability_threshold_percent": 7.415173344159746,
+          "exceeds_threshold": false
+        },
+        "12_vs_8": {
+          "qps_change_percent": 5.430672348417498,
+          "variability_threshold_percent": 7.415173344159746,
+          "exceeds_threshold": false
+        }
+      }
+    },
+    "random": {
+      "instances": {
+        "8": {
+          "qps_rounds": [
+            865.3688389677703,
+            861.5917512785318,
+            843.6564857373534
+          ],
+          "qps_median": 861.5917512785318,
+          "qps_relative_range_percent": 2.5200279828814063,
+          "p99_ms_rounds": [
+            11.935412,
+            15.32096,
+            13.504755
+          ],
+          "p99_ms_median": 13.504755,
+          "successful_requests_total": 154240,
+          "target_hbm_peak_mb": 8681
+        },
+        "10": {
+          "qps_rounds": [
+            903.5818837922156,
+            730.6395116454557,
+            905.9826838796464
+          ],
+          "qps_median": 903.5818837922156,
+          "qps_relative_range_percent": 19.405343929461953,
+          "p99_ms_rounds": [
+            19.284515,
+            31.623959,
+            11.967152
+          ],
+          "p99_ms_median": 19.284515,
+          "successful_requests_total": 152413,
+          "target_hbm_peak_mb": 10047
+        },
+        "12": {
+          "qps_rounds": [
+            879.70332627362,
+            850.0073610410802,
+            862.4945298440681
+          ],
+          "qps_median": 862.4945298440681,
+          "qps_relative_range_percent": 3.4430322981768366,
+          "p99_ms_rounds": [
+            35.958057,
+            33.132792,
+            36.855968
+          ],
+          "p99_ms_median": 35.958057,
+          "successful_requests_total": 155534,
+          "target_hbm_peak_mb": 11417
+        }
+      },
+      "comparisons": {
+        "10_vs_8": {
+          "qps_change_percent": 4.873553217213833,
+          "variability_threshold_percent": 19.405343929461953,
+          "exceeds_threshold": false
+        },
+        "12_vs_10": {
+          "qps_change_percent": -4.5471644225213215,
+          "variability_threshold_percent": 19.405343929461953,
+          "exceeds_threshold": false
+        },
+        "12_vs_8": {
+          "qps_change_percent": 0.1047803166867256,
+          "variability_threshold_percent": 3.4430322981768366,
+          "exceeds_threshold": false
+        }
+      }
+    }
+  },
+  "interpretation": "Only observed closed-loop capacity for the five provided inputs. Do not discard the random 10-instance round-2 low value without causal evidence; read the relative-range threshold before claiming an instance-count gain. The 12-instance candidate has no full-output pressure or stability acceptance."
+}

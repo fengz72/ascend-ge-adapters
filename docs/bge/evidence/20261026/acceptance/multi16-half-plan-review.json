@@ -1,0 +1,88 @@
+{
+  "passed": true,
+  "checks": {
+    "multi16-correctness": {
+      "passed": true,
+      "plan_sha256": "52e8a1ba5a874b42ca392d6c708b1e30023053a64b611598ba2157a553b6fd01",
+      "instances": 16,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "min_requests": 5000,
+      "min_seconds": 2,
+      "warmup_requests": 800,
+      "capture_outputs": true
+    },
+    "multi16-search": {
+      "passed": true,
+      "plan_sha256": "077275ae62533b3743ae77fa976bd1352296080c94285dcf72146b05a5d6a7c3",
+      "instances": 16,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "min_requests": 5000,
+      "min_seconds": 30,
+      "warmup_requests": 800,
+      "capture_outputs": false
+    },
+    "half8-correctness": {
+      "passed": true,
+      "plan_sha256": "0ebdfe0bda2749454564f78125926c135ed7fe1608287319b68caf731ac5f1ac",
+      "instances": 8,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "min_requests": 2000,
+      "min_seconds": 2,
+      "warmup_requests": 400,
+      "capture_outputs": true
+    },
+    "half8-search": {
+      "passed": true,
+      "plan_sha256": "6bb009fbe904136a872b8d883fd7126efdd5293191cf1a12138f8a8c8e3835dd",
+      "instances": 8,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "min_requests": 2000,
+      "min_seconds": 30,
+      "warmup_requests": 400,
+      "capture_outputs": false
+    },
+    "half16-correctness": {
+      "passed": true,
+      "plan_sha256": "3dfd6742807aa6c48ad7fb4b6bebfc351af73e8cfb01a84c0aae413cb227ad0b",
+      "instances": 16,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "min_requests": 5000,
+      "min_seconds": 2,
+      "warmup_requests": 800,
+      "capture_outputs": true
+    },
+    "half16-search": {
+      "passed": true,
+      "plan_sha256": "32cdedcf602ec81e8086da87abe22087e63a947e2d294ce4cf1e688731891feb",
+      "instances": 16,
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "min_requests": 5000,
+      "min_seconds": 30,
+      "warmup_requests": 800,
+      "capture_outputs": false
+    }
+  },
+  "note": "Pressure instance\u00d7case coverage must still be checked on actual manifests; 5000 requests alone does not prove coverage."
+}

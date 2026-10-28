@@ -1,0 +1,95 @@
+{
+  "schema": "bge-measurement-independent-cpu/1",
+  "passed": true,
+  "snapshot": {
+    "runtime/bench.h": {
+      "sha256": "b99d77fc18f5056edaf76f1cae08302b66353d7b3b6c5c3b0e338cecae94c579",
+      "expected": "b99d77fc18f5056edaf76f1cae08302b66353d7b3b6c5c3b0e338cecae94c579",
+      "passed": true
+    },
+    "runtime/bench.cpp": {
+      "sha256": "b990f0d9de1b38f662d9acca91576dd65ffa1710d8b097f1e34fb99bdfa0bbe9",
+      "expected": "b990f0d9de1b38f662d9acca91576dd65ffa1710d8b097f1e34fb99bdfa0bbe9",
+      "passed": true
+    },
+    "runtime/replay.cpp": {
+      "sha256": "c07092b6674a9e894ae3a34eb673bb75ab548a4f8a6f49371e0b4d0476da5f22",
+      "expected": "c07092b6674a9e894ae3a34eb673bb75ab548a4f8a6f49371e0b4d0476da5f22",
+      "passed": true
+    },
+    "runtime/main.cpp": {
+      "sha256": "3c43f7397c42f393345a325bfa909d240d15ac4b2a5f6579d2a04eecdb81e0b0",
+      "expected": "3c43f7397c42f393345a325bfa909d240d15ac4b2a5f6579d2a04eecdb81e0b0",
+      "passed": true
+    },
+    "runtime/backends/gesession_backend.h": {
+      "sha256": "7f27af2f1c24f3fd5488821d9c141edc10802e6ea18b7b50459109d0cc1608f7",
+      "expected": "7f27af2f1c24f3fd5488821d9c141edc10802e6ea18b7b50459109d0cc1608f7",
+      "passed": true
+    },
+    "runtime/backends/gesession_backend.cpp": {
+      "sha256": "15fd094b4b8bde59080de49f551dab79f3aa8c150f2f047b771df7f76f67159b",
+      "expected": "15fd094b4b8bde59080de49f551dab79f3aa8c150f2f047b771df7f76f67159b",
+      "passed": true
+    },
+    "runtime/CMakeLists.txt": {
+      "sha256": "2185870a9908f0a43d5b0550b0a9988199c7d8a88f4b10642668ea13ccc7666e",
+      "expected": "2185870a9908f0a43d5b0550b0a9988199c7d8a88f4b10642668ea13ccc7666e",
+      "passed": true
+    },
+    "tests/runtime_contracts.cpp": {
+      "sha256": "9d54c9a7652c70caa7ab2337738c5b8317eff7cfd95a88ed84986fda5649d627",
+      "expected": "9d54c9a7652c70caa7ab2337738c5b8317eff7cfd95a88ed84986fda5649d627",
+      "passed": true
+    },
+    "runtime/build/ge_runtime": {
+      "sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "expected": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "passed": true
+    }
+  },
+  "runs": [
+    {
+      "command": [
+        "cmake",
+        "-S",
+        "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime",
+        "-B",
+        "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/acceptance/measurement-cpu-build",
+        "-DBUILD_TESTING=ON",
+        "-DASCEND_HOME=/usr/local/Ascend/cann-9.0.0"
+      ],
+      "exit_code": 0,
+      "stdout": "-- The CXX compiler identification is GNU 12.3.1\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: /usr/bin/c++ - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- ASCEND_HOME: /usr/local/Ascend/cann-9.0.0\n-- Configuring done (0.4s)\n-- Generating done (0.0s)\n-- Build files have been written to: /export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/acceptance/measurement-cpu-build\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "cmake",
+        "--build",
+        "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/acceptance/measurement-cpu-build",
+        "--target",
+        "runtime_contracts",
+        "-j2"
+      ],
+      "exit_code": 0,
+      "stdout": "[ 33%] Building CXX object CMakeFiles/runtime_contracts.dir/bench.cpp.o\n[ 33%] Building CXX object CMakeFiles/runtime_contracts.dir/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/tests/runtime_contracts.cpp.o\n[ 50%] Building CXX object CMakeFiles/runtime_contracts.dir/replay.cpp.o\n[ 66%] Building CXX object CMakeFiles/runtime_contracts.dir/io_spec.cpp.o\n[ 83%] Building CXX object CMakeFiles/runtime_contracts.dir/pool.cpp.o\n[100%] Linking CXX executable runtime_contracts\n[100%] Built target runtime_contracts\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "ctest",
+        "--test-dir",
+        "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/acceptance/measurement-cpu-build",
+        "-R",
+        "^runtime_contracts$",
+        "--output-on-failure"
+      ],
+      "exit_code": 0,
+      "stdout": "Internal ctest changing into directory: /export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/acceptance/measurement-cpu-build\nTest project /export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/acceptance/measurement-cpu-build\n    Start 1: runtime_contracts\n1/1 Test #1: runtime_contracts ................   Passed    0.04 sec\n\n100% tests passed, 0 tests failed out of 1\n\nTotal Test time (real) =   0.04 sec\n",
+      "stderr": ""
+    }
+  ],
+  "duration_seconds": 7.516112437937409,
+  "device_execution": false
+}

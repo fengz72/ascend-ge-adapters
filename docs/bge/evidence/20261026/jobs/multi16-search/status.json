@@ -1,0 +1,55 @@
+{
+  "task_id": "f24186a01ebd484cb5f6812fc8995a94",
+  "host": "A03-R40-I191-99-4100006.JD.LOCAL",
+  "supervisor": {
+    "pid": 2028988,
+    "linux_start_ticks": "232585762",
+    "linux_boot_id": "f0591928-db84-4529-a570-0cecb5b946dc"
+  },
+  "cwd": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner",
+  "argv": [
+    "bash",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/env_run.sh",
+    "env",
+    "/usr/local/python3.11.15/bin/python3",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/run_runtime.py",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json"
+  ],
+  "devices": [
+    "A03-R40-I191-99-4100006.JD.LOCAL/0000:89:00.0"
+  ],
+  "lock_root": "/export/home/ext.hejun23/workspace/bge/.npu-workflow-locks",
+  "started_at": "2026-10-26T03:55:05.849790+00:00",
+  "device_release_checked": false,
+  "state": "finished",
+  "updated_at": "2026-10-26T03:57:08.778130+00:00",
+  "task": {
+    "pid": 2028989,
+    "linux_start_ticks": "232585767",
+    "linux_boot_id": "f0591928-db84-4529-a570-0cecb5b946dc"
+  },
+  "pgid": 2028989,
+  "reason": "background_children",
+  "remaining_pids": [
+    2029109,
+    2029165,
+    2029166,
+    2029167,
+    2029168,
+    2029169,
+    2029170,
+    2029171,
+    2029172,
+    2029173,
+    2029174,
+    2029175,
+    2029177,
+    2029178
+  ],
+  "exit_code": 125,
+  "task_returncode": 247,
+  "process_group_stopped": true,
+  "finished_at": "2026-10-26T03:57:08.778104+00:00",
+  "locks_released_at": "2026-10-26T03:57:08.778121+00:00"
+}

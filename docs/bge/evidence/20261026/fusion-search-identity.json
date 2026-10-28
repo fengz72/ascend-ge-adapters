@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-26T03:04:04.263984+00:00",
+  "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+  "plan_sha256": "6e661c4df3605b0f55afb9b79e498e2200733a8a11dfe637187f594ba1a5ceac",
+  "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/fusion-search.json",
+  "device": 10,
+  "pci": "0000:89:00.0",
+  "env": [
+    "LD_PRELOAD=/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass.so"
+  ],
+  "charged_before_seconds": 538.186415
+}

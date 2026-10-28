@@ -1,0 +1,812 @@
+{
+  "checked_at": "2026-10-26T03:58:07.480829+00:00",
+  "status": {
+    "task_id": "f24186a01ebd484cb5f6812fc8995a94",
+    "host": "A03-R40-I191-99-4100006.JD.LOCAL",
+    "supervisor": {
+      "pid": 2028988,
+      "linux_start_ticks": "232585762",
+      "linux_boot_id": "f0591928-db84-4529-a570-0cecb5b946dc"
+    },
+    "cwd": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner",
+    "argv": [
+      "bash",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/env_run.sh",
+      "env",
+      "/usr/local/python3.11.15/bin/python3",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/run_runtime.py",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime",
+      "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json"
+    ],
+    "devices": [
+      "A03-R40-I191-99-4100006.JD.LOCAL/0000:89:00.0"
+    ],
+    "lock_root": "/export/home/ext.hejun23/workspace/bge/.npu-workflow-locks",
+    "started_at": "2026-10-26T03:55:05.849790+00:00",
+    "device_release_checked": false,
+    "state": "finished",
+    "updated_at": "2026-10-26T03:57:08.778130+00:00",
+    "task": {
+      "pid": 2028989,
+      "linux_start_ticks": "232585767",
+      "linux_boot_id": "f0591928-db84-4529-a570-0cecb5b946dc"
+    },
+    "pgid": 2028989,
+    "reason": "background_children",
+    "remaining_pids": [
+      2029109,
+      2029165,
+      2029166,
+      2029167,
+      2029168,
+      2029169,
+      2029170,
+      2029171,
+      2029172,
+      2029173,
+      2029174,
+      2029175,
+      2029177,
+      2029178
+    ],
+    "exit_code": 125,
+    "task_returncode": 247,
+    "process_group_stopped": true,
+    "finished_at": "2026-10-26T03:57:08.778104+00:00",
+    "locks_released_at": "2026-10-26T03:57:08.778121+00:00"
+  },
+  "host_pid_witnesses": [
+    {
+      "checked_at": "2026-10-26T03:55:13.551863+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-10-26T03:55:23.891751+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4037417,
+          "host_ppid": 4034834,
+          "namespace_pids": [
+            4037417,
+            2029109
+          ],
+          "container_pid": 2029109,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-10-26T03:55:34.480974+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4037417,
+          "host_ppid": 4034834,
+          "namespace_pids": [
+            4037417,
+            2029109
+          ],
+          "container_pid": 2029109,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-10-26T03:55:44.822313+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4037417,
+          "host_ppid": 4034834,
+          "namespace_pids": [
+            4037417,
+            2029109
+          ],
+          "container_pid": 2029109,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-10-26T03:55:55.307484+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4037417,
+          "host_ppid": 4034834,
+          "namespace_pids": [
+            4037417,
+            2029109
+          ],
+          "container_pid": 2029109,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-10-26T03:56:05.868358+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4037417,
+          "host_ppid": 4034834,
+          "namespace_pids": [
+            4037417,
+            2029109
+          ],
+          "container_pid": 2029109,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-10-26T03:56:16.273484+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4037417,
+          "host_ppid": 4034834,
+          "namespace_pids": [
+            4037417,
+            2029109
+          ],
+          "container_pid": 2029109,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-10-26T03:56:26.704386+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4037417,
+          "host_ppid": 4034834,
+          "namespace_pids": [
+            4037417,
+            2029109
+          ],
+          "container_pid": 2029109,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-10-26T03:56:37.100790+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4037417,
+          "host_ppid": 4034834,
+          "namespace_pids": [
+            4037417,
+            2029109
+          ],
+          "container_pid": 2029109,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-10-26T03:56:47.449649+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4037417,
+          "host_ppid": 4034834,
+          "namespace_pids": [
+            4037417,
+            2029109
+          ],
+          "container_pid": 2029109,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-10-26T03:56:57.808512+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4037417,
+          "host_ppid": 4034834,
+          "namespace_pids": [
+            4037417,
+            2029109
+          ],
+          "container_pid": 2029109,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-10-26T03:57:08.150173+00:00",
+      "source": "host docker top and /proc/<hostpid>/status NSpid",
+      "processes": [
+        {
+          "host_pid": 4034720,
+          "host_ppid": 4034525,
+          "namespace_pids": [
+            4034720,
+            2028987
+          ],
+          "container_pid": 2028987,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034756,
+          "host_ppid": 4034739,
+          "namespace_pids": [
+            4034756,
+            2028989
+          ],
+          "container_pid": 2028989,
+          "role": "launcher",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4034834,
+          "host_ppid": 4034756,
+          "namespace_pids": [
+            4034834,
+            2029055
+          ],
+          "container_pid": 2029055,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        },
+        {
+          "host_pid": 4037417,
+          "host_ppid": 4034834,
+          "namespace_pids": [
+            4037417,
+            2029109
+          ],
+          "container_pid": 2029109,
+          "role": "ge_runtime",
+          "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi16-search.json",
+          "run_id": "multi16-search",
+          "binary": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime"
+        }
+      ]
+    }
+  ],
+  "container_files": [
+    {
+      "path": "/proc/self/cgroup",
+      "text": "12:pids:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n11:memory:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n10:perf_event:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n9:cpuset:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n8:net_cls,net_prio:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n7:cpu,cpuacct:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n6:hugetlb:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n5:freezer:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n4:blkio:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n3:devices:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n2:rdma:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n1:name=systemd:/system.slice/docker-339663794ace10d60c730ba5bd5f39cb0345a6a46759fc4c96091997b5474d77.scope\n"
+    },
+    {
+      "path": "/proc/meminfo",
+      "text": "MemTotal:       3216331456 kB\nMemFree:        631218432 kB\nMemAvailable:   2432158528 kB\nBuffers:             512 kB\nCached:         2102113408 kB\nSwapCached:            0 kB\nActive:         1230409664 kB\nInactive:       1188228032 kB\nActive(anon):   101268032 kB\nInactive(anon): 379359168 kB\nActive(file):   1129141632 kB\nInactive(file): 808868864 kB\nUnevictable:           0 kB\nMlocked:               0 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\nDirty:            214912 kB\nWriteback:             0 kB\nAnonPages:      316572032 kB\nMapped:          9370432 kB\nShmem:          164103232 kB\nKReclaimable:   59328064 kB\nSlab:           121996672 kB\nSReclaimable:   59328064 kB\nSUnreclaim:     62668608 kB\nKernelStack:     4274048 kB\nPageTables:      3501760 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    1608165696 kB\nCommitted_AS:   1049212288 kB\nVmallocTotal:   128982974400 kB\nVmallocUsed:    14294784 kB\nVmallocChunk:          0 kB\nPercpu:          9584640 kB\nHardwareCorrupted:     0 kB\nAnonHugePages:   9961472 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:         0 kB\nFilePmdMapped:         0 kB\nCmaTotal:         524288 kB\nCmaFree:               0 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:     524288 kB\nHugetlb:               0 kB\n"
+    },
+    {
+      "path": "/proc/pressure/memory",
+      "text": "some avg10=0.00 avg60=0.00 avg300=0.00 total=1296299681\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=1292647206\n"
+    },
+    {
+      "path": "/proc/sys/vm/overcommit_memory",
+      "text": "0\n"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory.events",
+      "error": "[Errno 2] No such file or directory: '/sys/fs/cgroup/memory.events'"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory.events.local",
+      "error": "[Errno 2] No such file or directory: '/sys/fs/cgroup/memory.events.local'"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory.max",
+      "error": "[Errno 2] No such file or directory: '/sys/fs/cgroup/memory.max'"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory.current",
+      "error": "[Errno 2] No such file or directory: '/sys/fs/cgroup/memory.current'"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory.peak",
+      "error": "[Errno 2] No such file or directory: '/sys/fs/cgroup/memory.peak'"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory.high",
+      "error": "[Errno 2] No such file or directory: '/sys/fs/cgroup/memory.high'"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory.swap.max",
+      "error": "[Errno 2] No such file or directory: '/sys/fs/cgroup/memory.swap.max'"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+      "text": "9223372036854710272\n"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory/memory.usage_in_bytes",
+      "text": "6163726336\n"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory/memory.max_usage_in_bytes",
+      "text": "43351867392\n"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory/memory.failcnt",
+      "text": "0\n"
+    },
+    {
+      "path": "/sys/fs/cgroup/memory/memory.oom_control",
+      "text": "oom_kill_disable 0\nunder_oom 0\noom_kill 0\noom_kill_local 0\n"
+    }
+  ],
+  "limitations": [
+    "Post-failure snapshots; no same-cgroup memory.events before value is present. SIGKILL alone does not establish OOM."
+  ]
+}

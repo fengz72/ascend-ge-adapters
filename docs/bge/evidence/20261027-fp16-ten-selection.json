@@ -1,0 +1,112 @@
+{
+  "schema": "bge-fp16-ten-selection-audit/1",
+  "passed": true,
+  "model": "original external-weight ONNX",
+  "precision": "GE force_fp16, FP32 external floating IO",
+  "latency_scope": "h2d_desc_execute_sync_d2h",
+  "no_p99_slo": true,
+  "runs": {
+    "pressure": {
+      "name": "fp16-ten-d2-pressure-20261027",
+      "status": "passed",
+      "device": 2,
+      "before_after_gate": "clear",
+      "identity": "passed",
+      "options": {
+        "precision_mode": "force_fp16",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "requests": 2009,
+      "worst": {
+        "max_abs_error": 0.000568091869354248,
+        "relative_l2": 0.0008140968267763366,
+        "top10_max_abs_error": 0.0005680937499999983
+      },
+      "minimum_per_instance_case": 26
+    },
+    "fixed": {
+      "name": "fp16-ten-d2-fixed-formal-r1-20261027",
+      "status": "passed",
+      "device": 2,
+      "before_after_gate": "clear",
+      "identity": "passed",
+      "options": {
+        "precision_mode": "force_fp16",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "window_seconds": 60.003539232,
+      "window_successes": 48167,
+      "qps": 802.735982185405,
+      "p99_ms": 25.65332,
+      "max_ms": 35.804227,
+      "errors": 0
+    },
+    "random": {
+      "name": "fp16-ten-d2-random-formal-r1-20261027",
+      "status": "passed",
+      "device": 2,
+      "before_after_gate": "clear",
+      "identity": "passed",
+      "options": {
+        "precision_mode": "force_fp16",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "window_seconds": 60.000507525,
+      "window_successes": 54614,
+      "qps": 910.225633962252,
+      "p99_ms": 12.048233,
+      "max_ms": 34.135242,
+      "errors": 0
+    },
+    "stability": {
+      "name": "fp16-ten-d2-stability-20261027",
+      "status": "passed",
+      "device": 2,
+      "before_after_gate": "clear",
+      "identity": "passed",
+      "options": {
+        "precision_mode": "force_fp16",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "window_seconds": 600.000006121,
+      "window_successes": 539941,
+      "qps": 899.9016574861699,
+      "p99_ms": 14.646205,
+      "max_ms": 128.699089,
+      "errors": 0,
+      "ten_second_qps_min": 724.9,
+      "ten_second_qps_max": 908.9,
+      "complete_ten_second_buckets": 60,
+      "resource_samples": 50,
+      "sample_gap_median_seconds": 11.860169998999993,
+      "sample_gap_max_seconds": 13.190425887999936,
+      "resource_growth": {
+        "rss_kib": {
+          "first_2min_median": 15070688.0,
+          "last_2min_median": 15168544.0,
+          "increase": 97856.0,
+          "allowed_increase": 753534.4,
+          "within_limit": true,
+          "peak": 15176384
+        },
+        "hbm_mb": {
+          "first_2min_median": 10047.0,
+          "last_2min_median": 10051.0,
+          "increase": 4.0,
+          "allowed_increase": 100.47,
+          "within_limit": true,
+          "peak": 10051
+        }
+      }
+    }
+  },
+  "limits": [
+    "Five supplied samples only",
+    "No production traffic distribution",
+    "Ten instances are user-selected; superiority over eight FP16 instances was not established"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "created_at": "2026-10-26T14:31:54.155414+08:00",
+  "status": "prepared_locally_remote_integration_pending",
+  "remote_blocker": "ssh99 bastion Connection closed by UNKNOWN port 65535",
+  "before": {
+    "models/bge/replay.py": "3c0af6fdaae170563198e614075a45b6860c12ff69320d7f9d3c947ae0ecb00e",
+    "tests/test_bge_replay_cli.py": "279332434fd6cdb3c86a56925f07cf2dad63067c439f97f06095ad964b9a68e8",
+    "models/bge/README.md": "3670b40d05530f2500f07e28b8b9b8502d6f7b05163f60fc644384ba3ed56c86"
+  },
+  "after": {
+    "models/bge/replay.py": "0b5ac3dde39951bd4976cbc342a54d3a2bb22ffcb2805d00304a26ef0f10b3b0",
+    "tests/test_bge_replay_cli.py": "599497ff6bf43feaaed3ed2984166cc7997167575529cdc85d76c8ee3d946925",
+    "models/bge/README.md": "ae7016f365b315ae9387c79b8a2d94334d5575a88ac19b6734ae3ce4b340fd5c"
+  },
+  "patch_sha256": "dff15d0301c8126348305b46034a8f29211769902bafb352436bdb1423d45859",
+  "runtime_binary_unchanged_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+  "cpp_changed": false,
+  "cpu_tests": {
+    "exit_code": 0,
+    "passed": 12,
+    "platform": "macOS local CPU",
+    "log": "dual-workload-cli-tests.log",
+    "PyYAML": "6.0.3 task-isolated; system packages unchanged"
+  },
+  "npu_runs_started": false,
+  "fixed_device_performance_measured": false
+}

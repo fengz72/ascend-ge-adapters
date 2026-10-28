@@ -1,0 +1,5 @@
+{
+  "parent_ld_preload": "/usr/lib64/libtcmalloc.so.4.5.16",
+  "plugin": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass_v2.so",
+  "combined": "/usr/lib64/libtcmalloc.so.4.5.16:/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass_v2.so"
+}

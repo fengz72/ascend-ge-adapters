@@ -1,0 +1,1470 @@
+FILE runtime/bench.h 
+#pragma once
+
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
+#include <nlohmann/json.hpp>
+
+#include "pool.h"
+
+namespace ge_runtime {
+
+// 两个后端共用的计时原语，不依赖 ACL。
+using Clock = std::chrono::steady_clock;
+
+inline double ElapsedMs(Clock::time_point begin, Clock::time_point end) {
+    return std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000.0;
+}
+
+struct BenchOptions {
+    int warmup = 0;
+    int threads = 1;              // >1 → 吞吐模式 (闭环并发)
+    int requests = 1;             // 测量段总调用次数
+};
+
+// ---------------------------------------------------------------- 变长负载 (请求池回放)
+
+struct PhaseTime {
+    double h2dMs = 0.0;
+    double descMs = 0.0;      // ACL: 重设 tensor desc; GE: 重建 gert::Tensor
+};
+
+struct RequestRecord {
+    int instance = 0;
+    size_t req = 0;
+    std::string inputSet;
+    std::string shapeKey;
+    int64_t samples = 0;
+    double h2dMs = 0.0, descMs = 0.0, execMs = 0.0, e2eMs = 0.0;
+    bool firstHit = false;    // 该实例首次遇到这个 shape (GE 会在此付特化代价)
+    int error = 0;
+};
+
+struct InstancePerf {
+    std::string name;
+    size_t requests = 0, errors = 0, distinctShapes = 0;
+    double qps = 0.0;
+    double avgMs = 0.0, minMs = 0.0, p50Ms = 0.0, p99Ms = 0.0, maxMs = 0.0;
+    double execAvgMs = 0.0, execP99Ms = 0.0;
+    double h2dAvgMs = 0.0, descAvgMs = 0.0;
+    double loadMs = 0.0, specializeMs = 0.0;
+};
+
+struct PerfResult {
+    std::vector<RequestRecord> records;
+    std::vector<InstancePerf> instances;
+    size_t requests = 0, errors = 0, samples = 0;
+    double wallMs = 0.0, qps = 0.0;
+    double avgMs = 0.0, minMs = 0.0, p50Ms = 0.0, p99Ms = 0.0, maxMs = 0.0;
+    double execAvgMs = 0.0, execP99Ms = 0.0;   // 聚合 exec (execute+sync, 不含 h2d/desc)
+    double tokAvg = 0.0, tokMin = 0.0, tokP50 = 0.0, tokP99 = 0.0, tokMax = 0.0;  // 每次调用的业务样本数
+    double hbmBaseMb = 0.0, hbmPeakMb = 0.0;   // 建实例前 / 建完实例后的整机 HBM 占用
+    double warmupMs = 0.0;
+    size_t warmupRuns = 0, distinctShapes = 0;
+};
+
+struct PoolResources {
+    std::function<bool(int tid)> setup;                                  // 建第 tid 份实例资源
+    std::function<bool(int tid, const Request &, PhaseTime &)> setInputs; // 每请求: H2D + desc
+    std::function<bool(int tid)> execute;                                // execute + sync
+    std::function<void(int tid)> release;
+    std::function<void(int tid)> threadEnter;
+    std::function<double(int tid)> loadMs;                               // 该实例加载/编译耗时
+    std::function<double()> hbmUsedMb;                                   // 整机 HBM 占用 (不可用返回 -1)
+};
+
+// Load each instance once, execute every selected case, collect each output.
+bool CapturePool(int instances, const RequestPool &pool, const PoolResources &res,
+                 const std::function<bool(int, const Request &)> &collect);
+
+// 闭环并发: instances 个 worker (1:1 绑实例), 共 requests 个请求, 每实例从共享池随机抽样
+// 全局 seed 先生成请求序列，再分给实例；warmup 不消耗测量序列。
+// 每实例在同一工作线程中预热和测量，全部预热成功后统一开始计时。
+bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
+               const RequestPool &pool, const PoolResources &res, PerfResult &out);
+
+void PrintPerfResult(const std::string &label, const PerfResult &perf);
+nlohmann::json PerfToJson(const PerfResult &perf);            // 调用方合并 meta 后落盘
+bool WriteRequestsCsv(const std::string &path, const PerfResult &perf);
+
+}  // namespace ge_runtime
+
+FILE runtime/bench.cpp 
+#include "bench.h"
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <exception>
+#include <cstdio>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <mutex>
+#include <numeric>
+#include <set>
+#include <thread>
+#include <vector>
+
+namespace ge_runtime {
+namespace {
+
+struct Percentiles {
+    double avg = 0, min = 0, p50 = 0, p99 = 0, max = 0;
+};
+
+Percentiles Summarize(std::vector<double> times) {
+    Percentiles p;
+    if (times.empty()) {
+        return p;
+    }
+    std::sort(times.begin(), times.end());
+    p.avg = std::accumulate(times.begin(), times.end(), 0.0) / static_cast<double>(times.size());
+    p.min = times.front();
+    p.max = times.back();
+    p.p50 = times[times.size() / 2];
+    size_t idx = static_cast<size_t>(static_cast<double>(times.size()) * 0.99);
+    p.p99 = times[std::min(idx, times.size() - 1)];
+    return p;
+}
+
+void ReleasePool(const PoolResources &res, std::vector<bool> &created) {
+    if (!res.release) {
+        return;
+    }
+    for (size_t t = 0; t < created.size(); t++) {
+        if (created[t]) {
+            res.release(static_cast<int>(t));
+            created[t] = false;
+        }
+    }
+}
+
+double Mean(const std::vector<double> &v) {
+    return v.empty() ? 0.0 : std::accumulate(v.begin(), v.end(), 0.0) / static_cast<double>(v.size());
+}
+
+// 每个 distinct shape 取一个代表请求 (warmup 要覆盖全部 shape: GE 首次执行才特化)
+std::vector<size_t> ShapeRepresentatives(const RequestPool &pool) {
+    std::vector<size_t> reps;
+    std::set<std::string> seen;
+    for (size_t i = 0; i < pool.requests.size(); i++) {
+        if (seen.insert(pool.requests[i].shapeKey).second) {
+            reps.push_back(i);
+        }
+    }
+    return reps;
+}
+
+}  // namespace
+
+bool CapturePool(int instances, const RequestPool &pool, const PoolResources &res,
+                 const std::function<bool(int, const Request &)> &collect) {
+    if (instances < 1 || pool.Empty() || !res.setup || !res.setInputs || !res.execute || !collect) return false;
+    std::vector<bool> created(static_cast<size_t>(instances), false);
+    for (int t=0; t<instances; ++t) {
+        if (!res.setup(t)) { ReleasePool(res,created); return false; }
+        created[static_cast<size_t>(t)] = true;
+    }
+    std::atomic<int> errors{0};
+    std::vector<std::thread> workers;
+    for (int t=0; t<instances; ++t) workers.emplace_back([&,t]() {
+        if (res.threadEnter) res.threadEnter(t);
+        for (const auto &request:pool.requests) {
+            PhaseTime phase;
+            if (!res.setInputs(t,request,phase) || !res.execute(t) || !collect(t,request)) {
+                errors++; break;
+            }
+        }
+    });
+    for (auto &thread:workers) thread.join();
+    ReleasePool(res,created);
+    return errors.load()==0;
+}
+
+bool BenchPool(int instances, size_t requests, int warmup, uint64_t seed,
+               const RequestPool &pool, const PoolResources &res, PerfResult &out) {
+    if (instances < 1) {
+        instances = 1;
+    }
+    if (pool.Empty()) {
+        fprintf(stderr, "[ERROR] 请求池为空\n");
+        return false;
+    }
+    if (!res.setup || !res.setInputs || !res.execute) {
+        fprintf(stderr, "[ERROR] BenchPool 需要 setup/setInputs/execute 钩子\n");
+        return false;
+    }
+
+    out.distinctShapes = pool.distinctShapes;
+    out.hbmBaseMb = res.hbmUsedMb ? res.hbmUsedMb() : -1.0;
+
+    std::vector<bool> created(static_cast<size_t>(instances), false);
+    for (int t = 0; t < instances; t++) {
+        if (!res.setup(t)) {
+            fprintf(stderr, "[ERROR] setup 实例 %d 失败\n", t);
+            ReleasePool(res, created);
+            return false;
+        }
+        created[static_cast<size_t>(t)] = true;
+    }
+    out.hbmPeakMb = res.hbmUsedMb ? res.hbmUsedMb() : -1.0;
+    if (out.hbmBaseMb >= 0 && out.hbmPeakMb >= 0) {
+        std::cout << "[INFO] " << instances << " 个实例占用 HBM "
+                  << (out.hbmPeakMb - out.hbmBaseMb) << " MB (整机 " << out.hbmBaseMb
+                  << " → " << out.hbmPeakMb << " MB)" << std::endl;
+    }
+
+    // 预先分配预热请求，保持原有逐实例 shape 覆盖和随机补齐的采样顺序。
+    std::vector<size_t> reps = ShapeRepresentatives(pool);
+    std::vector<std::vector<size_t>> warmSequences(static_cast<size_t>(instances), reps);
+    Sampler warmSampler(pool.requests.size(), seed);
+    size_t plannedWarmRuns = reps.size() * static_cast<size_t>(instances);
+    while (plannedWarmRuns < static_cast<size_t>(std::max(0, warmup)) * instances) {
+        size_t t = plannedWarmRuns % static_cast<size_t>(instances);
+        warmSequences[t].push_back(warmSampler.Next());
+        ++plannedWarmRuns;
+    }
+    std::vector<std::set<std::string>> seenShapes(static_cast<size_t>(instances));
+    std::vector<double> warmSpecialize(static_cast<size_t>(instances), 0.0);
+    std::vector<size_t> warmCounts(static_cast<size_t>(instances), 0);
+
+    // Generate one measurement sequence before timing; warmup does not consume it.
+    Sampler sampler(pool.requests.size(), seed);
+    std::vector<size_t> sequence(requests);
+    for (auto &index:sequence) index=sampler.Next();
+    size_t perInstance = requests / static_cast<size_t>(instances);
+    size_t remainder = requests % static_cast<size_t>(instances);
+    std::vector<std::vector<RequestRecord>> per(static_cast<size_t>(instances));
+    std::atomic<size_t> errors{0};
+
+    std::mutex phaseMutex;
+    std::condition_variable phaseCv;
+    size_t ready = 0;
+    bool startMeasure = false, warmFailed = false;
+    auto warmBegin = Clock::now();
+    Clock::time_point wallBegin;
+    std::vector<std::thread> workers;
+    workers.reserve(static_cast<size_t>(instances));
+    try {
+        for (int t = 0; t < instances; t++) {
+            workers.emplace_back([&, t]() {
+                std::vector<RequestRecord> &recs = per[static_cast<size_t>(t)];
+                size_t count = perInstance + (static_cast<size_t>(t) < remainder ? 1 : 0);
+                bool warmOk = true;
+                try {
+                    if (res.threadEnter) res.threadEnter(t);
+                    recs.reserve(count);
+                    // 在同一工作线程预热和测量，覆盖线程首次使用 ACL/runtime 的开销。
+                    for (size_t idx : warmSequences[static_cast<size_t>(t)]) {
+                        PhaseTime phase;
+                        if (!res.setInputs(t, pool.requests[idx], phase)) {
+                            warmOk = false;
+                            break;
+                        }
+                        auto execBegin = Clock::now();
+                        if (!res.execute(t)) {
+                            warmOk = false;
+                            break;
+                        }
+                        double execMs = ElapsedMs(execBegin, Clock::now());
+                        if (seenShapes[static_cast<size_t>(t)].insert(pool.requests[idx].shapeKey).second) {
+                            warmSpecialize[static_cast<size_t>(t)] += execMs;
+                        }
+                        ++warmCounts[static_cast<size_t>(t)];
+                    }
+                } catch (const std::exception &e) {
+                    fprintf(stderr, "[ERROR] warmup instance=%d: %s\n", t, e.what());
+                    warmOk = false;
+                } catch (...) {
+                    fprintf(stderr, "[ERROR] warmup instance=%d: unknown exception\n", t);
+                    warmOk = false;
+                }
+                if (!warmOk) fprintf(stderr, "[ERROR] warmup 失败 (instance=%d)\n", t);
+                {
+                    std::unique_lock<std::mutex> lock(phaseMutex);
+                    warmFailed = warmFailed || !warmOk;
+                    ++ready;
+                    phaseCv.notify_all();
+                    phaseCv.wait(lock, [&]() { return startMeasure; });
+                    if (warmFailed) return;
+                }
+                for (size_t i = 0; i < count; i++) {
+                    size_t global = static_cast<size_t>(t) + i*static_cast<size_t>(instances);
+                    const Request &req = pool.requests[sequence[global]];
+                    RequestRecord rec;
+                    rec.instance = t;
+                    rec.req = global;
+                    rec.inputSet = req.name;
+                    rec.shapeKey = req.shapeKey;
+                    rec.samples = req.samples;
+
+                    PhaseTime phase;
+                    auto t0 = Clock::now();
+                    bool ok = res.setInputs(t, req, phase);
+                    rec.h2dMs = phase.h2dMs;
+                    rec.descMs = phase.descMs;
+                    auto t1 = Clock::now();
+                    if (ok) ok = res.execute(t);
+                    auto t2 = Clock::now();
+                    rec.execMs = ok ? ElapsedMs(t1, t2) : 0.0;
+                    rec.e2eMs = ElapsedMs(t0, t2);
+                    rec.error = ok ? 0 : 1;
+                    recs.push_back(rec);
+                    if (!ok) {
+                        errors.fetch_add(1);
+                        fprintf(stderr, "[ERROR] instance=%d 第 %zu 个请求失败 (input=%s)\n", t, i,
+                                req.name.c_str());
+                        break;
+                    }
+                }
+            });
+        }
+    } catch (const std::exception &e) {
+        // 启动部分线程失败时也释放等待者，再统一回收实例资源。
+        {
+            std::lock_guard<std::mutex> lock(phaseMutex);
+            warmFailed = true;
+            startMeasure = true;
+        }
+        phaseCv.notify_all();
+        for (auto &worker : workers) worker.join();
+        fprintf(stderr, "[ERROR] 创建 benchmark 工作线程失败: %s\n", e.what());
+        ReleasePool(res, created);
+        return false;
+    }
+    {
+        std::unique_lock<std::mutex> lock(phaseMutex);
+        phaseCv.wait(lock, [&]() { return ready == static_cast<size_t>(instances); });
+        out.warmupRuns = std::accumulate(warmCounts.begin(), warmCounts.end(), size_t{0});
+        out.warmupMs = ElapsedMs(warmBegin, Clock::now());
+        if (!warmFailed) {
+            std::cout << "[INFO] warmup " << out.warmupRuns << " 次 (覆盖 " << reps.size()
+                      << " 种 shape × " << instances << " 实例), cost " << out.warmupMs
+                      << " ms; measurement uses the same workers" << std::endl;
+        }
+        // 所有工作线程完成预热后统一起跑，线程创建和预热不计入吞吐窗口。
+        wallBegin = Clock::now();
+        startMeasure = true;
+    }
+    phaseCv.notify_all();
+    for (auto &worker : workers) worker.join();
+    if (warmFailed) {
+        ReleasePool(res, created);
+        return false;
+    }
+    out.wallMs = ElapsedMs(wallBegin, Clock::now());
+
+    // ---- 汇总: 每实例 (含首次命中该 shape 的特化耗时) + 聚合 ----
+    std::vector<double> allE2e;
+    std::vector<double> allExec;
+    std::vector<double> allTokens;
+    for (int t = 0; t < instances; t++) {
+        InstancePerf ip;
+        ip.name = "instance_" + std::to_string(t);
+        ip.specializeMs = warmSpecialize[static_cast<size_t>(t)];   // 特化代价 (warmup 段付的)
+        std::vector<double> e2e, exec, h2d, desc;
+        std::set<std::string> seen = seenShapes[static_cast<size_t>(t)];
+        size_t shapesInMeasure = 0;
+        for (auto &rec : per[static_cast<size_t>(t)]) {
+            if (seen.insert(rec.shapeKey).second) {
+                rec.firstHit = true;               // warmup 没覆盖到的 shape (正常应为 0)
+                shapesInMeasure++;
+            }
+            out.records.push_back(rec);
+            if (rec.error != 0) {
+                ip.errors++;
+                continue;
+            }
+            e2e.push_back(rec.e2eMs);
+            exec.push_back(rec.execMs);
+            h2d.push_back(rec.h2dMs);
+            desc.push_back(rec.descMs);
+            allTokens.push_back(static_cast<double>(rec.samples));
+        }
+        ip.distinctShapes = seen.size();
+        if (shapesInMeasure > 0) {
+            fprintf(stderr, "[WARN] %s 在测量段遇到 %zu 种 warmup 未覆盖的 shape (特化会污染延迟)\n",
+                    ip.name.c_str(), shapesInMeasure);
+        }
+        ip.requests = e2e.size();
+        if (!e2e.empty()) {
+            Percentiles p = Summarize(e2e);
+            ip.avgMs = p.avg; ip.minMs = p.min; ip.p50Ms = p.p50; ip.p99Ms = p.p99; ip.maxMs = p.max;
+            Percentiles pe = Summarize(exec);
+            ip.execAvgMs = pe.avg; ip.execP99Ms = pe.p99;
+            ip.h2dAvgMs = Mean(h2d);
+            ip.descAvgMs = Mean(desc);
+            allE2e.insert(allE2e.end(), e2e.begin(), e2e.end());
+            allExec.insert(allExec.end(), exec.begin(), exec.end());
+        }
+        ip.qps = out.wallMs > 0 ? static_cast<double>(ip.requests) / (out.wallMs / 1000.0) : 0.0;
+        if (res.loadMs) {
+            ip.loadMs = res.loadMs(t);
+        }
+        out.instances.push_back(ip);
+    }
+
+    out.requests = allE2e.size();
+    out.samples = static_cast<size_t>(std::accumulate(allTokens.begin(),allTokens.end(),0.0));
+    out.errors = errors.load();
+    out.qps = out.wallMs > 0 ? static_cast<double>(out.requests) / (out.wallMs / 1000.0) : 0.0;
+    if (!allE2e.empty()) {
+        Percentiles p = Summarize(allE2e);
+        out.avgMs = p.avg; out.minMs = p.min; out.p50Ms = p.p50; out.p99Ms = p.p99; out.maxMs = p.max;
+    }
+    if (!allExec.empty()) {
+        Percentiles pe = Summarize(allExec);
+        out.execAvgMs = pe.avg; out.execP99Ms = pe.p99;
+    }
+    if (!allTokens.empty()) {
+        Percentiles pt = Summarize(allTokens);
+        out.tokAvg = pt.avg; out.tokMin = pt.min; out.tokP50 = pt.p50; out.tokP99 = pt.p99;
+        out.tokMax = pt.max;
+    }
+
+    std::sort(out.records.begin(), out.records.end(), [](const RequestRecord &a, const RequestRecord &b) { return a.req < b.req; });
+    ReleasePool(res, created);
+    return out.errors == 0;
+}
+
+void PrintPerfResult(const std::string &label, const PerfResult &p) {
+    std::cout << "\n============================================================\n"
+              << label << "\n============================================================\n"
+              << std::fixed << std::setprecision(2)
+              << "  instances: " << p.instances.size()
+              << "   requests: " << p.requests << "   errors: " << p.errors << "\n"
+              << "  wall:      " << std::setprecision(3) << p.wallMs << " ms\n"
+              << "  QPS:       " << std::setprecision(2) << p.qps << " req/s\n"
+              << "  e2e  ms:   avg " << std::setprecision(3) << p.avgMs << "  min " << p.minMs
+              << "  p50 " << p.p50Ms << "  p99 " << p.p99Ms << "  max " << p.maxMs << "\n"
+              << "  exec ms:   avg " << std::setprecision(3) << p.execAvgMs
+              << "  p99 " << p.execP99Ms << "  (execute+sync, 不含 h2d/desc)\n"
+              << "  samples:    avg " << std::setprecision(1) << p.tokAvg << "  min "
+              << std::setprecision(0) << p.tokMin << "  p50 " << p.tokP50 << "  p99 " << p.tokP99
+              << "  max " << p.tokMax << "  (每次调用的业务样本数)\n"
+              << "  warmup:    " << p.warmupRuns << " 次 / " << std::setprecision(1) << p.warmupMs
+              << " ms   distinct shapes: " << p.distinctShapes << "\n";
+    if (p.hbmBaseMb >= 0 && p.hbmPeakMb >= 0) {
+        std::cout << "  HBM:       " << std::setprecision(0) << p.hbmBaseMb << " → " << p.hbmPeakMb
+                  << " MB (实例占 " << (p.hbmPeakMb - p.hbmBaseMb) << " MB)\n";
+    }
+    std::cout << "  ---- 每实例 ----\n" << std::setprecision(3);
+    for (const auto &ip : p.instances) {
+        std::cout << "  " << ip.name << ": req=" << ip.requests << " qps=" << std::setprecision(2)
+                  << ip.qps << std::setprecision(3) << " e2e avg=" << ip.avgMs << " p99=" << ip.p99Ms
+                  << " | exec avg=" << ip.execAvgMs << " p99=" << ip.execP99Ms
+                  << " | h2d=" << ip.h2dAvgMs << " desc=" << ip.descAvgMs
+                  << " | load=" << std::setprecision(1) << ip.loadMs << "ms"
+                  << " shapes=" << ip.distinctShapes
+                  << " 特化=" << ip.specializeMs << "ms err=" << ip.errors << "\n";
+    }
+    std::cout << "============================================================\n" << std::endl;
+}
+
+nlohmann::json PerfToJson(const PerfResult &p) {
+    using Json = nlohmann::json;
+    auto pct = [](const InstancePerf &ip) {
+        return Json{{"avg", ip.avgMs}, {"min", ip.minMs}, {"p50", ip.p50Ms},
+                    {"p99", ip.p99Ms}, {"max", ip.maxMs}};
+    };
+    Json instances = Json::array();
+    for (const auto &ip : p.instances) {
+        instances.push_back({{"name", ip.name},
+                             {"requests", ip.requests},
+                             {"errors", ip.errors},
+                             {"qps", ip.qps},
+                             {"e2e_ms", pct(ip)},
+                             {"exec_ms", {{"avg", ip.execAvgMs}, {"p99", ip.execP99Ms}}},
+                             {"h2d_ms", {{"avg", ip.h2dAvgMs}}},
+                             {"desc_ms", {{"avg", ip.descAvgMs}}},
+                             {"load_ms", ip.loadMs},
+                             {"distinct_shapes", ip.distinctShapes},
+                             {"specialize_ms", ip.specializeMs}});
+    }
+    // Public metrics consumed by core/results.py.
+    return Json{{"schema", "ge-performance/1"},
+                {"requests", p.requests},
+                {"errors", p.errors},
+                {"wall_ms", p.wallMs},
+                {"qps", p.qps},
+                {"samples_per_second", p.wallMs>0 ? p.samples/(p.wallMs/1000.0) : 0.0},
+                {"latency_scope", "h2d_desc_execute_sync"},
+                {"e2e_ms", {{"avg", p.avgMs}, {"min", p.minMs}, {"p50", p.p50Ms},
+                            {"p99", p.p99Ms}, {"max", p.maxMs}}},
+                {"exec_ms", {{"avg", p.execAvgMs}, {"p99", p.execP99Ms}}},
+                {"samples", {{"avg", p.tokAvg}, {"min", p.tokMin}, {"p50", p.tokP50},
+                            {"p99", p.tokP99}, {"max", p.tokMax}}},
+                {"warmup", {{"runs", p.warmupRuns}, {"ms", p.warmupMs}}},
+                {"distinct_shapes", p.distinctShapes},
+                {"hbm_mb", {{"base", p.hbmBaseMb}, {"after_setup", p.hbmPeakMb}}},
+                {"instances", instances}};
+}
+
+bool WriteRequestsCsv(const std::string &path, const PerfResult &perf) {
+    std::ofstream f(path);
+    if (!f.is_open()) {
+        fprintf(stderr, "[ERROR] 无法写 %s\n", path.c_str());
+        return false;
+    }
+    f << "instance,req,input_set,samples,shape_key,first_hit,h2d_ms,desc_ms,exec_ms,e2e_ms,error\n";
+    f << std::fixed << std::setprecision(4);
+    for (const auto &r : perf.records) {
+        f << r.instance << ',' << r.req << ',' << r.inputSet << ',' << r.samples << ','
+          << '"' << r.shapeKey << '"' << ',' << (r.firstHit ? 1 : 0) << ','
+          << r.h2dMs << ',' << r.descMs << ',' << r.execMs << ',' << r.e2eMs << ','
+          << r.error << '\n';
+    }
+    return true;
+}
+
+}  // namespace ge_runtime
+
+FILE runtime/backends/gesession_backend.cpp 
+#include "gesession_backend.h"
+#include "graph_loader.h"
+
+#include <acl/acl.h>
+#include <ge/ge_api.h>
+#include <ge/ge_graph_compile_summary.h>
+#include <graph/graph.h>
+#include <exe_graph/runtime/tensor.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <nlohmann/json.hpp>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#include "backend_common.h"
+
+namespace ge_runtime {
+namespace {
+
+bool ToGeDtype(const std::string &s, ge::DataType &dt) {
+    if (s == "float16") { dt = ge::DT_FLOAT16; return true; }
+    if (s == "bfloat16") { dt = ge::DT_BF16; return true; }
+    if (s == "float32" || s == "float") { dt = ge::DT_FLOAT; return true; }
+    if (s == "float64" || s == "double") { dt = ge::DT_DOUBLE; return true; }
+    if (s == "int8") { dt = ge::DT_INT8; return true; }
+    if (s == "int16") { dt = ge::DT_INT16; return true; }
+    if (s == "int32") { dt = ge::DT_INT32; return true; }
+    if (s == "int64") { dt = ge::DT_INT64; return true; }
+    if (s == "uint8") { dt = ge::DT_UINT8; return true; }
+    if (s == "uint16") { dt = ge::DT_UINT16; return true; }
+    if (s == "uint32") { dt = ge::DT_UINT32; return true; }
+    if (s == "uint64") { dt = ge::DT_UINT64; return true; }
+    if (s == "bool") { dt = ge::DT_BOOL; return true; }
+    return false;
+}
+
+std::string FromGeDtype(ge::DataType dt) {
+    switch (dt) {
+        case ge::DT_FLOAT16: return "float16";
+        case ge::DT_BF16: return "bfloat16";
+        case ge::DT_FLOAT: return "float32";
+        case ge::DT_DOUBLE: return "float64";
+        case ge::DT_INT8: return "int8";
+        case ge::DT_INT16: return "int16";
+        case ge::DT_INT32: return "int32";
+        case ge::DT_INT64: return "int64";
+        case ge::DT_UINT8: return "uint8";
+        case ge::DT_UINT16: return "uint16";
+        case ge::DT_UINT32: return "uint32";
+        case ge::DT_UINT64: return "uint64";
+        case ge::DT_BOOL: return "bool";
+        default: return "unknown";
+    }
+}
+
+std::string AicoreSpec(const std::string &raw) {
+    if (raw.empty()) {
+        return raw;
+    }
+    auto separator = raw.find('|');
+    if (separator == std::string::npos || separator == 0 || separator + 1 == raw.size() ||
+        raw.find('|',separator+1) != std::string::npos ||
+        raw.substr(0,separator).find_first_not_of("0123456789") != std::string::npos ||
+        raw.substr(separator+1).find_first_not_of("0123456789") != std::string::npos ||
+        std::stoul(raw.substr(0,separator)) == 0 || std::stoul(raw.substr(separator+1)) == 0) {
+        throw std::runtime_error("aicore_num requires an explicit positive AIC|AIV pair");
+    }
+    return raw;
+}
+
+// 每线程一份执行资源: 独立 stream + LoadGraph 绑定 + 输入 device 缓冲/gert::Tensor。
+// Session 与已编译图全局共享 (单 Session 多 stream, 与 atb/bench_ge_latency 同构)。
+struct GeContext {
+    uint32_t graphId = 0;
+    aclrtStream stream = nullptr;
+    std::vector<gert::Tensor> devInputs;
+    std::vector<void *> inPtrs;
+    std::vector<size_t> inSizes;      // 每输入分配字节 (池模式 = pool 内最大)
+    std::vector<gert::Tensor> devOutputs;
+    std::vector<void *> staticOutputPtrs;
+    std::set<void *> outAddrs;
+    bool warnedAddrGrowth = false;
+    double loadMs = 0.0;              // 本实例 LoadGraph 耗时 (CompileGraph 在 Init 里, 另报)
+};
+
+struct CompiledOutputs {
+    bool callerAllocated = false;
+    std::vector<TensorPlan> plans;
+    std::vector<ge::DataType> dtypes;
+};
+
+class GeRunner {
+public:
+    GeRunner(const GeSessionOptions &opt, const IoSpec &spec) : opt_(opt), spec_(spec) {}
+
+    ~GeRunner() { Destroy(); }
+
+    aclrtContext Context() const { return aclCtx_; }
+
+    bool Init(const std::string &graphPath, const std::string &format, int numGraphs) {
+        std::map<ge::AscendString, ge::AscendString> globalOptions = {
+            {ge::AscendString("ge.graphRunMode"),
+             ge::AscendString(std::to_string(opt_.graph_run_mode).c_str())},
+            {ge::AscendString("ge.exec.deviceId"),
+             ge::AscendString(std::to_string(opt_.device).c_str())},
+        };
+        std::string aicore = AicoreSpec(opt_.aicore_num);
+        std::cout << "[INFO] GEInitialize ge.graphRunMode=" << opt_.graph_run_mode << std::endl;
+        if (!aicore.empty()) {
+            globalOptions.emplace(ge::AscendString(ge::ir_option::AICORE_NUM),
+                                  ge::AscendString(aicore.c_str()));
+            std::cout << "[INFO] GEInitialize " << ge::ir_option::AICORE_NUM << "=" << aicore << std::endl;
+        }
+        if (opt_.profiling.enabled) {
+            // GE profiling 经 GEInitialize 全局选项开启, 产出 msprof 可解析的 PROF_* 会话
+            MakeDirs(opt_.profiling.outputPath);
+            globalOptions.emplace(ge::AscendString(ge::OPTION_EXEC_PROFILING_MODE),
+                                  ge::AscendString("1"));
+            nlohmann::json profJson;
+            profJson["output"] = opt_.profiling.outputPath;
+            profJson["task_time"] = "on";
+            profJson["runtime_api"] = "on";
+            if (!opt_.profiling.aicMetrics.empty()) {
+                profJson["aic_metrics"] = opt_.profiling.aicMetrics;
+            }
+            std::string profOpt = profJson.dump();
+            globalOptions.emplace(ge::AscendString(ge::OPTION_EXEC_PROFILING_OPTIONS),
+                                  ge::AscendString(profOpt.c_str()));
+            std::cout << "[INFO] GE profiling enabled -> " << opt_.profiling.outputPath
+                      << " (aic_metrics=" << opt_.profiling.aicMetrics << ")" << std::endl;
+        }
+        if (ge::GEInitialize(globalOptions) != ge::SUCCESS) {
+            fprintf(stderr, "[ERROR] GEInitialize failed: %s\n", ge::GEGetErrorMsg().c_str());
+            return false;
+        }
+        geInited_ = true;
+
+        aclError ret = aclInit(nullptr);
+        if (ret != ACL_SUCCESS && ret != ACL_ERROR_REPEAT_INITIALIZE) {
+            fprintf(stderr, "[ERROR] aclInit failed, ret=%d\n", ret);
+            return false;
+        }
+        aclInited_ = true;
+
+        std::map<ge::AscendString, ge::AscendString> sessionOptions = {
+            {ge::AscendString("ge.session_device_id"),
+             ge::AscendString(std::to_string(opt_.device).c_str())},
+            {ge::AscendString("ge.exec.precision_mode"),
+             ge::AscendString(opt_.precision_mode.c_str())},
+        };
+        session_ = std::make_shared<ge::Session>(sessionOptions);
+
+        // 每线程一个图实例: LoadGraph 不支持对同一 graphId 重复加载 (ge_api.h 约束),
+        // 故并发 N 路就要 N 份 AddGraph+CompileGraph (串行, 单份 ~10s — 在线后端的固有代价)。
+        // CompileGraph 必须在 aclrtSetDevice **之前** (对齐 atb/bench_ge_latency 实测序列)。
+        numGraphs_ = std::max(1, numGraphs);
+        auto tAll = Clock::now();
+        for (uint32_t gid = 1; gid <= static_cast<uint32_t>(numGraphs_); gid++) {
+            auto t0 = Clock::now();
+            ge::Graph graph;
+            if (!LoadGraphFile(graphPath,format,graph)) {
+                fprintf(stderr, "[ERROR] Graph::LoadFromFile failed: %s\n", graphPath.c_str());
+                return false;
+            }
+            ge::Status st = session_->AddGraph(gid, graph);
+            if (st != ge::SUCCESS) {
+                fprintf(stderr, "[ERROR] AddGraph(gid=%u) failed, ret=%d\n", gid, st);
+                return false;
+            }
+            st = session_->CompileGraph(gid);
+            if (st != ge::SUCCESS) {
+                fprintf(stderr, "[ERROR] CompileGraph(gid=%u) failed, ret=%d: %s\n",
+                        gid, st, ge::GEGetErrorMsg().c_str());
+                return false;
+            }
+            auto summary = session_->GetCompiledGraphSummary(gid);
+            if (summary == nullptr) {
+                fprintf(stderr, "[ERROR] GetCompiledGraphSummary(gid=%u) failed\n", gid);
+                return false;
+            }
+            CompiledOutputs outputs;
+            outputs.callerAllocated = summary->IsStatic();
+            if (outputs.callerAllocated) {
+                std::vector<ge::Shape> shapes;
+                if (summary->GetOutputShapes(shapes) != ge::SUCCESS ||
+                    summary->GetOutputDtypes(outputs.dtypes) != ge::SUCCESS ||
+                    shapes.size() != spec_.outputs.size() || shapes.size() != outputs.dtypes.size()) {
+                    fprintf(stderr, "[ERROR] Invalid compiled output metadata (gid=%u)\n", gid);
+                    return false;
+                }
+                for (size_t i = 0; i < shapes.size(); ++i) {
+                    TensorPlan plan;
+                    plan.logical = spec_.outputs[i].logical;
+                    plan.dtype = FromGeDtype(outputs.dtypes[i]);
+                    plan.format = "ND";
+                    plan.shape = shapes[i].GetDims();
+                    if (plan.dtype != spec_.outputs[i].dtype ||
+                        plan.shape.size() != spec_.outputs[i].shape.size()) {
+                        fprintf(stderr, "[ERROR] Compiled output contract mismatch: %s\n", plan.logical.c_str());
+                        return false;
+                    }
+                    for (size_t dim = 0; dim < plan.shape.size(); ++dim) {
+                        auto expected = spec_.outputs[i].shape[dim];
+                        if (expected != -1 && expected != plan.shape[dim]) {
+                            fprintf(stderr, "[ERROR] Compiled output shape mismatch: %s\n", plan.logical.c_str());
+                            return false;
+                        }
+                    }
+                    plan.Bytes();  // Reject unresolved shapes or byte-size overflow before allocation.
+                    outputs.plans.push_back(std::move(plan));
+                }
+            }
+            std::cout << "[INFO] Graph " << gid << " output allocation="
+                      << (outputs.callerAllocated ? "caller (static compiled)" : "GE (dynamic compiled)")
+                      << std::endl;
+            compiledOutputs_.emplace(gid, std::move(outputs));
+            std::cout << "[INFO] CompileGraph ok (gid=" << gid << "/" << numGraphs_ << "), cost "
+                      << ElapsedMs(t0, Clock::now()) << " ms" << std::endl;
+        }
+        compileMs_ = ElapsedMs(tAll, Clock::now());
+        if (numGraphs_ > 1) {
+            std::cout << "[INFO] " << numGraphs_ << " 份图实例编译总耗时 "
+                      << compileMs_ << " ms (" << graphPath << ")" << std::endl;
+        }
+
+        ret = aclrtSetDevice(opt_.device);
+        if (ret != ACL_SUCCESS) {
+            fprintf(stderr, "[ERROR] aclrtSetDevice(%d) failed, ret=%d\n", opt_.device, ret);
+            return false;
+        }
+        deviceSet_ = true;
+
+        // stream 必须建在**默认 context** 上 (显式 CreateContext 会让 GE executor 报
+        // "stream is not in current ctx"); 工作线程用 aclrtSetCurrentContext 共享它
+        ret = aclrtGetCurrentContext(&aclCtx_);
+        if (ret != ACL_SUCCESS) {
+            fprintf(stderr, "[ERROR] aclrtGetCurrentContext failed, ret=%d\n", ret);
+            return false;
+        }
+        return true;
+    }
+
+
+    bool CreateContext(int tid) {
+        if (FindContext(tid) != nullptr) {
+            return true;                       // 幂等: 吞吐跑完后取输出会再调一次 (tid=0)
+        }
+        if (tid + 1 > numGraphs_) {
+            fprintf(stderr, "[ERROR] tid=%d 超出已编译图实例数 %d\n", tid, numGraphs_);
+            return false;
+        }
+        auto ctx = std::make_unique<GeContext>();
+        ctx->graphId = static_cast<uint32_t>(tid + 1);
+        aclError ret = aclrtCreateStream(&ctx->stream);
+        if (ret != ACL_SUCCESS) {
+            fprintf(stderr, "[ERROR] aclrtCreateStream failed (tid=%d), ret=%d\n", tid, ret);
+            return false;
+        }
+        // 每个 stream 都要 LoadGraph 绑定一次 (图已 CompileGraph, 此处只加载)
+        auto t0 = Clock::now();
+        ge::Status st = session_->LoadGraph(ctx->graphId, {}, ctx->stream);
+        if (st != ge::SUCCESS) {
+            fprintf(stderr, "[ERROR] LoadGraph(gid=%u) failed (tid=%d), ret=%d\n",
+                    ctx->graphId, tid, st);
+            ReleaseContext(*ctx);
+            return false;
+        }
+        std::cout << "[INFO] LoadGraph ok (gid=" << ctx->graphId << ", tid=" << tid << "), cost "
+                  << ElapsedMs(t0, Clock::now()) << " ms" << std::endl;
+
+        // 按池内最大 shape 预分配，每请求 H2D 并重建 gert::Tensor。
+        size_t nInputs = pool_->maxBytes.size();
+        for (size_t i = 0; i < nInputs; i++) {
+            size_t bytes = pool_->maxBytes[i];
+            void *dev = nullptr;
+            ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
+            if (ret != ACL_SUCCESS || dev == nullptr) {
+                fprintf(stderr, "[ERROR] aclrtMalloc(%zu) failed (tid=%d, input %zu), ret=%d\n",
+                        bytes, tid, i, ret);
+                ReleaseContext(*ctx);
+                return false;
+            }
+            // push_back 起 dev 的所有权归 ctx->inPtrs — 失败路径只调 ReleaseContext,
+            // 再手动 aclrtFree(dev) 就是二次释放
+            ctx->inPtrs.push_back(dev);
+            ctx->inSizes.push_back(bytes);
+
+        }
+
+        const auto &outputs = compiledOutputs_.at(ctx->graphId);
+        if (outputs.callerAllocated) {
+            if (pool_->maxOutputBytes.size() != outputs.plans.size()) {
+                fprintf(stderr, "[ERROR] Output capacity count differs from compiled outputs\n");
+                ReleaseContext(*ctx);
+                return false;
+            }
+            for (size_t i = 0; i < outputs.plans.size(); ++i) {
+                const auto &plan = outputs.plans[i];
+                size_t bytes = plan.Bytes();
+                if (bytes > pool_->maxOutputBytes[i]) {
+                    fprintf(stderr, "[ERROR] Compiled output '%s' requires %zu bytes > declared capacity %zu\n",
+                            plan.logical.c_str(), bytes, pool_->maxOutputBytes[i]);
+                    ReleaseContext(*ctx);
+                    return false;
+                }
+                void *dev = nullptr;
+                ret = aclrtMalloc(&dev, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
+                if (ret != ACL_SUCCESS || dev == nullptr) {
+                    fprintf(stderr, "[ERROR] Output aclrtMalloc(%zu) failed (tid=%d, output=%zu), ret=%d\n",
+                            bytes, tid, i, ret);
+                    ReleaseContext(*ctx);
+                    return false;
+                }
+                ctx->staticOutputPtrs.push_back(dev);
+                ctx->outAddrs.insert(dev);
+                std::cout << "[INFO] Allocated output[" << i << "] '" << plan.logical << "' shape="
+                          << ShapeToString(plan.shape) << " dtype=" << plan.dtype << " bytes=" << bytes
+                          << " (tid=" << tid << ")" << std::endl;
+            }
+        }
+
+        ctx->loadMs = ElapsedMs(t0, Clock::now());
+        ctxs_[tid] = std::move(ctx);
+        return true;
+    }
+
+    // 池模式: 每请求 H2D 实际字节 + 按该请求 shape 重建 gert::Tensor (device 缓冲复用)
+    bool SetInputs(int tid, const Request &req, PhaseTime &phase) {
+        GeContext *ctx = FindContext(tid);
+        if (ctx == nullptr) {
+            fprintf(stderr, "[ERROR] tid=%d 无执行资源\n", tid);
+            return false;
+        }
+        if (req.plans.size() != ctx->inPtrs.size()) {
+            fprintf(stderr, "[ERROR] 请求 %s 有 %zu 个输入, 实例有 %zu 个缓冲\n",
+                    req.name.c_str(), req.plans.size(), ctx->inPtrs.size());
+            return false;
+        }
+        auto h2dBegin = Clock::now();
+        for (size_t i = 0; i < req.plans.size(); i++) {
+            size_t bytes = req.plans[i].Bytes();
+            if (bytes > ctx->inSizes[i]) {
+                fprintf(stderr, "[ERROR] 请求 %s 输入 %zu 需要 %zu 字节 > 缓冲 %zu\n",
+                        req.name.c_str(), i, bytes, ctx->inSizes[i]);
+                return false;
+            }
+            aclError ret = aclrtMemcpy(ctx->inPtrs[i], ctx->inSizes[i], req.data[i].data(), bytes,
+                                       ACL_MEMCPY_HOST_TO_DEVICE);
+            if (ret != ACL_SUCCESS) {
+                fprintf(stderr, "[ERROR] H2D failed (tid=%d, req=%s, input %zu), ret=%d\n",
+                        tid, req.name.c_str(), i, ret);
+                return false;
+            }
+        }
+        phase.h2dMs = ElapsedMs(h2dBegin, Clock::now());
+
+        auto descBegin = Clock::now();
+        ctx->devInputs.clear();
+        for (size_t i = 0; i < req.plans.size(); i++) {
+            // TensorData 的 size 给**分配大小**(与 atb/bench_ge_latency 一致), shape 给该请求的实际 shape
+            MakeTensor(ctx->devInputs, ctx->inPtrs[i], ctx->inSizes[i], req.plans[i].shape, dtypes_[i]);
+        }
+        phase.descMs = ElapsedMs(descBegin, Clock::now());
+        return true;
+    }
+
+    double LoadMs(int tid) const {
+        auto it = ctxs_.find(tid);
+        return it == ctxs_.end() ? 0.0 : it->second->loadMs;
+    }
+
+    bool UsePool(const RequestPool *pool) {
+        pool_ = pool;
+        // dtype 从首个请求的 plan 取，各请求 dtype 一致。
+        if (dtypes_.empty() && !pool->requests.empty()) {
+            for (const auto &plan : pool->requests[0].plans) {
+                ge::DataType dt;
+                if (!ToGeDtype(plan.dtype, dt)) {
+                    // 不检查就静默退成 DT_FLOAT: 字节宽错了, H2D 数据被按 float 解释
+                    fprintf(stderr, "[ERROR] 不支持的 dtype '%s' (请求池输入 '%s')\n",
+                            plan.dtype.c_str(), plan.logical.c_str());
+                    return false;
+                }
+                dtypes_.push_back(dt);
+            }
+        }
+        return true;
+    }
+
+    bool Execute(int tid) {
+        GeContext *ctx = FindContext(tid);
+        if (ctx == nullptr) {
+            fprintf(stderr, "[ERROR] tid=%d 无执行资源\n", tid);
+            return false;
+        }
+        ctx->devOutputs.clear();
+        const auto &outputs = compiledOutputs_.at(ctx->graphId);
+        if (outputs.callerAllocated) {
+            for (size_t i = 0; i < outputs.plans.size(); ++i) {
+                const auto &plan = outputs.plans[i];
+                MakeTensor(ctx->devOutputs, ctx->staticOutputPtrs[i], plan.Bytes(), plan.shape, outputs.dtypes[i]);
+            }
+        }
+        ge::Status st = session_->ExecuteGraphWithStreamAsync(ctx->graphId, ctx->stream,
+                                                             ctx->devInputs, ctx->devOutputs);
+        if (st != ge::SUCCESS) {
+            fprintf(stderr, "[ERROR] ExecuteGraphWithStreamAsync failed (tid=%d), ret=%d: %s\n",
+                    tid, st, ge::GEGetErrorMsg().c_str());
+            return false;
+        }
+        aclError ret = aclrtSynchronizeStream(ctx->stream);
+        if (ret != ACL_SUCCESS) {
+            fprintf(stderr, "[ERROR] aclrtSynchronizeStream failed (tid=%d), ret=%d\n", tid, ret);
+            return false;
+        }
+        if (ctx->devOutputs.size() != spec_.outputs.size()) {
+            fprintf(stderr, "[ERROR] Runtime output count differs from graph IO\n");
+            return false;
+        }
+        for (size_t i = 0; i < ctx->devOutputs.size(); ++i) {
+            auto &t = ctx->devOutputs[i];
+            if (outputs.callerAllocated && t.GetAddr() != ctx->staticOutputPtrs[i]) {
+                fprintf(stderr, "[ERROR] GE replaced caller-owned output buffer (output=%zu)\n", i);
+                return false;
+            }
+            if (t.GetAddr() != nullptr) {
+                ctx->outAddrs.insert(t.GetAddr());
+            }
+        }
+        // 实测 GE 每轮复用同一输出地址 (set 去重后恒为 1); 若将来改成每轮新分配, 先告警
+        if (!ctx->warnedAddrGrowth && ctx->outAddrs.size() > 64) {
+            ctx->warnedAddrGrowth = true;
+            fprintf(stderr, "[WARN] tid=%d 已累计 %zu 个不同输出 device 地址 (GE 未复用缓冲?), "
+                            "HBM 会随请求数线性增长\n", tid, ctx->outAddrs.size());
+        }
+        return true;
+    }
+
+    bool CollectOutputs(int tid, const IoSpec &spec, std::vector<HostTensor> &outputs) {
+        GeContext *ctx = FindContext(tid);
+        if (ctx == nullptr) {
+            fprintf(stderr, "[ERROR] tid=%d 无执行资源, 无法取输出\n", tid);
+            return false;
+        }
+        for (size_t i = 0; i < ctx->devOutputs.size(); i++) {
+            const gert::Tensor &t = ctx->devOutputs[i];
+            size_t bytes = t.GetSize();
+            const auto &shape = t.GetShape().GetStorageShape();
+
+            HostTensor out;
+            out.instance = tid;
+            out.dtype = FromGeDtype(t.GetDataType());
+            out.logical = i < spec.outputs.size() && !spec.outputs[i].logical.empty()
+                              ? spec.outputs[i].logical
+                              : "output_" + std::to_string(i);
+            for (size_t d = 0; d < shape.GetDimNum(); d++) {
+                out.shape.push_back(shape.GetDim(d));
+            }
+            out.data.resize(bytes);
+            if (bytes > 0 && t.GetAddr() != nullptr) {
+                aclError ret = aclrtMemcpy(out.data.data(), bytes, t.GetAddr(), bytes,
+                                           ACL_MEMCPY_DEVICE_TO_HOST);
+                if (ret != ACL_SUCCESS) {
+                    fprintf(stderr, "[ERROR] D2H failed for output[%zu], ret=%d\n", i, ret);
+                    return false;
+                }
+            }
+            std::cout << "[INFO] Output[" << i << "] '" << out.logical << "' shape="
+                      << ShapeToString(out.shape) << " dtype=" << out.dtype
+                      << " bytes=" << bytes << std::endl;
+            outputs.push_back(std::move(out));
+        }
+        return true;
+    }
+
+    // 不逐份释放: LoadGraph 对同一 graphId 只能调一次, 取输出时还要复用同一份图绑定;
+    // 全部资源在 Destroy() 里统一释放。
+
+    void Destroy() {
+        for (auto &kv : ctxs_) {
+            ReleaseContext(*kv.second);
+        }
+        ctxs_.clear();
+        session_.reset();
+        if (deviceSet_) {
+            aclrtResetDevice(opt_.device);
+            deviceSet_ = false;
+        }
+        if (geInited_) {
+            ge::GEFinalize();
+            geInited_ = false;
+        }
+        if (aclInited_) {
+            aclFinalize();
+            aclInited_ = false;
+        }
+    }
+
+private:
+    static void ReleaseContext(GeContext &ctx) {
+        for (void *p : ctx.inPtrs) {
+            if (p != nullptr) {
+                aclrtFree(p);
+            }
+        }
+        ctx.inPtrs.clear();
+        ctx.devInputs.clear();
+        ctx.devOutputs.clear();
+        ctx.staticOutputPtrs.clear();
+        for (void *p : ctx.outAddrs) {
+            if (p != nullptr) {
+                aclrtFree(p);
+            }
+        }
+        ctx.outAddrs.clear();
+        if (ctx.stream != nullptr) {
+            aclrtDestroyStream(ctx.stream);
+            ctx.stream = nullptr;
+        }
+    }
+
+    static void MakeTensor(std::vector<gert::Tensor> &out, void *dev, size_t allocBytes,
+                           const std::vector<int64_t> &shape, ge::DataType dtype) {
+        gert::Tensor t;
+        gert::StorageShape ss;
+        for (int64_t d : shape) {
+            ss.MutableOriginShape().AppendDim(d);
+            ss.MutableStorageShape().AppendDim(d);
+        }
+        t.GetShape() = ss;
+        t.MutableFormat() = gert::StorageFormat(ge::FORMAT_ND, ge::FORMAT_ND, {});
+        t.SetDataType(dtype);
+        t.SetData(gert::TensorData(dev, nullptr, allocBytes, gert::kOnDeviceHbm));
+        out.emplace_back(std::move(t));
+    }
+
+    GeContext *FindContext(int tid) {
+        auto it = ctxs_.find(tid);
+        return it == ctxs_.end() ? nullptr : it->second.get();
+    }
+
+    GeSessionOptions opt_;
+    const IoSpec &spec_;
+    int numGraphs_ = 1;
+    double compileMs_ = 0.0;
+    bool geInited_ = false;
+    bool aclInited_ = false;
+    bool deviceSet_ = false;
+    std::shared_ptr<ge::Session> session_;
+    aclrtContext aclCtx_ = nullptr;
+    std::vector<ge::DataType> dtypes_;
+    const RequestPool *pool_ = nullptr;
+    std::map<int, std::unique_ptr<GeContext>> ctxs_;
+    std::map<uint32_t, CompiledOutputs> compiledOutputs_;
+};
+
+}  // namespace
+
+bool RunGeSessionBackend(const ModelGraph &graph, const IoSpec &spec,
+                   const GeSessionOptions &opt, PerfResult *perf) {
+    if(!opt.pool || opt.pool->Empty()) { fprintf(stderr,"[ERROR] request pool is required\n");return false; }
+    if(graph.graph_path.empty()) { fprintf(stderr,"[ERROR] missing graph path\n");return false; }
+    GeRunner runner(opt, spec);
+    if(!runner.Init(graph.graph_path,graph.graph_format,std::max(1,opt.bench.threads))) return false;
+    // ---- 变长负载: 请求池回放 (单 Session 多图, 每实例一份 graphId+stream) ----
+    if (!runner.UsePool(opt.pool)) {
+        return false;
+    }
+    PoolResources pres;
+    pres.setup = [&runner](int tid) { return runner.CreateContext(tid); };
+    pres.setInputs = [&runner](int tid, const Request &req, PhaseTime &ph) {
+        return runner.SetInputs(tid, req, ph);
+    };
+    pres.execute = [&runner](int tid) { return runner.Execute(tid); };
+    pres.release = [&runner](int) {};      // 图绑定不可重复建立, 统一在 Destroy 释放
+    pres.threadEnter = [&runner](int) { aclrtSetCurrentContext(runner.Context()); };
+    pres.loadMs = [&runner](int tid) {
+        return runner.LoadMs(tid);   // 该实例的 LoadGraph + 全部图编译
+    };
+    pres.hbmUsedMb = []() { return HbmUsedMb(); };
+
+    if (opt.capture) return CapturePool(opt.bench.threads, *opt.pool, pres, [&](int tid, const Request &request) {
+        std::vector<HostTensor> tensors;
+        return runner.CollectOutputs(tid, spec, tensors) && opt.capture(tid, request, tensors);
+    });
+
+    PerfResult result;
+    bool ok = BenchPool(opt.bench.threads, opt.bench.requests, opt.bench.warmup, opt.seed,
+                        *opt.pool, pres, result);
+    if (ok) {
+        PrintPerfResult("GeSession 变长负载 (请求池回放)", result);
+    }
+    if (perf != nullptr) {
+        *perf = std::move(result);
+    }
+    return ok;
+}
+
+} // namespace ge_runtime
+
+FILE core/backends/runtime.py 
+"""Native execution and self-contained graph IO; no build or data generation."""
+import json
+import subprocess
+import tempfile
+from pathlib import Path
+from core.config import ROOT
+from core.contracts import validate_io
+from core.targets import require_device
+
+RUNTIME=ROOT/'runtime/build/ge_runtime'
+
+
+def call(plan,path=None):
+    if not RUNTIME.is_file():raise FileNotFoundError(f'{RUNTIME}; build runtime first: bash runtime/build.sh')
+    # CANN compiler workers can inherit stdout and outlive a crashed runtime.
+    # A regular file lets us report the parent's failure without waiting for pipe EOF.
+    with (Path(path).open('w+',encoding='utf-8') if path else tempfile.TemporaryFile(mode='w+',encoding='utf-8')) as log:
+        process=subprocess.run([str(RUNTIME)],input=json.dumps(plan),text=True,stdout=log,stderr=subprocess.STDOUT)
+        log.seek(0);output=log.read()
+    messages=[line[len('GE_RESULT '):] for line in output.splitlines() if line.startswith('GE_RESULT ')]
+    if len(messages)!=1:
+        raise RuntimeError(f'GE execution (exit {process.returncode}): '+output[-12000:]+(f'\nlog: {path}' if path else ''))
+    result=json.loads(messages[0])
+    if process.returncode:
+        detail=f'GE execution (exit {process.returncode}): '+output[-12000:]+(f'\nlog: {path}' if path else '')
+        if result.get('status')!='failed':raise RuntimeError(detail)
+        result['error']=detail
+    return result
+
+
+def attach_io(graph,io):
+    return call({'mode':'write_io','graph':graph,'io':validate_io(io)})['io']
+
+
+def read_io(graph):
+    if graph['format']=='onnx':
+        import onnx
+        model=onnx.load(graph['path'],load_external_data=False)
+        values={item.key:item.value for item in model.metadata_props}
+        if 'ge_adapters_io' not in values:raise ValueError(f"{graph['path']}: missing embedded IO; run build")
+        return validate_io(json.loads(values['ge_adapters_io']))
+    return validate_io(call({'mode':'read_io','graph':graph})['io'])
+
+
+def graph_files(config):
+    kind='onnx' if config['source']['kind']=='onnx' else 'air'
+    path=Path(config['work_dir'])/'build'/f'model.{kind}'
+    if not path.is_file():raise FileNotFoundError(f'{path}; run build first')
+    om=path.with_suffix('.om') if config['build']['backend']=='atc_om' else None
+    if om and not om.is_file():raise FileNotFoundError(f'{om}; run build first')
+    return {'format':kind,'path':str(path),'om_path':str(om) if om else None}
+
+
+def run(config,graph,io,inputs,output,mode,device):
+    output=Path(output);output.mkdir(parents=True,exist_ok=True)
+    plan={'backend':config['build']['backend'],'graph':graph,'io':io,'inputs':inputs,
+          'device':require_device(device),'instances':config['benchmark']['instances'] if mode=='bench' else 1,
+          'warmup':config['benchmark']['warmup'],'iterations':config['benchmark']['iterations'],
+          'seed':config['benchmark']['seed'],'options':config['build']['options'],
+          'observability':config['observability'],'output_dir':str(output.resolve()),'mode':mode}
+    return call(plan,output/f'{mode}-runtime.log')
+
+FILE core/worker.py 
+"""Each worker executes exactly one stage; original models stay unpatched."""
+import importlib
+import json
+import sys
+import traceback
+from pathlib import Path
+import numpy as np
+from core.contracts import tensor_array,validate_io
+from core.model_api import load_adapter,validate_handle,canonical
+from core.sources import load_source
+from core.data import select_cases
+from core import dependencies
+
+def encode(handle,cases,io,directory):
+    expected={x['name']:x for x in io['inputs']};directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)
+    records=[];example=None;path=directory/'inputs.bin'
+    with path.open('wb') as stream:
+        for case in cases:
+            inputs=handle.encode(case)
+            if set(inputs)!=set(expected):raise ValueError('encoded input names differ from graph')
+            tensors=[]
+            for name,value in inputs.items():
+                array,dtype=tensor_array(value);node=expected[name]
+                if dtype!=node['dtype'] or len(array.shape)!=len(node['shape']) or any(a!=-1 and a!=b for a,b in zip(node['shape'],array.shape)):raise ValueError(f'input contract mismatch: {name}')
+                if any(n<1 for n in array.shape):raise ValueError('empty input dimension')
+                data=array.tobytes(order='C');offset=stream.tell();stream.write(data)
+                tensors.append({'name':name,'dtype':dtype,'shape':list(array.shape),'offset':offset,'bytes':len(data)})
+            capacities=handle.output_capacities(case)
+            if set(capacities)!={x['name'] for x in io['outputs']} or any(type(n) is not int or n<=0 for n in capacities.values()):raise ValueError('positive per-output capacities are required')
+            records.append({'id':case['id'],'samples':case['samples'],'tensors':tensors,'output_capacities':capacities})
+            if example is None:example=inputs
+    return example,records
+
+def packed(directory,records):return {'file':str(Path(directory)/'inputs.bin'),'cases':records}
+
+def save_rows(path,rows):
+    arrays={}
+    for case_id,value in rows.items():
+        value=canonical(value)
+        arrays[case_id+'/metadata/alignment']=np.asarray(json.dumps(value['alignment']))
+        for name,array in value['outputs'].items():arrays[case_id+'/outputs/'+name]=np.asarray(array)
+    np.savez(path,**arrays)
+    return str(path)
+
+
+def read_row(archive,case_id):
+    prefix=case_id+'/outputs/'
+    return {'alignment':json.loads(str(archive[case_id+'/metadata/alignment'])),
+            'outputs':{key[len(prefix):]:archive[key] for key in archive.files if key.startswith(prefix)}}
+
+
+def baseline(config,cases,device):
+    handle=validate_handle(load_adapter(config['model']['adapter_file']).prepare_reference(load_source(config,reference=True,device=device),config))
+    rows={case['id']:handle.decode(handle.run(handle.encode(case)),case) for case in cases}
+    path=save_rows(Path(config['work_dir'])/'golden.npz',rows)
+    return {'status':'success','golden':{'path':path,'cases':len(rows)}}
+
+
+def build(config,cases,device):
+    from core.backends.runtime import attach_io
+    handle=validate_handle(load_adapter(config['model']['adapter_file']).prepare_candidate(load_source(config,device=device),config),candidate=True)
+    spec=handle.export_spec();validate_io(spec['io'])
+    directory=Path(config['work_dir'])/'build';directory.mkdir(parents=True,exist_ok=True)
+    exporter=importlib.import_module('core.exporters.'+('torchair' if spec['format']=='torch' else 'onnx'))
+    graph,io=exporter.export(spec,handle.encode(cases[0]),directory)
+    if graph['format']=='air':attach_io(graph,io)
+    backend=importlib.import_module('core.backends.'+config['build']['backend'])
+    om=backend.build(graph,io,config['build']['options'],config['target'],directory)
+    return {'status':'success','graph':{**graph,'om_path':str(directory/om) if om else None}}
+
+
+def infer_or_bench(stage,config,cases,output,device):
+    from core.backends.runtime import graph_files,read_io,run
+    graph=graph_files(config);io=read_io(graph)
+    # Runtime recipes encode/decode arrays and size outputs without loading weights.
+    handle=load_adapter(config['model']['adapter_file']).prepare_runtime(config,io)
+    try:
+        _,records=encode(handle,cases,io,output)
+        result=run(config,graph,io,packed(output,records),output,stage,device)
+        if stage=='bench':
+            return {'status':result['status'],'graph':graph,
+                    **{key:result[key] for key in ('error','performance','profiling','dump') if key in result}}
+        rows={};raw=Path(output)/'outputs.bin'
+        for case in cases:
+            actuals=result['outputs'][case['id']]
+            if len(actuals)!=1 or actuals[0]['instance']!=0:raise ValueError('infer requires one output per case')
+            values={}
+            for node in actuals[0]['tensors']:
+                dtype='uint16' if node['dtype']=='bfloat16' else node['dtype']
+                value=np.fromfile(raw,dtype=dtype,count=int(np.prod(node['shape'])),offset=node['offset']).reshape(node['shape'])
+                if node['dtype']=='bfloat16':value=(value.astype(np.uint32)<<16).view(np.float32)
+                values[node['name']]=value
+            rows[case['id']]=handle.decode(values,case)
+        path=save_rows(Path(config['work_dir'])/'outputs.npz',rows)
+        return {'status':'success','graph':graph,'outputs':{'path':path,'cases':len(rows)},
+                **{key:result[key] for key in ('profiling','dump') if key in result}}
+    finally:
+        (Path(output)/'inputs.bin').unlink(missing_ok=True)
+        (Path(output)/'outputs.bin').unlink(missing_ok=True)
+
+
+def compare_outputs(config):
+    from core.verify import compare,compare_business
+    directory=Path(config['work_dir']);policies=config['verification']['outputs'];reports={}
+    if not policies:raise ValueError('verification.outputs must configure every business output')
+    def case_ids(archive):
+        return {key.partition('/')[0] for key in archive.files if key.partition('/')[2]=='metadata/alignment'}
+    with np.load(directory/'golden.npz',allow_pickle=False) as golden, np.load(directory/'outputs.npz',allow_pickle=False) as outputs:
+        available=sorted(case_ids(golden))
+        selection=config['verification']['case_ids']
+        actual=case_ids(outputs)
+        if selection=='all' and set(available)!=actual:
+            raise ValueError(f'golden/output case IDs differ: missing outputs={sorted(set(available)-actual)}, missing golden={sorted(actual-set(available))}')
+        ids=available if selection=='all' else [case['id'] for case in select_cases([{'id':name} for name in available],selection)]
+        if not ids:raise ValueError('golden contains no cases')
+        business_rows={}
+        for case_id in ids:
+            candidate=read_row(outputs,case_id)
+            reports[case_id]=compare(read_row(golden,case_id),candidate,policies)
+            if config['verification'].get('script'):business_rows[case_id]=candidate
+        for case_id,business in compare_business(config,business_rows).items():
+            reports[case_id]['business']=business
+            reports[case_id]['passed']=reports[case_id]['passed'] and business['passed']
+    passed=all(report['passed'] for report in reports.values())
+    return {'status':'success' if passed else 'failed',
+            'accuracy':{'status':'passed' if passed else 'failed','case_ids':ids,
+                        'failed_cases':[name for name,report in reports.items() if not report['passed']], 'cases':reports}}
+
+
+def execute(job):
+    config=job['config'];cases=job['cases'];stage=job['stage'];output=Path(job['output']);device=job['device']
+    if stage=='baseline':return baseline(config,cases,device)
+    if stage=='compare':return compare_outputs(config)
+    if stage=='build':
+        dependencies.activate(config)
+        return build(config,cases,device)
+    if stage in ('infer','bench'):return infer_or_bench(stage,config,cases,output,device)
+    raise ValueError(f'unknown worker step: {stage}')
+
+
+def main():
+    job=json.load(sys.stdin)
+    try:print('GE_RESULT '+json.dumps(execute(job),ensure_ascii=False))
+    except Exception as error:
+        traceback.print_exc()
+        print('GE_ERROR '+json.dumps(f'{type(error).__name__}: {error}'),flush=True)
+        raise SystemExit(1)
+
+if __name__=='__main__':main()
+
+FILE core/pipeline.py 
+"""Python and command-line entry points for seven independent operations."""
+import argparse
+import datetime
+import json
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+from core.config import ROOT, load_authoring, validate
+from core.contracts import write_json, digest
+from core import data, dependencies
+
+STEPS=('data','baseline','prepare','build','infer','compare','bench')
+
+
+def require_success(stage,result,directory):
+    if result.get('status')=='failed':
+        detail=result.get('error') or f"accuracy failed for {result.get('accuracy',{}).get('failed_cases',[])}"
+        raise ValueError(f"{stage}: {detail}; see {directory/f'{stage}.log'}")
+
+
+def worker(stage,config,cases,directory,device):
+    job={'stage':stage,'config':config,'cases':cases,'output':str(directory),'device':device}
+    path=directory/f'{stage}.log'
+    env=dependencies.environment(config) if stage in ('build','infer','bench') else None
+    with path.open('w') as log:
+        process=subprocess.run([sys.executable,'-m','core.worker'],input=json.dumps(job),text=True,
+                               stdout=log,stderr=subprocess.STDOUT,cwd=ROOT,env=env)
+    lines=path.read_text(errors='replace').splitlines()
+    messages=[line[len('GE_RESULT '):] for line in lines if line.startswith('GE_RESULT ')]
+    if process.returncode or len(messages)!=1:
+        errors=[line[len('GE_ERROR '):] for line in lines if line.startswith('GE_ERROR ')]
+        detail=json.loads(errors[-1]) if errors else '\n'.join(lines[-20:])
+        raise RuntimeError(f'{stage}: {detail}\nlog: {path}')
+    return json.loads(messages[0])
+
+
+def perform(stage,config,directory,device):
+    if stage=='data':
+        cases=data.generate(config)
+        return {'status':'success','cases':len(cases),'samples':sum(c['samples'] for c in cases),
+                'directory':config['data']['directory'],'pool_sha256':digest(cases)}
+    if stage=='prepare':return {'status':'success','dependencies':dependencies.prepare(config)}
+    if stage=='compare':return worker(stage,config,[],directory,device)
+    cases=data.load(config)
+    if stage in ('baseline','infer','compare'):cases=data.select_cases(cases,config['verification']['case_ids'])
+    elif stage=='build':cases=cases[:1]
+    return worker(stage,config,cases,directory,device)
+
+
+def execute(stage,config,*,device=None,target=None,targets=None,case_ids=None,instances=None,profiling=None):
+    """Read one current model YAML and execute a step, or sequence all seven."""
+    if stage not in (*STEPS,'run'):raise ValueError(f'unknown step: {stage}')
+    if stage in ('build','infer','bench','run'):
+        from core.targets import require_device
+        device=require_device(device)
+    options={'target':target,'device':device,'source_paths':stage in ('data','baseline','build','run')}
+    if targets is not None:options['catalog']=targets
+    config=load_authoring(Path(config),**options)
+    if case_ids is not None:config['verification']['case_ids']='all' if case_ids==['all'] else case_ids
+    if instances is not None:config['benchmark']['instances']=instances
+    if profiling is not None:config['observability']['profiling']=profiling
+    validate(config)
+    if stage=='baseline' and config['reference']['device']=='npu':
+        from core.targets import require_device
+        device=require_device(device)
+    started=datetime.datetime.now(datetime.timezone.utc)
+    run_id=started.strftime('%Y%m%dT%H%M%S')+'-'+uuid.uuid4().hex[:8]
+    directory=Path(config['work_dir'])/'results'/run_id;directory.mkdir(parents=True)
+    began=time.monotonic()
+    record={'schema':'ge-run/1','run_id':run_id,'started_at':started.isoformat(),
+            'status':'running','stage':stage,'device':device,'config':config}
+    try:
+        if stage=='run':
+            record['steps']={}
+            for step in STEPS:
+                result=perform(step,config,directory,device);record['steps'][step]=result
+                require_success(step,result,directory)
+        else:
+            record.update(perform(stage,config,directory,device))
+            require_success(stage,record,directory)
+        record['status']='success'
+    except Exception as error:
+        record.update(status='failed',error=f'{type(error).__name__}: {error}');raise
+    finally:
+        record['duration_seconds']=time.monotonic()-began
+        write_json(directory/'result.json',record)
+    return {'status':record['status'],'result':str(directory/'result.json'),
+            **{k:record[k] for k in ('steps','performance','accuracy','graph','golden','outputs','cases','samples','directory','pool_sha256','profiling','dump') if k in record}}
+
+
+def main(argv=None):
+    parser=argparse.ArgumentParser(description='Independent model adaptation steps')
+    sub=parser.add_subparsers(dest='command',required=True)
+    for command in (*STEPS,'run'):
+        p=sub.add_parser(command)
+        p.add_argument('--config',required=True,help='model YAML')
+        p.add_argument('--device',type=int,required=command in ('build','infer','bench','run'))
+        p.add_argument('--target');p.add_argument('--targets')
+        if command in ('baseline','infer','compare','run'):p.add_argument('--case-ids',nargs='+')
+        if command in ('bench','run'):p.add_argument('--instances',type=int)
+        if command in ('infer','bench','run'):p.add_argument('--profiling',action='store_true',default=None)
+    p=sub.add_parser('report');p.add_argument('results',nargs='+');p.add_argument('--output')
+    args=vars(parser.parse_args(argv));command=args.pop('command')
+    try:
+        if command=='report':
+            from core.results import report
+            result=report(args['results'])
+            if args['output']:Path(args['output']).write_text(result+'\n')
+            print(result);return
+        print(json.dumps(execute(command,**args),ensure_ascii=False,indent=2))
+    except Exception as error:
+        print(f'{command}: {type(error).__name__}: {error}',file=sys.stderr)
+        raise SystemExit(1)
+
+
+if __name__=='__main__':main()
+

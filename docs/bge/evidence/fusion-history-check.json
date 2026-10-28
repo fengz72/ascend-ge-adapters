@@ -1,0 +1,28 @@
+{
+  "checked_utc": "2026-10-24T08:59:03.328161+00:00",
+  "host_alias": "99",
+  "container": "hejun-cann9-bge",
+  "scanned_roots": [
+    "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge",
+    "/export/home/ext.hejun23/workspace/bge/work"
+  ],
+  "ge_pbtxt_count": 0,
+  "historical_logs": [
+    {
+      "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/results/20261022T071838-a6374be8/infer-runtime.log",
+      "observed_lines": [
+        "[INFO] GEInitialize ge.graphRunMode=0",
+        "[INFO] Graph 1 output allocation=GE (dynamic compiled)"
+      ]
+    },
+    {
+      "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/results/20261022T071838-a6374be8/bench-runtime.log",
+      "observed_lines": [
+        "[INFO] GEInitialize ge.graphRunMode=0",
+        "[INFO] Graph 1 output allocation=GE (dynamic compiled)"
+      ]
+    }
+  ],
+  "current_ge_fusion_status": "not established; no final GE graph inspected",
+  "npu_execution": false
+}

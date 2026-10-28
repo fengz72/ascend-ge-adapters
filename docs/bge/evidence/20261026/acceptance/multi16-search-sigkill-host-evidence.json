@@ -1,0 +1,27 @@
+{
+  "checked_at": "2026-10-26T03:58:26.121460+00:00",
+  "witnessed_host_pids": [
+    "4034720",
+    "4034756",
+    "4034834",
+    "4037417"
+  ],
+  "docker_memory_limits": {
+    "code": 0,
+    "stdout": "{\"Memory\":0,\"MemorySwap\":0,\"MemoryReservation\":0,\"OOMKilled\":false,\"StartedAt\":\"2026-10-19T02:47:53.647118678Z\"}\n",
+    "stderr": ""
+  },
+  "filtered_dmesg": {
+    "code": 0,
+    "stdout": "[Mon Oct 26 11:56:43 2026] [ascend] [trs_drv] [trs_logic_cq_show 366] <ge_runtime:4037417:4037417:522> Logic cq stat show. (devid=10; tsid=0; id=10966; flag=0)",
+    "stderr": ""
+  },
+  "host_oom_counter_after_failure": {
+    "code": 0,
+    "stdout": "oom_kill 0",
+    "stderr": ""
+  },
+  "limitations": [
+    "Post-failure observations. Global/cgroup counters without a before snapshot do not assign causality to this run. Empty or unavailable dmesg does not rule OOM in/out. Docker State.OOMKilled is container state, not individual-process OOM proof."
+  ]
+}

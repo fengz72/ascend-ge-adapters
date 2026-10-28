@@ -1,0 +1,23 @@
+{
+  "task_id": "d6324c2deefc45a0a4067890713c5dc1",
+  "created_at": "2026-10-26T03:16:35.357775+00:00",
+  "cwd": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner",
+  "argv": [
+    "bash",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/env_run.sh",
+    "env",
+    "DUMP_GE_GRAPH=2",
+    "DUMP_GRAPH_LEVEL=3",
+    "DUMP_GRAPH_PATH=/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/fusion-v2-graph-dump",
+    "/usr/local/python3.11.15/bin/python3",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/run_runtime.py",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/fusion-v2-correctness.json"
+  ],
+  "devices": [
+    "A03-R40-I191-99-4100006.JD.LOCAL/0000:89:00.0"
+  ],
+  "timeout": 650.0,
+  "grace": 5.0,
+  "lock_root": "/export/home/ext.hejun23/workspace/bge/.npu-workflow-locks"
+}

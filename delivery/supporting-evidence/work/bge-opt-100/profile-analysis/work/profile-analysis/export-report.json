@@ -1,0 +1,172 @@
+{
+  "at": "2026-10-26T13:19:15.874718+00:00",
+  "device_tasks_started": false,
+  "runs": {
+    "base-fixed-profile": {
+      "session": "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL",
+      "status_sha256": "f171ac351f6dfdbdfc5d23ae0bf5a756598b62c8567509206bc89e7613b27cb6",
+      "plan_path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/base-fixed-profile.json",
+      "plan_sha256": "781ee3d53af64a82b5b71080c957ca8bbe6ea3981e21c4494ef354509de40318",
+      "result_sha256": "0ae9fbb261e86e05c95365926694b36e7901099252edd852d95a573f8ce03e98",
+      "binary_path": "/export/home/ext.hejun23/workspace/bge-opt-100/runner/runtime/build/ge_runtime",
+      "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "logical_device": 2,
+      "physical_locks": [
+        "100/0000:99:00.0",
+        "100/0000:9B:00.0"
+      ],
+      "runtime_profile": "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling",
+      "commands": [
+        {
+          "argv": [
+            "/usr/local/Ascend/cann-9.0.0/bin/msprof",
+            "--parse=on",
+            "--output=/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 2.049834434990771,
+          "log": "/export/home/ext.hejun23/workspace/bge-opt-100/work/profile-analysis/base-fixed-profile-parse.log"
+        },
+        {
+          "argv": [
+            "/usr/local/Ascend/cann-9.0.0/bin/msprof",
+            "--query=on",
+            "--output=/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 1.044248352991417,
+          "log": "/export/home/ext.hejun23/workspace/bge-opt-100/work/profile-analysis/base-fixed-profile-query.log"
+        },
+        {
+          "argv": [
+            "/usr/local/Ascend/cann-9.0.0/bin/msprof",
+            "--export=on",
+            "--output=/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 5.035562801989727,
+          "log": "/export/home/ext.hejun23/workspace/bge-opt-100/work/profile-analysis/base-fixed-profile-export.log"
+        }
+      ],
+      "csv_files": [
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL/mindstudio_profiler_output/fusion_op_20261026211923.csv",
+          "bytes": 198,
+          "sha256": "1b19049a7082d4219acbd40c93b6f3d89392bf8f03189473efae585c8182170d"
+        },
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL/mindstudio_profiler_output/op_statistic_20261026211923.csv",
+          "bytes": 1642,
+          "sha256": "d9ddb09b86e32ecdbdc74ab7331646576ce9382b6fc8ca37f5018a5c14a56133"
+        },
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL/mindstudio_profiler_output/step_trace_20261026211923.csv",
+          "bytes": 2257,
+          "sha256": "483dc9eaf0389b5abcccb889492b6b304f7c02a434286df8ad2c7d93a92cfd2d"
+        },
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL/mindstudio_profiler_output/api_statistic_20261026211923.csv",
+          "bytes": 4192,
+          "sha256": "a0e112667bdacc080fc6d707611b3eea46955994f49f775d1b0ac3d97988f832"
+        },
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL/mindstudio_profiler_output/task_time_20261026211923.csv",
+          "bytes": 2549085,
+          "sha256": "bcb41e41a9f0ba76cd6d1e5b006db807135c9170d0c7026fc83fa9a022bfa8c6"
+        },
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL/mindstudio_profiler_output/op_summary_20261026211923.csv",
+          "bytes": 6033301,
+          "sha256": "77f036884070f2b65220d61e1a9d7f92529fd1003e4ca5e9e4b0ff0923fb5130"
+        }
+      ],
+      "completion_markers": [
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL/host/data/all_file.complete",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling/PROF_000001_20261026210417674_00011908ICPQNBKL/device_2/data/all_file.complete"
+      ]
+    },
+    "fusion-fixed-profile": {
+      "session": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ",
+      "status_sha256": "abc13c98855f080bdaa10ad2b36a76d33a3f671d7f41ead23710ee7ca37b5be7",
+      "plan_path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/fusion-fixed-profile.json",
+      "plan_sha256": "f080ba94c41e25138a1fc8059a11a51638586b1fe089eeb591de4310f01f5eda",
+      "result_sha256": "a20812f75356be87f751143f4656d4d07408d017e7a821b71901ea2b2dfeec8a",
+      "binary_path": "/export/home/ext.hejun23/workspace/bge-opt-100/runner/runtime/build/ge_runtime",
+      "binary_sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "logical_device": 2,
+      "physical_locks": [
+        "100/0000:99:00.0",
+        "100/0000:9B:00.0"
+      ],
+      "runtime_profile": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling",
+      "commands": [
+        {
+          "argv": [
+            "/usr/local/Ascend/cann-9.0.0/bin/msprof",
+            "--parse=on",
+            "--output=/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 2.046523496042937,
+          "log": "/export/home/ext.hejun23/workspace/bge-opt-100/work/profile-analysis/fusion-fixed-profile-parse.log"
+        },
+        {
+          "argv": [
+            "/usr/local/Ascend/cann-9.0.0/bin/msprof",
+            "--query=on",
+            "--output=/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 1.0500114220194519,
+          "log": "/export/home/ext.hejun23/workspace/bge-opt-100/work/profile-analysis/fusion-fixed-profile-query.log"
+        },
+        {
+          "argv": [
+            "/usr/local/Ascend/cann-9.0.0/bin/msprof",
+            "--export=on",
+            "--output=/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 5.0352114690467715,
+          "log": "/export/home/ext.hejun23/workspace/bge-opt-100/work/profile-analysis/fusion-fixed-profile-export.log"
+        }
+      ],
+      "csv_files": [
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ/mindstudio_profiler_output/fusion_op_20261026211931.csv",
+          "bytes": 198,
+          "sha256": "1b19049a7082d4219acbd40c93b6f3d89392bf8f03189473efae585c8182170d"
+        },
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ/mindstudio_profiler_output/op_statistic_20261026211931.csv",
+          "bytes": 1706,
+          "sha256": "22f63fe061204ba074dc70facd32a20bd5920ac2a792a8bc5f9d40532544bbb4"
+        },
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ/mindstudio_profiler_output/step_trace_20261026211931.csv",
+          "bytes": 2251,
+          "sha256": "eb1d8c7d4cc536599f5ce78100fdc5c1d4040662ea2e6f8efe54f1889b74781d"
+        },
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ/mindstudio_profiler_output/api_statistic_20261026211931.csv",
+          "bytes": 4144,
+          "sha256": "4fca5b80919c190b8f73146e581730d49357e28aee1e72d4db07ca091b341f45"
+        },
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ/mindstudio_profiler_output/task_time_20261026211931.csv",
+          "bytes": 2322909,
+          "sha256": "80b38ac0fbe2c113fbcf0a419f9a4eef1d16aaafb8e9c9da26b2da630e139821"
+        },
+        {
+          "path": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ/mindstudio_profiler_output/op_summary_20261026211931.csv",
+          "bytes": 5641344,
+          "sha256": "a76e283072c3c8f622abd82fc8526eefd6df61fa95a96491c32b95d0aa5b27c3"
+        }
+      ],
+      "completion_markers": [
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ/host/data/all_file.complete",
+        "/export/home/ext.hejun23/workspace/bge-opt-100/work/fusion-fixed-profile/bench-profiling/PROF_000001_20261026210449993_00012632MHLRKARQ/device_2/data/all_file.complete"
+      ]
+    }
+  }
+}

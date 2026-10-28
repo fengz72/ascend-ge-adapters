@@ -1,0 +1,15 @@
+{
+  "test_add_layernorm_attention_pass.cpp": "21a49409e498ac14d1ebf1afa8ac2a2a86c329e1d7eda5baa95e70dbd16fd796",
+  "add_layernorm_attention_v3.cpp": "1508f75b5576c6718ceadd58b1c435c7798b7c29cfc396d9f45cfd21544b118d",
+  "test_local_v3.py": "46bac4118e732935c7ee8efb4a5b3719e49212e2f5fc85a59292a0dc48161eb6",
+  "numeric_semantics.py": "fac44b2d5eb2392f2a929662fa256b25ec71e32037c9c5914f392ed9abd1f6a0",
+  "attention_scope.h": "91649f5e8377b51b8681e0d280ae4e56d05682b7050bd560520ef8c0c2a2684b",
+  "v2-to-v3.patch": "fdc33c4dd1cef988073116d0a2635d5d6b3dffae6e18c9f9f0beaae5ba48f060",
+  "README.md": "18d4df5a737eb2fbe2e07d6ef95cca1372560e3cfbcfbb71f151d27cdec697d9",
+  "build_attention_v3.py": "7ec3d23d4285b5ae47a05e2377f06afb8e5569a67f354c01fb504a9a6dd7eb18",
+  "test_preload_scope.cpp": "826310aaf311e85a65050f1aba8bd01d345eb72d20a76363f0665d190e63157c",
+  "add_layernorm_attention_pass.cpp": "0f546bc19d58f58af5bf603efa337cd819f6cf12a865706f9295fb2f93700a64",
+  "preload_probe.cpp": "62ea7175a2e27684ea8ce08f9fde1ef287f0f277c2e23e79ceeae0f2d9599837",
+  "preload_scope_filter.h": "df898ca1aea1452a4c9b36a54bae241cef423feac80e04558f55648addecdc59",
+  "test_attention_scope.cpp": "b2ac25e372d5a07440e68d1f0a0426550e63cf2654141d4a8b49f0cdf7d5fff3"
+}

@@ -1,0 +1,146 @@
+{
+  "created_at": "2026-10-26T14:25:37.839176+08:00",
+  "user_requirement": "调优可固定单个case；交付分别报告固定case与多case随机两场景",
+  "fixed": {
+    "scenario": "fixed-case-0002",
+    "case_id": "case-0002",
+    "selection_reason": "按文本长度排序中位数为8，取原始顺序中首个S8真实样例；未按性能选择",
+    "batch": 1,
+    "sequence_length": 8,
+    "behavior_length": 128,
+    "statistics_width": 20,
+    "pool_size": 1,
+    "sampling": "repeat_identical_input",
+    "source_inputs_file_sha256": "14ccd8bc7e4fb3f6437fbb7c1b47fc710c2cd2eba9ce220d1a1715a8936f7a44",
+    "packed_selected_input_bytes": 3448,
+    "packed_selected_input_sha256": "27ce13c73cb35762ee7d0396d4425829d7e25a3b8ae2a12b37ed7f96b8690aa5",
+    "inputs": [
+      {
+        "name": "input_ids",
+        "dtype": "int64",
+        "shape": [
+          1,
+          8
+        ],
+        "bytes": 64,
+        "sha256": "dce2e25aecdbc4bdb176262702567c9ebd23895fac3842a3b6a3c947db22845c"
+      },
+      {
+        "name": "attention_mask",
+        "dtype": "int64",
+        "shape": [
+          1,
+          8
+        ],
+        "bytes": 64,
+        "sha256": "4bceb969a21579c6bc5a0fcbb54aa78d88778821db0846e1b49a71df6ed1f0f0"
+      },
+      {
+        "name": "long_cid3_raw",
+        "dtype": "int64",
+        "shape": [
+          1,
+          128
+        ],
+        "bytes": 1024,
+        "sha256": "147c30e6d9e9bbf28d2c4781ffc2fe27f94e0a97c8bf120c11d49dcd2cf30c9d"
+      },
+      {
+        "name": "long_action",
+        "dtype": "int64",
+        "shape": [
+          1,
+          128
+        ],
+        "bytes": 1024,
+        "sha256": "c1d24d60c076849e97dc34940cc767f1243bb38cb6baf04b5d5e9e9aac54beff"
+      },
+      {
+        "name": "long_time_bucket",
+        "dtype": "int64",
+        "shape": [
+          1,
+          128
+        ],
+        "bytes": 1024,
+        "sha256": "fa2f5b182976f78592c41bbb813705973679d6c6b1f842bbfd8ec650a58f66c2"
+      },
+      {
+        "name": "stat_dense_raw",
+        "dtype": "int64",
+        "shape": [
+          1,
+          20
+        ],
+        "bytes": 160,
+        "sha256": "734ca99ec7f98eefcd4dee552dae73a81429baf11401201a262b97de591a880b"
+      },
+      {
+        "name": "stat_ratio",
+        "dtype": "float32",
+        "shape": [
+          1,
+          20
+        ],
+        "bytes": 80,
+        "sha256": "d558bf384f2b4e9c4f0a62bc7a13faf84a4831193b371f78f36d7e083684ec68"
+      },
+      {
+        "name": "stat_count",
+        "dtype": "int64",
+        "shape": [
+          1
+        ],
+        "bytes": 8,
+        "sha256": "35be322d094f9d154a8aba4733b8497f180353bd7ae7b0a15f90b586b549f28b"
+      }
+    ],
+    "performance_measured": false
+  },
+  "random": {
+    "scenario": "random-five",
+    "case_ids": [
+      "case-0000",
+      "case-0001",
+      "case-0002",
+      "case-0003",
+      "case-0004"
+    ],
+    "pool_size": 5,
+    "probabilities": [
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2
+    ],
+    "replacement": true,
+    "search_seed": 42,
+    "acceptance_seeds": [
+      2027,
+      2028,
+      2029
+    ],
+    "existing_baseline_qps_median": 175.32104416967806,
+    "existing_baseline_p99_ms_merged": 6.819411,
+    "best_search_qps": 461.33330351886724,
+    "best_search_p99_ms": 18.24347,
+    "final_performance_accepted": false
+  },
+  "shared": {
+    "latency_scope": "h2d_desc_execute_sync_d2h",
+    "p99_limit_ms": null,
+    "same_frozen_delivery_configuration": true,
+    "search_min_seconds_per_scenario": 30,
+    "search_min_window_requests": 2000,
+    "formal_min_seconds_per_round": 60,
+    "formal_min_window_requests": 10000,
+    "formal_rounds_per_scenario": 3,
+    "correctness_pressure": "all five cases, each instance x case >=20, independent full scores and Top10",
+    "stability": "at least 600 seconds of random-five, unchanged limits",
+    "max_device_seconds": 7200,
+    "charged_device_seconds": 1616.67991,
+    "remaining_device_seconds": 5583.32009,
+    "no_npu_jobs_started_for_contract_update": true
+  }
+}

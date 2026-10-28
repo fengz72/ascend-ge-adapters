@@ -10,6 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 
 #include <nlohmann/json.hpp>
 
@@ -105,6 +106,16 @@ size_t DtypeSize(const std::string &dtype) {
         return 1;
     }
     return 0;
+}
+
+bool SameDtype(const std::string &left, const std::string &right) {
+    if (DtypeSize(left) == 0 || DtypeSize(right) == 0) return false;
+    auto canonical = [](const std::string &dtype) -> std::string_view {
+        if (dtype == "float") return "float32";
+        if (dtype == "double") return "float64";
+        return dtype;
+    };
+    return canonical(left) == canonical(right);
 }
 
 int64_t NumElements(const std::vector<int64_t> &shape) {

@@ -1,0 +1,20 @@
+{
+  "task_id": "ba36b0b8afb84c8a9ce301dfa11a3440",
+  "created_at": "2026-10-26T03:45:54.648449+00:00",
+  "cwd": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner",
+  "argv": [
+    "bash",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/env_run.sh",
+    "env",
+    "/usr/local/python3.11.15/bin/python3",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/run_runtime.py",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/multi8-correctness.json"
+  ],
+  "devices": [
+    "A03-R40-I191-99-4100006.JD.LOCAL/0000:89:00.0"
+  ],
+  "timeout": 650.0,
+  "grace": 5.0,
+  "lock_root": "/export/home/ext.hejun23/workspace/bge/.npu-workflow-locks"
+}

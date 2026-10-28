@@ -1,0 +1,360 @@
+--- /dev/null
++++ b/models/bge/replay.py
+@@ -0,0 +1,146 @@
++"""Prepare a five-sample BGE replay plan; never submits a device job."""
++import argparse
++import copy
++import json
++import math
++import os
++from pathlib import Path
++import re
++import sys
++
++if __package__ in (None, ""):
++    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from core.config import ROOT, load_authoring
++from core.data import load as load_cases
++from core.model_api import load_adapter
++from core.worker import encode, packed
++from core.backends.runtime import graph_files, read_io
++
++INPUT_DTYPES = {name: "int64" for name in (
++    "input_ids", "attention_mask", "long_cid3_raw", "long_action",
++    "long_time_bucket", "stat_dense_raw", "stat_count")}
++INPUT_DTYPES["stat_ratio"] = "float32"
++
++
++def parser():
++    result = argparse.ArgumentParser(description=__doc__)
++    result.add_argument("--config", type=Path, default=ROOT / "models/bge/config.yaml")
++    result.add_argument("--device", type=int, required=True, help="Logical device for the managed job; no device is queried here")
++    result.add_argument("--output-dir", type=Path, required=True, help="New preparation root; runtime results will use its runtime/ child")
++    result.add_argument("--graph", type=Path, help="Already exported ONNX with embedded IO and external weights; defaults to the config artifact")
++    result.add_argument("--instances", type=int, default=1)
++    result.add_argument("--precision-mode", default="must_keep_origin_dtype")
++    result.add_argument("--aicore-num", help="Positive AIC|AIV pair; omitted means all cores, overriding any YAML limit")
++    result.add_argument("--min-seconds", type=float, default=60)
++    result.add_argument("--max-seconds", type=float, default=300)
++    result.add_argument("--min-requests", type=int, default=10000)
++    result.add_argument("--max-requests", type=int, default=2000000)
++    result.add_argument("--seed", type=int, default=42)
++    result.add_argument("--warmup-per-case", type=int, default=10)
++    result.add_argument("--run-id", help="Defaults to the preparation directory name")
++    result.add_argument("--capture", action="store_true", help="Capture every measured output for independent correctness checking")
++    result.add_argument("--preload", type=Path, action="append", default=[], help="Append this shared library to native-only LD_PRELOAD; may repeat")
++    result.add_argument("--prepare-only", action="store_true", help="Explicit preparation mode (the only mode and the default)")
++    return result
++
++
++def validate_args(args):
++    if args.device < 0 or args.instances < 1:
++        raise ValueError("device must be nonnegative and instances must be positive")
++    if (not math.isfinite(args.min_seconds) or not math.isfinite(args.max_seconds)
++            or args.min_seconds <= 0 or args.max_seconds < args.min_seconds):
++        raise ValueError("require finite 0 < min-seconds <= max-seconds")
++    if not 1 <= args.min_requests <= args.max_requests <= 10000000:
++        raise ValueError("require 1 <= min-requests <= max-requests <= 10000000")
++    if args.warmup_per_case < 1 or not 0 <= args.seed <= 2**64 - 1:
++        raise ValueError("warmup-per-case must be positive and seed must be uint64")
++    if not re.fullmatch(r"[A-Za-z0-9_]+", args.precision_mode):
++        raise ValueError("precision-mode must name a concrete CANN precision mode")
++    if args.aicore_num is not None:
++        if not re.fullmatch(r"[1-9][0-9]*\|[1-9][0-9]*", args.aicore_num):
++            raise ValueError("aicore-num must be a positive AIC|AIV pair")
++    if args.run_id is not None and not args.run_id.strip():
++        raise ValueError("run-id must be nonempty")
++    for library in args.preload:
++        path = library.expanduser().resolve()
++        if not path.is_file() or re.search(r"[\s:]", str(path)):
++            raise ValueError(f"preload must be an existing file without loader separators: {path}")
++    if args.output_dir.expanduser().resolve().exists():
++        raise FileExistsError(f"output-dir must be new: {args.output_dir}")
++
++
++def validate_bge_io(io):
++    inputs = io["inputs"]
++    if len(inputs) != 8 or {node["name"]: node["dtype"] for node in inputs} != INPUT_DTYPES:
++        raise ValueError("BGE replay requires the original eight INT64/FP32 input types")
++    outputs = io["outputs"]
++    if (len(outputs) != 1 or outputs[0]["name"] != "scores"
++            or outputs[0]["dtype"] != "float32" or outputs[0]["shape"] not in ([-1, 10112], [1, 10112])):
++        raise ValueError("BGE replay requires FP32 scores[1,10112] output")
++
++
++def prepare(args):
++    """Read existing small artifacts/NPYs, then write a plan and packed inputs."""
++    validate_args(args)
++    # Do not expand/read source.ref: runtime encoding does not need the original weights.
++    config = load_authoring(args.config, source_paths=False)
++    if config["source"]["kind"] != "onnx" or config["build"]["backend"] != "ge_session":
++        raise ValueError("BGE replay supports only the selected ONNX -> GE Session route")
++    if config["build"]["options"].get("graph_run_mode", 0) != 0:
++        raise ValueError("BGE replay requires GE prediction mode=0")
++    graph = ({"path": str(args.graph.expanduser().resolve()), "format": "onnx", "om_path": None}
++             if args.graph else graph_files(config))
++    graph_path = Path(graph["path"])
++    if graph_path.suffix.lower() != ".onnx" or not graph_path.is_file():
++        raise ValueError("graph must be an existing exported ONNX artifact")
++    # The original 1.35 GB protobuf must not be loaded for a runtime-only replay.
++    if graph_path.stat().st_size > 64 * 1024 * 1024:
++        raise ValueError("use the exported external-weight ONNX artifact, rather than an inline-weight source model")
++    io = read_io(graph)
++    validate_bge_io(io)
++    cases = load_cases(config)
++    if (len(cases) != 5 or len({case["id"] for case in cases}) != 5
++            or any(case["samples"] != 1 or set(case["payload"]) != set(INPUT_DTYPES) for case in cases)):
++        raise ValueError("BGE replay requires all five supplied batch=1 cases with eight features")
++    handle = load_adapter(config["model"]["adapter_file"]).prepare_runtime(config, io)
++    directory = args.output_dir.expanduser().resolve()
++    directory.mkdir(parents=True, exist_ok=False)
++    _, records = encode(handle, cases, io, directory)
++    options = copy.deepcopy(config["build"]["options"])
++    options.update(precision_mode=args.precision_mode, graph_run_mode=0)
++    options.pop("aicore_num", None)
++    if args.aicore_num is not None:
++        options["aicore_num"] = args.aicore_num
++    plan = {"mode": "bench", "backend": "ge_session", "graph": graph, "io": io,
++            "inputs": packed(directory, records), "device": args.device,
++            "instances": args.instances, "warmup": 0, "iterations": 1,
++            "seed": args.seed, "options": options,
++            "observability": {"profiling": False, "dump": False},
++            "output_dir": str(directory / "runtime"),
++            "replay": {"run_id": args.run_id or directory.name,
++                       "min_seconds": args.min_seconds, "max_seconds": args.max_seconds,
++                       "min_requests": args.min_requests, "max_requests": args.max_requests,
++                       "warmup_per_case": args.warmup_per_case, "capture_outputs": args.capture}}
++    if args.preload:
++        inherited = os.environ.get("LD_PRELOAD", "")
++        added = ":".join(str(path.expanduser().resolve()) for path in args.preload)
++        plan["runtime_env"] = {"LD_PRELOAD": ":".join(part for part in (inherited, added) if part)}
++    plan_path = directory / "plan.json"
++    plan_path.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
++    return plan_path
++
++
++def main(argv=None):
++    cli = parser()
++    args = cli.parse_args(argv)
++    try:
++        path = prepare(args)
++    except (ValueError, OSError) as error:
++        cli.error(str(error))
++    print(json.dumps({"status": "prepared", "plan": str(path), "device_job_submitted": False}))
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+--- /dev/null
++++ b/tests/test_bge_replay_cli.py
+@@ -0,0 +1,151 @@
++"""The BGE preparation CLI must stay CPU-only and preserve request contracts."""
++import copy
++import json
++import os
++from pathlib import Path
++import tempfile
++import unittest
++from unittest.mock import patch
++
++import numpy as np
++
++from core import native_onnx
++from models.bge import replay
++
++
++class BgeReplayPreparation(unittest.TestCase):
++    def setUp(self):
++        self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
++        self.graph = self.directory / "model.onnx"
++        self.graph.write_bytes(b"small mocked external-weight ONNX")
++        self.config = {"source": {"kind": "onnx", "ref": "${UNSET_SOURCE_MODEL}"},
++                       "build": {"backend": "ge_session", "dtype": "float32",
++                                 "options": {"aicore_num": "4|8", "precision_mode": "must_keep_origin_dtype"}},
++                       "model": {"adapter_file": "core/native_onnx.py", "params": {}},
++                       "work_dir": str(self.directory)}
++        shapes = {"input_ids": [-1, -1], "attention_mask": [-1, -1],
++                  "long_cid3_raw": [-1, -1], "long_action": [-1, -1], "long_time_bucket": [-1, -1],
++                  "stat_dense_raw": [-1, 20], "stat_ratio": [-1, 20], "stat_count": [-1]}
++        self.io = {"schema": "ge-io/1", "inputs": [
++            {"name": name, "dtype": dtype, "shape": shapes[name]}
++            for name, dtype in replay.INPUT_DTYPES.items()], "outputs": [
++                {"name": "scores", "dtype": "float32", "shape": [-1, 10112]}]}
++        self.cases = []
++        for index, length in enumerate((6, 9, 8, 13, 8)):
++            payload = {"input_ids": [[index + 1] * length], "attention_mask": [[1] * length],
++                       "long_cid3_raw": [[index] * 128], "long_action": [[1] * 128],
++                       "long_time_bucket": [[1] * 128], "stat_dense_raw": [[index] * 20],
++                       "stat_ratio": [[.125 + index / 100] * 20], "stat_count": [20]}
++            self.cases.append({"id": f"case-{index:04d}", "samples": 1, "payload": payload})
++        self.authoring = self.enterContext(patch.object(replay, "load_authoring", return_value=self.config))
++        self.data = self.enterContext(patch.object(replay, "load_cases", return_value=self.cases))
++        self.read_io = self.enterContext(patch.object(replay, "read_io", return_value=self.io))
++        self.adapter = self.enterContext(patch.object(replay, "load_adapter", return_value=native_onnx))
++        self.enterContext(patch.object(replay, "graph_files", return_value={
++            "path": str(self.graph), "format": "onnx", "om_path": None}))
++        self.native_call = self.enterContext(patch("core.backends.runtime.call", side_effect=AssertionError("must not run NPU")))
++        self.source_load = self.enterContext(patch("core.sources.load_source", side_effect=AssertionError("must not load weights")))
++        self.golden = self.directory / "golden.npz"
++        self.golden.write_bytes(b"fixed original golden")
++
++    def args(self, *extra):
++        return replay.parser().parse_args(["--device", "10", "--output-dir", str(self.directory / "prepared"), *extra])
++
++    def read_plan(self, args):
++        return json.loads(replay.prepare(args).read_text())
++
++    def test_prepare_packs_all_five_cases_and_exact_original_input_dtypes(self):
++        plan = self.read_plan(self.args("--prepare-only", "--instances", "4", "--seed", "2027", "--capture"))
++        self.assertEqual(plan["instances"], 4)
++        self.assertEqual(plan["device"], 10)
++        self.assertEqual(plan["seed"], 2027)
++        self.assertTrue(plan["replay"]["capture_outputs"])
++        self.assertEqual(plan["options"], {"precision_mode": "must_keep_origin_dtype", "graph_run_mode": 0})
++        self.assertEqual(len(plan["inputs"]["cases"]), 5)
++        binary = Path(plan["inputs"]["file"])
++        self.assertEqual(binary.stat().st_size, 17304)
++        for case, packed_case in zip(self.cases, plan["inputs"]["cases"]):
++            self.assertEqual(packed_case["id"], case["id"])
++            self.assertEqual(packed_case["output_capacities"], {"scores": 40448})
++            for tensor in packed_case["tensors"]:
++                expected = np.asarray(case["payload"][tensor["name"]], dtype=replay.INPUT_DTYPES[tensor["name"]])
++                actual = np.fromfile(binary, dtype=tensor["dtype"], count=expected.size, offset=tensor["offset"]).reshape(tensor["shape"])
++                np.testing.assert_array_equal(actual, expected)
++        self.assertFalse(Path(plan["output_dir"]).exists())
++        self.assertEqual(self.golden.read_bytes(), b"fixed original golden")
++        self.authoring.assert_called_once_with(self.args().config, source_paths=False)
++        self.native_call.assert_not_called()
++        self.source_load.assert_not_called()
++
++    def test_native_only_preload_appends_original_allocator_without_mutating_python_env(self):
++        library = self.directory / "fusion.so"
++        library.write_bytes(b"mock shared library; never loaded")
++        with patch.dict(os.environ, {"LD_PRELOAD": "/original/allocator.so"}):
++            plan = self.read_plan(self.args("--preload", str(library), "--precision-mode", "allow_mix_precision", "--aicore-num", "12|24"))
++            self.assertEqual(plan["runtime_env"]["LD_PRELOAD"], f"/original/allocator.so:{library}")
++            self.assertEqual(os.environ["LD_PRELOAD"], "/original/allocator.so")
++        self.assertEqual(plan["options"]["precision_mode"], "allow_mix_precision")
++        self.assertEqual(plan["options"]["aicore_num"], "12|24")
++
++    def test_invalid_parameters_fail_before_config_or_output_creation(self):
++        for extra in (("--device", "-1"), ("--instances", "0"), ("--seed", "-1"),
++                      ("--min-seconds", "nan"), ("--min-seconds", "400"),
++                      ("--min-requests", "0"), ("--max-requests", "10"),
++                      ("--aicore-num", "0|24"), ("--aicore-num", "12"), ("--precision-mode", "")):
++            with self.subTest(extra=extra), self.assertRaises(ValueError):
++                replay.prepare(self.args(*extra))
++        self.authoring.assert_not_called()
++        self.assertFalse((self.directory / "prepared").exists())
++
++    def test_existing_preparation_directory_is_rejected_without_overwriting(self):
++        directory = self.directory / "prepared"
++        directory.mkdir()
++        sentinel = directory / "plan.json"
++        sentinel.write_text("keep me")
++        with self.assertRaises(FileExistsError):
++            replay.prepare(self.args())
++        self.assertEqual(sentinel.read_text(), "keep me")
++        self.authoring.assert_not_called()
++
++    def test_wrong_graph_float_dtype_or_output_shape_is_rejected(self):
++        for which in ("input", "output"):
++            io = copy.deepcopy(self.io)
++            if which == "input":
++                next(node for node in io["inputs"] if node["name"] == "stat_ratio")["dtype"] = "float16"
++            else:
++                io["outputs"][0]["shape"] = [-1, 10111]
++            self.read_io.return_value = io
++            with self.subTest(which=which), self.assertRaises(ValueError):
++                replay.prepare(self.args())
++        self.assertFalse((self.directory / "prepared").exists())
++
++    def test_missing_fifth_case_and_non_ge_route_are_rejected(self):
++        self.data.return_value = self.cases[:4]
++        with self.assertRaises(ValueError):
++            replay.prepare(self.args())
++        self.data.return_value = self.cases
++        self.config["build"]["backend"] = "atc_om"
++        with self.assertRaises(ValueError):
++            replay.prepare(self.args())
++        self.assertFalse((self.directory / "prepared").exists())
++
++    def test_inline_weight_graph_is_rejected_before_reading_onnx(self):
++        with self.graph.open("r+b") as stream:
++            stream.truncate(64 * 1024 * 1024 + 1)
++        with self.assertRaises(ValueError):
++            replay.prepare(self.args())
++        self.read_io.assert_not_called()
++        self.assertFalse((self.directory / "prepared").exists())
++
++    def test_graph_override_and_request_windows_are_preserved(self):
++        plan = self.read_plan(self.args("--graph", str(self.graph), "--min-seconds", "30", "--max-seconds", "180", "--min-requests", "2000"))
++        self.assertEqual(plan["graph"]["path"], str(self.graph))
++        self.assertEqual(plan["replay"]["min_seconds"], 30)
++        self.assertEqual(plan["replay"]["max_seconds"], 180)
++        self.assertEqual(plan["replay"]["min_requests"], 2000)
++        self.assertNotIn("runtime_env", plan)
++        self.assertEqual(sorted(path.name for path in (self.directory / "prepared").iterdir()), ["inputs.bin", "plan.json"])
++
++
++if __name__ == "__main__":
++    unittest.main()
+--- a/models/bge/README.md
++++ b/models/bge/README.md
+@@ -209,3 +209,54 @@
+ size is 5 (six smoke calls, zero execution errors). The ordinary Python suite
+ passed 88 tests and skipped five opt-in hardware probes; the C++ contract test
+ also passed.
++
++## Full-transfer replay plan preparation
++
++`replay.py` prepares the five existing BGE cases for the measured native replay
++entry point. It never submits a device job, queries device occupancy, regenerates
++data, opens the original inline-weight model, or changes CPU golden/expected
++outputs. Run the normal `data` and `build` stages first; it reads their persisted
++NPYs and the exported ONNX IO metadata. `BGE_MODEL_PATH` is unnecessary here.
++
++```bash
++python3 models/bge/replay.py --prepare-only \
++  --config models/bge/config.yaml --device 10 \
++  --output-dir work/bge/replay/baseline-2027 \
++  --instances 1 --seed 2027 \
++  --min-seconds 60 --max-seconds 300 --min-requests 10000
++```
++
++The preparation root must be new. It receives `inputs.bin` and `plan.json`;
++`plan.output_dir` points to its **not yet created** `runtime/` child so a managed
++launcher can require a new results directory. The exported graph defaults to the
++config artifact; `--graph /absolute/path/to/exported/model.onnx` selects an
++already packed, external-weight graph without loading its weights. The CLI
++requires the original INT64/FP32 input contract and FP32 `[1,10112]` scores.
++
++The default is all cores even if the YAML contains a historical core limit.
++Use `--aicore-num '12|24'` for an explicitly selected AIC/AIV pair. Change
++`--instances` and `--precision-mode` explicitly for candidates; these options do
++not modify the YAML or validation thresholds. `--capture` records every measured
++output and its request manifest for an independent correctness run. Capture
++includes disk work between requests and must not be used for official QPS.
++
++`--preload /absolute/path/to/fusion.so` may repeat. It appends libraries to the
++inherited allocator/preload string in `plan.runtime_env.LD_PRELOAD`; it does not
++set the Python process's environment or load those libraries while preparing.
++The managed native launcher must apply `runtime_env` to the **native child only**
++and preserve the inherited allocator. Do not prefix the Python CLI with a
++fusion `LD_PRELOAD`.
++
++After reviewing the plan, submit it through the workflow's existing managed
++`run_checked.py` / `device_job.py` wrapper, which checks the physical device,
++occupancy, lock, timeout and remaining budget. The launcher runs the frozen
++`runtime/build/ge_runtime` with this plan on stdin. This preparation command does
++not establish that the selected device is free, and it has no unmanaged `--run`
++mode. Events, runtime results and optional capture data belong under `runtime/`;
++keep them associated with the plan and native binary identity.
++
++CPU-only preparation regressions:
++
++```bash
++python3 -m unittest discover -s tests -p test_bge_replay_cli.py -v
++```

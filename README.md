@@ -1,5 +1,13 @@
 # Ascend GE model adapters
 
+## BGE 当前适配交付（100 机器）
+
+当前用户指定配置是原始 ONNX、GE Session mode=0、内部 `force_fp16`、10 实例、每算子核上限 `12|24`；外部浮点输入输出保持 FP32。请从 [BGE 文件索引](docs/bge/README.md) 和 [交付报告](docs/bge/delivery-100.md) 开始；[交接清单](delivery/manifest.json) 保存模型、二进制和源码身份。项目根的 `materials/` 与 `work/` 分别保存大模型和原始作业证据，`delivery/project-tools/` 是项目根 `tools/` 的交接副本。
+
+2026-10-27 在 100 机器逻辑设备 2 上，无 profiling、包含 H2D/GE 同步/全量 D2H 的正式三轮复测：固定 `case-0000` 的 8/10/12 实例 QPS 中位数为 **807.326 / 884.177 / 851.169**；五例随机回放为 **861.592 / 903.582 / 862.495**。10 实例固定场景比 8 实例高 9.519%，超过本批波动门槛；随机场景 10 实例有一轮仅 730.640 QPS，不能确认吞吐收益。12 实例没有稳定优势，维持用户指定的 10 实例。逐轮 QPS、p99、资源与门禁见 [8/10/12 实例复测](docs/bge/analysis/100-fp16-scale-recompare-20261027.md)；模型入口说明见 [BGE README](models/bge/README.md)。
+
+2026-10-28 修复输出 dtype 别名与材料/交付路径后重建了 runtime。上述三轮中位数属于旧二进制；新构建已通过五例全量输出及固定/随机各一轮性能检查，稳定吞吐尚待三轮复核。证据和两个二进制的 SHA256 见 [runner 修复报告](docs/bge/analysis/100-runner-review-fix-20261028.md)。
+
 一个模型一份 YAML，模型改动集中在独立适配文件。框架提供运行能力，优化策略交给 Skills。
 
 ## 环境

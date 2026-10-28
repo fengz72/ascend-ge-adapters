@@ -1,0 +1,24 @@
+{
+  "task_id": "f85742db5a2046baa0068cd98d21980d",
+  "created_at": "2026-10-26T13:04:46.475754+00:00",
+  "cwd": "/export/home/ext.hejun23/workspace/bge-opt-100/runner",
+  "argv": [
+    "bash",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/tools/env_run.sh",
+    "/usr/local/python3.11.15/bin/python3",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/tools/control.py",
+    "guarded",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/fusion-fixed-profile.json",
+    "--job",
+    "fusion-fixed-profile",
+    "--binary",
+    "/export/home/ext.hejun23/workspace/bge-opt-100/runner/runtime/build/ge_runtime"
+  ],
+  "devices": [
+    "100/0000:99:00.0",
+    "100/0000:9B:00.0"
+  ],
+  "timeout": 300.0,
+  "grace": 5.0,
+  "lock_root": "/export/home/ext.hejun23/workspace/.npu-workflow-locks"
+}

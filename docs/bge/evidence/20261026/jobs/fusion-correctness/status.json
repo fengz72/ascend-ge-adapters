@@ -1,0 +1,43 @@
+{
+  "task_id": "f4bd69874be14f69a5b7c39767ed0340",
+  "host": "A03-R40-I191-99-4100006.JD.LOCAL",
+  "supervisor": {
+    "pid": 2005606,
+    "linux_start_ticks": "232256155",
+    "linux_boot_id": "f0591928-db84-4529-a570-0cecb5b946dc"
+  },
+  "cwd": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner",
+  "argv": [
+    "bash",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/env_run.sh",
+    "env",
+    "LD_PRELOAD=/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass.so",
+    "DUMP_GE_GRAPH=2",
+    "DUMP_GRAPH_LEVEL=3",
+    "DUMP_GRAPH_PATH=/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/fusion-graph-dump",
+    "/usr/local/python3.11.15/bin/python3",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/run_runtime.py",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/runner/runtime/build/ge_runtime",
+    "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/plans/fusion-correctness.json"
+  ],
+  "devices": [
+    "A03-R40-I191-99-4100006.JD.LOCAL/0000:89:00.0"
+  ],
+  "lock_root": "/export/home/ext.hejun23/workspace/bge/.npu-workflow-locks",
+  "started_at": "2026-10-26T03:00:09.780649+00:00",
+  "device_release_checked": false,
+  "state": "finished",
+  "updated_at": "2026-10-26T03:00:59.555243+00:00",
+  "task": {
+    "pid": 2005607,
+    "linux_start_ticks": "232256160",
+    "linux_boot_id": "f0591928-db84-4529-a570-0cecb5b946dc"
+  },
+  "pgid": 2005607,
+  "reason": "exited",
+  "exit_code": 0,
+  "task_returncode": 0,
+  "process_group_stopped": true,
+  "finished_at": "2026-10-26T03:00:59.555218+00:00",
+  "locks_released_at": "2026-10-26T03:00:59.555234+00:00"
+}

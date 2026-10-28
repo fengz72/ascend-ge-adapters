@@ -1,0 +1,21 @@
+{
+  "schema": "bge-independent-verifier-cpu-tests/1",
+  "passed": true,
+  "checks": {
+    "pressure_valid_replays": true,
+    "pressure_reject_event_case_mismatch": true,
+    "pressure_reject_same_shape_wrong_scores": true,
+    "pressure_reject_duplicate_id": true,
+    "pressure_reject_missing_request": true,
+    "pressure_reject_binary_overlap": true,
+    "pressure_reject_unreferenced_bytes": true,
+    "performance_valid_window_and_drain": true,
+    "performance_reject_incomplete_d2h": true,
+    "performance_reject_failed_request": true,
+    "performance_reject_nan_segment": true,
+    "performance_reject_inflight_overlap": true,
+    "performance_reject_missing_warmup_case": true,
+    "performance_reject_cohort_divided_by_window": true,
+    "performance_reject_insufficient_count": true
+  }
+}

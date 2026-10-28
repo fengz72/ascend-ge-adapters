@@ -1,0 +1,40 @@
+{
+  "passed": true,
+  "plans": {
+    "fusion-v2-correctness.json": {
+      "passed": true,
+      "runtime_env": {
+        "LD_PRELOAD": "/usr/lib64/libtcmalloc.so.4.5.16:/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass_v2.so"
+      },
+      "plan_sha256": "fb1b55f74d75da855a1a7e72b7adf428afd3e595af7c8b6a8defd2b56f6ad7e6"
+    },
+    "fusion-v2-search.json": {
+      "passed": true,
+      "runtime_env": {
+        "LD_PRELOAD": "/usr/lib64/libtcmalloc.so.4.5.16:/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass_v2.so"
+      },
+      "plan_sha256": "9b49fcc12bf7cc6a86282a36955b4c0adc43894f8bd53245e6918cecaf33719b"
+    },
+    "fusion-v2-round1.json": {
+      "passed": true,
+      "runtime_env": {
+        "LD_PRELOAD": "/usr/lib64/libtcmalloc.so.4.5.16:/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass_v2.so"
+      },
+      "plan_sha256": "1d6aeb5ff67d6a9fb5dbdba967c0d5d3fd912f7d9d6b69979307770150ae53e3"
+    },
+    "fusion-v2-round2.json": {
+      "passed": true,
+      "runtime_env": {
+        "LD_PRELOAD": "/usr/lib64/libtcmalloc.so.4.5.16:/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass_v2.so"
+      },
+      "plan_sha256": "b0d9e1f3990b2b03082db6cda8816277b787f2601124899546c6b7247b1696aa"
+    },
+    "fusion-v2-round3.json": {
+      "passed": true,
+      "runtime_env": {
+        "LD_PRELOAD": "/usr/lib64/libtcmalloc.so.4.5.16:/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass_v2.so"
+      },
+      "plan_sha256": "4f0d4972b0abcb20bbbf7c0d806b8e9e0d71ff9ea2476dec5237b499a3599a78"
+    }
+  }
+}

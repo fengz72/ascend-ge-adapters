@@ -1,0 +1,20 @@
+{
+  "checked_utc": "2026-10-24T09:03:18.844698+00:00",
+  "scope": "static source graph and installed CANN evidence only",
+  "source_sha256": "2080f8762d9f8de50f8ec22f6a560453d3052d13012ea6fe7c199197962b3ba0",
+  "opset": 14,
+  "counts": {
+    "layer_norm": 49,
+    "residual_add_layer_norm": 48,
+    "erf_gelu": 24,
+    "matmul_bias": 145,
+    "l2_normalize": 5,
+    "attention": 24
+  },
+  "external_intermediate_consumers": 0,
+  "relative_links_checked": 45,
+  "missing_links": [],
+  "npu_execution": "NOT_RUN",
+  "original_model_modified": false,
+  "optimization_attempts": 0
+}

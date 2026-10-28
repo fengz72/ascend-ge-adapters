@@ -1,0 +1,11 @@
+2026-10-26T22:30:06+08:00
+oom_killed=false restart_count=0 mem_limit=0
+	NPU ID                         : 1
+	Chip Count                     : 2
+
+	No process in device.
+	Chip ID                        : 0
+
+	No process in device.
+	Chip ID                        : 1
+

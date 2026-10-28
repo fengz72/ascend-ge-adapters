@@ -1,0 +1,109 @@
+{
+  "returncode": 0,
+  "elapsed_seconds": 23.544049549964257,
+  "plan": "/export/home/ext.hejun23/workspace/bge-opt-100/work/plans/base-fixed-profile.json",
+  "binary": "/export/home/ext.hejun23/workspace/bge-opt-100/runner/runtime/build/ge_runtime",
+  "runtime": {
+    "backend": "ge_session",
+    "events": "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/events.jsonl",
+    "mode": "bench",
+    "performance": {
+      "arrival_model": "closed_loop",
+      "capture_enabled": false,
+      "cohort_qps": 99.1256434282687,
+      "cohort_successes": 20,
+      "d2h_ms": {
+        "avg": 0.043998749999999996
+      },
+      "distinct_shapes": 1,
+      "drain_ms": 0.0,
+      "e2e_ms": {
+        "avg": 10.086903799999998,
+        "max": 10.271908,
+        "min": 9.926254,
+        "p50": 10.072576,
+        "p99": 10.271908
+      },
+      "errors": 0,
+      "exec_ms": {
+        "avg": 9.930572199999999,
+        "p99": 10.118317
+      },
+      "hbm_mb": {
+        "after_setup": 1753.50390625,
+        "base": 434.875
+      },
+      "in_flight_at_end": 0,
+      "instances": [
+        {
+          "desc_ms": {
+            "avg": 0.0009500000000000005
+          },
+          "distinct_shapes": 1,
+          "e2e_ms": {
+            "avg": 10.086903799999998,
+            "max": 10.271908,
+            "min": 9.926254,
+            "p50": 10.072576,
+            "p99": 10.271908
+          },
+          "errors": 0,
+          "exec_ms": {
+            "avg": 9.930572199999999,
+            "p99": 10.118317
+          },
+          "h2d_ms": {
+            "avg": 0.10805000000000002
+          },
+          "load_ms": 1850.211,
+          "name": "instance_0",
+          "qps": 99.1256434282687,
+          "requests": 20,
+          "specialize_ms": 0.0
+        }
+      ],
+      "last_completed_ns": 879095388028627,
+      "latency_scope": "h2d_desc_execute_sync_d2h",
+      "profiling_enabled": true,
+      "qps": 99.1256434282687,
+      "requests": 20,
+      "run_id": "base-fixed-profile",
+      "samples": {
+        "avg": 1.0,
+        "max": 1.0,
+        "min": 1.0,
+        "p50": 1.0,
+        "p99": 1.0
+      },
+      "samples_per_second": 99.1256434282687,
+      "sampling": {
+        "order": "global_request_index",
+        "pool_size": 1,
+        "replacement": true,
+        "seed": 42
+      },
+      "schema": "ge-performance/1",
+      "slo_status": "not_defined",
+      "statistics_sufficient": true,
+      "wall_ms": 201.764138,
+      "warmup": {
+        "ms": 273.110616,
+        "runs": 10
+      },
+      "window_end_ns": 879095388029377,
+      "window_start_ns": 879095186265239,
+      "window_successes": 20
+    },
+    "profiling": "/export/home/ext.hejun23/workspace/bge-opt-100/work/base-fixed-profile/bench-profiling",
+    "replay": {
+      "capture_outputs": false,
+      "max_requests": 2000000,
+      "max_seconds": 15.0,
+      "min_requests": 20,
+      "min_seconds": 0.1,
+      "run_id": "base-fixed-profile",
+      "warmup_per_case": 10
+    },
+    "status": "success"
+  }
+}

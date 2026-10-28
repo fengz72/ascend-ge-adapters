@@ -201,7 +201,7 @@ public:
                     plan.dtype = FromGeDtype(outputs.dtypes[i]);
                     plan.format = "ND";
                     plan.shape = shapes[i].GetDims();
-                    if (plan.dtype != spec_.outputs[i].dtype ||
+                    if (!SameDtype(plan.dtype, spec_.outputs[i].dtype) ||
                         plan.shape.size() != spec_.outputs[i].shape.size()) {
                         fprintf(stderr, "[ERROR] Compiled output contract mismatch: %s\n", plan.logical.c_str());
                         return false;
@@ -443,7 +443,7 @@ public:
         return true;
     }
 
-    bool CollectOutputs(int tid, const IoSpec &spec, std::vector<HostTensor> &outputs) {
+    bool CollectOutputs(int tid, const IoSpec &spec, std::vector<HostTensor> &outputs, bool quiet = false) {
         GeContext *ctx = FindContext(tid);
         if (ctx == nullptr) {
             fprintf(stderr, "[ERROR] tid=%d 无执行资源, 无法取输出\n", tid);
@@ -463,6 +463,14 @@ public:
             for (size_t d = 0; d < shape.GetDimNum(); d++) {
                 out.shape.push_back(shape.GetDim(d));
             }
+            if (i >= spec.outputs.size() || !SameDtype(out.dtype, spec.outputs[i].dtype) ||
+                out.shape.size() != spec.outputs[i].shape.size()) return false;
+            TensorPlan logical; logical.dtype=out.dtype; logical.shape=out.shape;
+            size_t logicalBytes=logical.Bytes();
+            for(size_t dim=0;dim<out.shape.size();++dim)
+                if(spec.outputs[i].shape[dim]!=-1 && spec.outputs[i].shape[dim]!=out.shape[dim]) return false;
+            if(logicalBytes>bytes || (logicalBytes && t.GetAddr()==nullptr)) return false;
+            bytes=logicalBytes;
             out.data.resize(bytes);
             if (bytes > 0 && t.GetAddr() != nullptr) {
                 aclError ret = aclrtMemcpy(out.data.data(), bytes, t.GetAddr(), bytes,
@@ -472,7 +480,7 @@ public:
                     return false;
                 }
             }
-            std::cout << "[INFO] Output[" << i << "] '" << out.logical << "' shape="
+            if (!quiet) std::cout << "[INFO] Output[" << i << "] '" << out.logical << "' shape="
                       << ShapeToString(out.shape) << " dtype=" << out.dtype
                       << " bytes=" << bytes << std::endl;
             outputs.push_back(std::move(out));
@@ -591,8 +599,18 @@ bool RunGeSessionBackend(const ModelGraph &graph, const IoSpec &spec,
         return runner.CollectOutputs(tid, spec, tensors) && opt.capture(tid, request, tensors);
     });
 
+    std::vector<std::vector<HostTensor>> hostOutputs(static_cast<size_t>(opt.bench.threads));
+    pres.finishOutputs = [&](int tid, const Request &, RequestRecord &record) {
+        auto &tensors=hostOutputs.at(static_cast<size_t>(tid));tensors.clear();
+        if(!runner.CollectOutputs(tid,spec,tensors,true)) return false;
+        for(const auto &tensor:tensors) record.d2hBytes+=tensor.data.size();
+        return true;
+    };
+    if(opt.replayCapture) pres.captureRequest = [&](int tid,const Request &request,const RequestRecord &record) {
+        return opt.replayCapture(tid,request,record,hostOutputs.at(static_cast<size_t>(tid)));
+    };
     PerfResult result;
-    bool ok = BenchPool(opt.bench.threads, opt.bench.requests, opt.bench.warmup, opt.seed,
+    bool ok = opt.bench.replay.enabled ? ReplayPool(opt.bench.threads,opt.seed,opt.bench.replay,*opt.pool,pres,result) : BenchPool(opt.bench.threads, opt.bench.requests, opt.bench.warmup, opt.seed,
                         *opt.pool, pres, result);
     if (ok) {
         PrintPerfResult("GeSession 变长负载 (请求池回放)", result);

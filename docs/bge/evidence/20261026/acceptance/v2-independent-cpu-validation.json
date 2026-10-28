@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "device_execution": false,
+  "frozen_plugin_sha256": "76ea9fb0f1800369b023e22d71298e508dcfaa6f69f34bcf952af4a1b5fa48ed",
+  "source_sha256": {
+    "add_layernorm_pass.cpp": "e4d2894adbd1a0684f240581d79a1d88f0d2f5bdcaed29477c31106834e2ceb5",
+    "test_add_layernorm_pass.cpp": "4ca200789f03d495a648da0cc57ca04fa75e87a5ce6ea8baf85c046e04cf01dd",
+    "add_layernorm_pass_v2.cpp": "831de3786b4251b1fb26d4e641050dfbb2186229f29a946605671d19fe83bf74",
+    "preload_scope_filter.h": "df898ca1aea1452a4c9b36a54bae241cef423feac80e04558f55648addecdc59",
+    "test_preload_scope.cpp": "826310aaf311e85a65050f1aba8bd01d345eb72d20a76363f0665d190e63157c",
+    "preload_probe.cpp": "f324ba62c95d9e74d610cd56af6d985e7e5217fdf084f871e763e64013c1227c",
+    "build_add_layernorm_v2.py": "2a1578df057c010b53a60aae7c893108bc4d86e770c72b144fa4e51c96521aee"
+  },
+  "independent_rebuild_7_graph_11_filter_3_integration": "pass",
+  "additional_frozen_plugin_integration_checks": [
+    {
+      "argv": [
+        "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/acceptance/v2-independent-build/v2-cpu-probes/ge_runtime"
+      ],
+      "exit_code": 0,
+      "stdout": "LD_PRELOAD=/usr/lib64/libtcmalloc.so.4.5.16\nSELF_MAPPED=1\n",
+      "stderr": "[BGE_PRELOAD_SCOPE] removed self from child LD_PRELOAD; other entries preserved\n"
+    },
+    {
+      "argv": [
+        "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/acceptance/v2-independent-build/v2-cpu-probes/ge_runtime",
+        "--child-python"
+      ],
+      "exit_code": 0,
+      "stdout": "CHILD_LD_PRELOAD=/usr/lib64/libtcmalloc.so.4.5.16\nCHILD_SELF_MAPPED=False\n",
+      "stderr": "[BGE_PRELOAD_SCOPE] removed self from child LD_PRELOAD; other entries preserved\n"
+    },
+    {
+      "argv": [
+        "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/acceptance/v2-independent-build/v2-cpu-probes/cpu_probe"
+      ],
+      "exit_code": 0,
+      "stdout": "LD_PRELOAD=/usr/lib64/libtcmalloc.so.4.5.16 /export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass_v2.so\nSELF_MAPPED=1\n",
+      "stderr": ""
+    }
+  ],
+  "duration_seconds": 7.148769434075803
+}

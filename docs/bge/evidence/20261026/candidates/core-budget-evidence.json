@@ -1,0 +1,103 @@
+{
+  "observed_at_utc": "2026-10-26T03:35:42.975140+00:00",
+  "method": "read installed SDK text and existing evidence only; no GEInitialize/aclInit/device run/profiling",
+  "device_context": {
+    "logical_device": 10,
+    "pci": "0000:89:00.0",
+    "target": "Ascend910_9382",
+    "device_mapping_source": "parent controller preflight; not independently re-queried by this static task"
+  },
+  "platform_file": {
+    "path": "/usr/local/Ascend/cann-9.0.0/aarch64-linux/data/platform_config/Ascend910_9382.ini",
+    "sha256": "5fec39b122918ffdfff8e6444869457cbd220d7436e9d1f9b3fd715148b3f8fb",
+    "version": {
+      "soc_version": "Ascend910_9382",
+      "short_soc_version": "Ascend910_93",
+      "aic_version": "AIC-C-220",
+      "ccec_aic_version": "dav-c220-cube",
+      "ccec_aiv_version": "dav-c220-vec",
+      "ccec_cube_version": "dav-c220-cube",
+      "ccec_vector_version": "dav-c220-vec",
+      "compiler_aicpu_support_os": "true",
+      "arch_type": "4",
+      "npuarch": "2201"
+    },
+    "soc_info": {
+      "ai_core_cnt": "24",
+      "cube_core_cnt": "24",
+      "vector_core_cnt": "48",
+      "ai_cpu_cnt": "6",
+      "memory_type": "",
+      "memory_size": "68719476736",
+      "l2_type": "0",
+      "l2_size": "201326592",
+      "l2pagenum": "64",
+      "normal_stream_num": "2048",
+      "normal_stream_depth": "2048",
+      "huge_stream_num": "0",
+      "huge_stream_depth": "0",
+      "prefetch_num": "8",
+      "ffts_mode": "ffts-plus",
+      "core_type_list": "CubeCore,VectorCore",
+      "cube_vector_combine": "split",
+      "hardware_sync_betweencore": "1",
+      "vir_type_list": "2,3,6,12,24",
+      "support_bf16": "1",
+      "support_inf_nan": "1"
+    }
+  },
+  "target_static_limits": {
+    "aic_cube": 24,
+    "aiv_vector": 48,
+    "ai_core_cnt": 24,
+    "full_pair": "24|48",
+    "is_runtime_current_visible_core_measurement": false
+  },
+  "option": {
+    "ge_key": "ge.aicoreNum",
+    "runner_key": "build.options.aicore_num",
+    "format": "AIC|AIV positive decimal integers",
+    "header_evidence": [
+      {
+        "line": 216,
+        "text": "const char_t *const AICORE_NUM = \"ge.aicoreNum\";"
+      },
+      {
+        "line": 397,
+        "text": "const std::string AICORE_NUM = \"ge.aicoreNum\";"
+      }
+    ],
+    "installed_header_sha256": "1353547dbe08d8f06fc2e199369b260559b9eeb8f9cbfed9bbef47a4aad22216"
+  },
+  "legality": {
+    "sdk_target_aic_range_inclusive": [
+      1,
+      24
+    ],
+    "sdk_target_aiv_range_inclusive": [
+      1,
+      48
+    ],
+    "conditions": [
+      "Each value must also be <= the actual device-visible hardware limit; virtual devices or masked cores can lower availability.",
+      "These are compiler per-operator core ceilings, not exclusive core reservations per instance.",
+      "Some kernels use fewer cores or runtime fallback/tiling policies; compilation success alone does not prove every operator uses the requested ceiling.",
+      "vir_type_list=2,3,6,12,24 in the platform file describes virtual types; it is not the allowed-list for ge.aicoreNum values."
+    ],
+    "same_version_device_acceptance_test": "not run in this task",
+    "official_semantics_reference": "https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/910/devaids/atctool/atlasatcparam_16_0038.html",
+    "reference_version_limit": "9.1 official parameter semantics; exact 9.0 page inaccessible. Actual 9.0 target counts/header are verified locally."
+  },
+  "recommendation": {
+    "primary_pair": "12|24",
+    "fraction_of_sdk_target": "one half of 24|48",
+    "secondary_pair_if_budget_and_evidence_warrant": "6|12",
+    "experiment": "Hold model, FP32 precision, workload, measurement boundary, stream/instance count fixed against the corresponding all-core configuration; change only core pair. Revalidate all outputs and supervised cleanup, then benchmark QPS and p99.",
+    "expected_qps_gain": "not predicted without measurement"
+  },
+  "hardware_visibility": {
+    "status": "unconfirmed by this task",
+    "evidence": "Installed libge_common_base.so separately has runtime platform-info messages for aicore_num/vector_core_num, distinct from static platform config. No runtime API is called here.",
+    "next_confirmation": "Reuse controller existing runtime capability/GE logs for device10, or capture the authorized run GE/platform core counts; do not treat this static 24|48 as a new physical measurement."
+  }
+}

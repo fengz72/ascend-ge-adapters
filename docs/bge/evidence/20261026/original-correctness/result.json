@@ -1,0 +1,98 @@
+{
+  "returncode": 0,
+  "elapsed_seconds": 53.4243528470397,
+  "plan": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/original-plan.json",
+  "binary": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/runtime/build/ge_runtime",
+  "runtime": {
+    "backend": "ge_session",
+    "mode": "infer",
+    "outputs": {
+      "case-0000": [
+        {
+          "instance": 0,
+          "tensors": [
+            {
+              "bytes": 40448,
+              "dtype": "float32",
+              "name": "scores",
+              "offset": 0,
+              "shape": [
+                1,
+                10112
+              ]
+            }
+          ]
+        }
+      ],
+      "case-0001": [
+        {
+          "instance": 0,
+          "tensors": [
+            {
+              "bytes": 40448,
+              "dtype": "float32",
+              "name": "scores",
+              "offset": 40448,
+              "shape": [
+                1,
+                10112
+              ]
+            }
+          ]
+        }
+      ],
+      "case-0002": [
+        {
+          "instance": 0,
+          "tensors": [
+            {
+              "bytes": 40448,
+              "dtype": "float32",
+              "name": "scores",
+              "offset": 80896,
+              "shape": [
+                1,
+                10112
+              ]
+            }
+          ]
+        }
+      ],
+      "case-0003": [
+        {
+          "instance": 0,
+          "tensors": [
+            {
+              "bytes": 40448,
+              "dtype": "float32",
+              "name": "scores",
+              "offset": 121344,
+              "shape": [
+                1,
+                10112
+              ]
+            }
+          ]
+        }
+      ],
+      "case-0004": [
+        {
+          "instance": 0,
+          "tensors": [
+            {
+              "bytes": 40448,
+              "dtype": "float32",
+              "name": "scores",
+              "offset": 161792,
+              "shape": [
+                1,
+                10112
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "status": "success"
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "kind": "performance",
+  "passed": true,
+  "statistics_sufficient": true,
+  "errors": 0,
+  "minimum_seconds": 2.0,
+  "minimum_window_successes": 5000,
+  "window_seconds": 10.936959482,
+  "window_successes": 5000,
+  "cohort_successes": 5015,
+  "drain_ms": 17.019898,
+  "qps": 457.1654497055583,
+  "p50_ms": 34.883924,
+  "p99_ms": 38.534503,
+  "max_ms": 40.898117,
+  "p99_limit": null,
+  "SLO_acceptance": "not_configured",
+  "per_case": {
+    "case-0001": {
+      "count": 1040,
+      "p50_ms": 34.988906,
+      "p99_ms": 38.801706
+    },
+    "case-0004": {
+      "count": 931,
+      "p50_ms": 34.815623,
+      "p99_ms": 38.377561
+    },
+    "case-0000": {
+      "count": 1030,
+      "p50_ms": 34.713693,
+      "p99_ms": 38.112888
+    },
+    "case-0002": {
+      "count": 997,
+      "p50_ms": 34.895394,
+      "p99_ms": 38.827176
+    },
+    "case-0003": {
+      "count": 1017,
+      "p50_ms": 35.028186,
+      "p99_ms": 38.475442
+    }
+  },
+  "segments": {
+    "h2d_ms": {
+      "mean": 0.11110329012961116,
+      "p99": 0.16
+    },
+    "desc_ms": {
+      "mean": 0.0012745762711864408,
+      "p99": 0.003
+    },
+    "execute_ms": {
+      "mean": 34.71876491226321,
+      "p99": 38.355401
+    },
+    "d2h_ms": {
+      "mean": 0.03957494675972084,
+      "p99": 0.06213
+    },
+    "unattributed_host_ms": {
+      "mean": 0.004240945762712375,
+      "p99": 0.0074320000000014375
+    }
+  },
+  "events_sha256": "3f4ca3af37f667cfba9cc096cb7d3d9df1aa9cd035708b05b15f7d855f711027",
+  "performance_sha256": "02397e42a9da8429801c89903f510542948c831ba560adeb4dfd693d20c73d29"
+}

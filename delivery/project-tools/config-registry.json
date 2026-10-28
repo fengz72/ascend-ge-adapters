@@ -1,0 +1,272 @@
+{
+  "historical_configs": 9,
+  "known": {
+    "base": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "instances": 1,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "multi2": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "instances": 2,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "multi4": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "instances": 4,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "multi8": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "instances": 8,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "multi16": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "instances": 16,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "fp16": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "cube_fp16in_fp32out",
+        "graph_run_mode": 0
+      },
+      "instances": 1,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "mixed": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "allow_mix_precision_fp16",
+        "graph_run_mode": 0
+      },
+      "instances": 1,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "fusion-v2": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0
+      },
+      "instances": 1,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088",
+        "76ea9fb0f1800369b023e22d71298e508dcfaa6f69f34bcf952af4a1b5fa48ed"
+      ]
+    }
+  },
+  "new": {
+    "half8": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "instances": 8,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "fusion8-half": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "instances": 8,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088",
+        "76ea9fb0f1800369b023e22d71298e508dcfaa6f69f34bcf952af4a1b5fa48ed"
+      ]
+    },
+    "attention8-half": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "instances": 8,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088",
+        "5472882c2c401e7b99f5dde12470742519397a204650a4e76803df802249e299"
+      ]
+    },
+    "half10": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "instances": 10,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "half12": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "instances": 12,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "half16": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "must_keep_origin_dtype",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "instances": 16,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "forcefp16-half8": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "force_fp16",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "instances": 8,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "forcefp16-graph-one": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "force_fp16",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "instances": 1,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "forcefp16-half10": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "force_fp16",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "instances": 10,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "forcefp16-half12": {
+      "binary": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "force_fp16",
+        "graph_run_mode": 0,
+        "aicore_num": "12|24"
+      },
+      "instances": 12,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    },
+    "forcefp16-half10-dtypefix": {
+      "binary": "735a3532ecb131de203200a328835af0d58bcddf27f9572eb997b5d6808e43f4",
+      "graph": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822",
+      "weights": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d",
+      "options": {
+        "precision_mode": "force_fp16",
+        "aicore_num": "12|24",
+        "graph_run_mode": 0
+      },
+      "instances": 10,
+      "preloads": [
+        "9494d91dad1aab035a07bbeb9dced6b186050821aa028e285f001e5a3947f088"
+      ]
+    }
+  },
+  "max_new_configs": null,
+  "extension_note": "User requested continuing instance-count search beyond eight on 2026-10-27; five additional unique configurations allowed within the existing 7200-second device-time cap.",
+  "max_device_seconds": null,
+  "instance_search_policy": "Use an idle exclusive logical device; account for cumulative device time, bound each job, and stop on replicated QPS plateau, memory capacity, correctness failure, or loss of device exclusivity."
+}

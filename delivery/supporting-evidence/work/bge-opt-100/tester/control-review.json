@@ -1,0 +1,25 @@
+{
+  "schema": "bge100-control-independent-review/1",
+  "at": "2026-10-26T12:47:28.009287+00:00",
+  "control_tests_passed": 13,
+  "acceptance_existing_tests_passed": 22,
+  "acceptance_additional_tests_passed": 1,
+  "acceptance_additional_tests_failed": 3,
+  "env_run_bash_syntax_exit": 0,
+  "npu_used": false,
+  "ssh_used": false,
+  "implementation_edited": false,
+  "open_issue": "perf_check ignores explicit runtime scope/arrival/capture labels; developer repair pending",
+  "sha256": {
+    "work/bge-opt-100/control.py": "9b4852063d704491681894425c67e9dbc7ab6ff9a8327ea57ccf3aeda902168b",
+    "work/bge-opt-100/env_run.sh": "cced62b8c869469615ee93369ec5841862620960730097dafe6eff5eb9974a75",
+    "work/bge-opt-100/tester/test_control_guardrails.py": "19038009450b16387387b76c2fff2e8057090234cc999472dada9d73819a803a",
+    "work/bge-opt-100/tester/control-guardrails.log": "71a31bbebb1899157b62aaab1d944bf87317b98df7ecfdaafda41f8307b72952",
+    "work/bge-opt-100/acceptance/verify_outputs.py": "9ed38845ff0fec81133699c8558150aba2e2d5491c978ee5cf3f827c9b06f1f5",
+    "work/bge-opt-100/acceptance/validate_run_identity.py": "fd409b6ec90cdf10bf0e70f60063954d403aa0f658c21dffe7c54c9ec7385136",
+    "work/bge-opt-100/acceptance/workload_identity.py": "fdbd79bd5497a6c4a0cc528b760921dc6b81081587b592f69245c4902fd34708",
+    "work/bge-opt-100/tester/migrated-acceptance-independent.log": "84ed526132852f09ea888f640fae3b8dd89a74cbef6b178bce379c79d71bc60c",
+    "work/bge-opt-100/tester/test_migrated_acceptance_guardrails.py": "8a4627bdb0b51a1a5fa7b1ca9f4a084fcdeca71aef99dee63fb8a3733d2427a9",
+    "work/bge-opt-100/tester/migrated-acceptance-guardrails.log": "2666c9a3ef49c47e61d51f7cbed408cd72440a7e9acba1aa821933b3ea4c0212"
+  }
+}

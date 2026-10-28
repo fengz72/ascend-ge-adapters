@@ -1,0 +1,11 @@
+{
+  "outer_exit": 0,
+  "runtime_exit": 0,
+  "fusion_replacement_counts": [
+    48
+  ],
+  "runtime_signal_typeerror_count": 0,
+  "runtime_all_typeerror_count": 0,
+  "task_all_typeerror_count": 0,
+  "scoped_preload_message": true
+}

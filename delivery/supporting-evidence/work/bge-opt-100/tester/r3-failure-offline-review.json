@@ -1,0 +1,27 @@
+{
+  "schema": "bge100-r3-failure-offline-review/1",
+  "at": "2026-10-26T14:37:12.377942+00:00",
+  "ssh_used": false,
+  "npu_task_started": false,
+  "run_id": "final-best-fixed-r3",
+  "native_returncode": -15,
+  "outer_exit_code": 241,
+  "supervisor_reason": "exited",
+  "charged_seconds": 103.176791,
+  "native_elapsed_seconds": 96.64865864592139,
+  "valid_performance_round": false,
+  "signal_sender_known": false,
+  "measurement_start_independently_confirmed": null,
+  "process_group_stopped": true,
+  "before_after_both_chip_gates_clear": true,
+  "retry_name": "final-best-fixed-r3-retry1",
+  "retry_actual_evidence_reviewed": false,
+  "sources_sha256": {
+    "final-best-fixed-r3-failure.txt": "7afe4956ce8474636ca57f7815f15538737b0c53fd09cc6733dfc86ac74ea0d4",
+    "final-best-fixed-r3-runtime.txt": "14e7dd32c68e397db5ff14c552934555ec47734f00ebc70304539a9e69c50605",
+    "r3-failure-host-state.txt": "b008607391950244b6d2f9ec8c49bfa4f3cdbb0f4485276874286d90dec1b01d",
+    "host-pid-snapshot-r2.txt": "ed94ca408b764862139e44f895b700049f049b4ee1f392ccc6338af00461c1d1",
+    "npu-smi-r2.txt": "e7798a25e679fb9a37863475fcdf477689bb749037d3716ed99f9397cf0eeedf",
+    "legacy-tools/run_runtime.py": "c1b774677e6e722228d3fc7f0927af2bca454a18801e69c4365eeb6df2585a4c"
+  }
+}

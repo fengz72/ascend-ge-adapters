@@ -1,0 +1,58 @@
+{
+  "schema": "bge-independent-checkpoint/1",
+  "checked_at": "2026-10-26T04:02:03.298177+00:00",
+  "final_acceptance_complete": false,
+  "device": 10,
+  "current_device_external_pid": 4088730,
+  "resource_gate_blocked": true,
+  "read_only_pid_observer_exit_code": 0,
+  "initial_baseline": {
+    "formal_three_rounds_passed": true,
+    "median_qps": 175.32104416967806,
+    "merged_p99_ms": 6.819411,
+    "range_percent": 11.449547347781035
+  },
+  "best_single_search_observation": {
+    "instances": 8,
+    "all_cores": true,
+    "dtype": "float32",
+    "precision_mode": "must_keep_origin_dtype",
+    "graph_run_mode": 0,
+    "qps": 461.3333035188673,
+    "p99_ms": 18.24347,
+    "gain_vs_initial_median_percent": 163.13629701656507,
+    "final_adoption": false
+  },
+  "remaining": [
+    "Any resumed candidate search must pass fresh exclusive device gate",
+    "Freeze selected config",
+    "Three independent formal candidate rounds with interleaved new baseline comparison",
+    "Final pre-stability full-output pressure validation",
+    "10-minute steady-state resources/throughput/lifecycle validation",
+    "Post-stability full-output pressure validation",
+    "Final delivery and budget/cleanup audit"
+  ],
+  "invalid_performance_runs": {
+    "fusion-search": "outer125 background_children despite native0",
+    "multi16-search": "native-9 outer125 task247 no runtime/perf; SIGKILL cause unconfirmed"
+  },
+  "evidence": {
+    "cpu-golden-manifest.json": "ba2afe4a2ab5c867174b5f515966f77413e79409d113c5a305fff7130bb3561f",
+    "graph-integrity.json": "8190d2635770845ed48570eddc55f6288e317657428c159a8298bec4285243e7",
+    "original-mode0-correctness.json": "939832ec961edf84ea4022dce9bc88c4ddb9a5fe981d14dce478270e6603e1e5",
+    "measurement-independent-cpu.json": "7e8616af2382155d68a577d595e0b8f0e9a0250ee3c19c9b4b781ed1acfa6217",
+    "baseline-performance-summary.json": "9db81f1ff99689379936dee643a23966425504012f7a6eb427f71ba3eaa61cf5",
+    "fp16-pressure-correctness.json": "690207dc32f0b5fb6045b48d33f6d6549e87a00500ab1bea573473c1fdb374bb",
+    "mixed-pressure-correctness.json": "e72fa8abb6ccecb88c9236621a084066e6848006c821636684dbdcb711821a66",
+    "fusion-v2-pressure-correctness.json": "ebaa92f07a90c85f9550ef1ec634dd019e9da92dbe65a73da881e61c68c3ac47",
+    "multi8-pressure-correctness.json": "e94333502ac5e5316c48c963f3f14dd60b024a5552d9809d0fa1ef2ca085213e",
+    "multi8-search-statistics.json": "9d6adcfa0b582ba3929264d1f62bd5445c4570d1e77ea3c208c31a84528a8d8e",
+    "multi16-pressure-correctness.json": "2c55bca090a387940800317c0f2e964416e61da19fb366a0824d5af19edb4ae0",
+    "multi16-search-sigkill-container-evidence.json": "a3cdba5d08527eeadb1df0a381fec57729571f766b42056ef5b3dbd9b30def0d",
+    "multi16-search-sigkill-host-evidence.json": "b578d6d7b02939e496ea501cd3282e96fc9470cf285fe87286b141b8a90598ca",
+    "device10-external-holder-20261026.json": "85b10e79fdca6253b873015306da602a2f3e952c68bc3e3d9855ff4d741cc587",
+    "host-observer-lifecycle.jsonl": "e2e220f81b7e1320378118a320365cabf07eb0416366c5fb991ba95cb2c247ab",
+    "replay-cli-independent-tests.json": "7de5b52e756fd1a2efc81836858c4f1e6a32f7ded52b5cc6a4df60a1578f1716",
+    "replay-cli-real-preparation.json": "9117e16e4ff2338edfd6fb097f78ad29bd227dbb42be5e2dd79b1f3414377181"
+  }
+}

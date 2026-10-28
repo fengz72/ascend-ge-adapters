@@ -1,0 +1,494 @@
+{
+  "observed_utc": "2026-10-24T08:03:31.873008+00:00",
+  "host_alias": "99",
+  "container": "hejun-cann9-bge",
+  "root": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters",
+  "head": "441b245fc18ee2a78156becf80488ee16ad3474d",
+  "status": "",
+  "submodules": "fbf0400872079046c1b494188c5d8bd2749d868a third_party/ascend-ops (remotes/origin/codex/prefix-planner-overlap)\n fba9f846cc31792fb155cb8c5653b06a74ea4137 third_party/custom_development_code (remotes/origin/HEAD)",
+  "identity": {
+    "model.onnx": {
+      "path": "/export/home/ext.hejun23/workspace/bge/model.onnx",
+      "bytes": 1345962755,
+      "sha256": "2080f8762d9f8de50f8ec22f6a560453d3052d13012ea6fe7c199197962b3ba0"
+    },
+    "sample_inputs.json": {
+      "path": "/export/home/ext.hejun23/workspace/bge/sample_inputs.json",
+      "bytes": 27675,
+      "sha256": "66571de2fa8c6a97e52a196a957801ab09b429751ba9cfb94712bb32c660b194"
+    },
+    "expected_outputs.json": {
+      "path": "/export/home/ext.hejun23/workspace/bge/expected_outputs.json",
+      "bytes": 2526,
+      "sha256": "4765cc2b9dac9d2f523f9a684a81082d3b943caaff1fd2c4db90cfdf1b375384"
+    }
+  },
+  "graph": {
+    "nodes": 3137,
+    "initializers": 400,
+    "op_counts": {
+      "MatMul": 199,
+      "ReduceL2": 5,
+      "Constant": 882,
+      "Clip": 13,
+      "Shape": 232,
+      "Expand": 7,
+      "Div": 104,
+      "Gather": 209,
+      "Unsqueeze": 207,
+      "Concat": 101,
+      "Reshape": 101,
+      "Cast": 56,
+      "Slice": 30,
+      "ConstantOfShape": 4,
+      "Mul": 154,
+      "Equal": 2,
+      "Where": 5,
+      "Add": 346,
+      "ReduceMean": 98,
+      "Sub": 52,
+      "Pow": 49,
+      "Sqrt": 121,
+      "Transpose": 97,
+      "Softmax": 25,
+      "Erf": 24,
+      "Squeeze": 2,
+      "Less": 3,
+      "Greater": 1,
+      "GreaterOrEqual": 1,
+      "And": 2,
+      "LessOrEqual": 1,
+      "ReduceSum": 4
+    },
+    "inputs": [
+      {
+        "name": "input_ids",
+        "dtype": "INT64",
+        "shape": [
+          "batch_size",
+          "sequence_length"
+        ]
+      },
+      {
+        "name": "attention_mask",
+        "dtype": "INT64",
+        "shape": [
+          "batch_size",
+          "sequence_length"
+        ]
+      },
+      {
+        "name": "long_cid3_raw",
+        "dtype": "INT64",
+        "shape": [
+          "batch_size",
+          "long_len"
+        ]
+      },
+      {
+        "name": "long_action",
+        "dtype": "INT64",
+        "shape": [
+          "batch_size",
+          "long_len"
+        ]
+      },
+      {
+        "name": "long_time_bucket",
+        "dtype": "INT64",
+        "shape": [
+          "batch_size",
+          "long_len"
+        ]
+      },
+      {
+        "name": "stat_dense_raw",
+        "dtype": "INT64",
+        "shape": [
+          "batch_size",
+          20
+        ]
+      },
+      {
+        "name": "stat_ratio",
+        "dtype": "FLOAT",
+        "shape": [
+          "batch_size",
+          20
+        ]
+      },
+      {
+        "name": "stat_count",
+        "dtype": "INT64",
+        "shape": [
+          "batch_size"
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "scores",
+        "dtype": "FLOAT",
+        "shape": [
+          "batch_size",
+          10112
+        ]
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "case-0000",
+      "inputs": {
+        "attention_mask": {
+          "shape": [
+            1,
+            6
+          ],
+          "dtype": "int64",
+          "bytes": 48
+        },
+        "input_ids": {
+          "shape": [
+            1,
+            6
+          ],
+          "dtype": "int64",
+          "bytes": 48
+        },
+        "long_action": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "long_cid3_raw": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "long_time_bucket": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "stat_count": {
+          "shape": [
+            1
+          ],
+          "dtype": "int64",
+          "bytes": 8
+        },
+        "stat_dense_raw": {
+          "shape": [
+            1,
+            20
+          ],
+          "dtype": "int64",
+          "bytes": 160
+        },
+        "stat_ratio": {
+          "shape": [
+            1,
+            20
+          ],
+          "dtype": "float32",
+          "bytes": 80
+        }
+      },
+      "input_bytes": 3416
+    },
+    {
+      "case_id": "case-0001",
+      "inputs": {
+        "attention_mask": {
+          "shape": [
+            1,
+            9
+          ],
+          "dtype": "int64",
+          "bytes": 72
+        },
+        "input_ids": {
+          "shape": [
+            1,
+            9
+          ],
+          "dtype": "int64",
+          "bytes": 72
+        },
+        "long_action": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "long_cid3_raw": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "long_time_bucket": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "stat_count": {
+          "shape": [
+            1
+          ],
+          "dtype": "int64",
+          "bytes": 8
+        },
+        "stat_dense_raw": {
+          "shape": [
+            1,
+            20
+          ],
+          "dtype": "int64",
+          "bytes": 160
+        },
+        "stat_ratio": {
+          "shape": [
+            1,
+            20
+          ],
+          "dtype": "float32",
+          "bytes": 80
+        }
+      },
+      "input_bytes": 3464
+    },
+    {
+      "case_id": "case-0002",
+      "inputs": {
+        "attention_mask": {
+          "shape": [
+            1,
+            8
+          ],
+          "dtype": "int64",
+          "bytes": 64
+        },
+        "input_ids": {
+          "shape": [
+            1,
+            8
+          ],
+          "dtype": "int64",
+          "bytes": 64
+        },
+        "long_action": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "long_cid3_raw": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "long_time_bucket": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "stat_count": {
+          "shape": [
+            1
+          ],
+          "dtype": "int64",
+          "bytes": 8
+        },
+        "stat_dense_raw": {
+          "shape": [
+            1,
+            20
+          ],
+          "dtype": "int64",
+          "bytes": 160
+        },
+        "stat_ratio": {
+          "shape": [
+            1,
+            20
+          ],
+          "dtype": "float32",
+          "bytes": 80
+        }
+      },
+      "input_bytes": 3448
+    },
+    {
+      "case_id": "case-0003",
+      "inputs": {
+        "attention_mask": {
+          "shape": [
+            1,
+            13
+          ],
+          "dtype": "int64",
+          "bytes": 104
+        },
+        "input_ids": {
+          "shape": [
+            1,
+            13
+          ],
+          "dtype": "int64",
+          "bytes": 104
+        },
+        "long_action": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "long_cid3_raw": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "long_time_bucket": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "stat_count": {
+          "shape": [
+            1
+          ],
+          "dtype": "int64",
+          "bytes": 8
+        },
+        "stat_dense_raw": {
+          "shape": [
+            1,
+            20
+          ],
+          "dtype": "int64",
+          "bytes": 160
+        },
+        "stat_ratio": {
+          "shape": [
+            1,
+            20
+          ],
+          "dtype": "float32",
+          "bytes": 80
+        }
+      },
+      "input_bytes": 3528
+    },
+    {
+      "case_id": "case-0004",
+      "inputs": {
+        "attention_mask": {
+          "shape": [
+            1,
+            8
+          ],
+          "dtype": "int64",
+          "bytes": 64
+        },
+        "input_ids": {
+          "shape": [
+            1,
+            8
+          ],
+          "dtype": "int64",
+          "bytes": 64
+        },
+        "long_action": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "long_cid3_raw": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "long_time_bucket": {
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "int64",
+          "bytes": 1024
+        },
+        "stat_count": {
+          "shape": [
+            1
+          ],
+          "dtype": "int64",
+          "bytes": 8
+        },
+        "stat_dense_raw": {
+          "shape": [
+            1,
+            20
+          ],
+          "dtype": "int64",
+          "bytes": 160
+        },
+        "stat_ratio": {
+          "shape": [
+            1,
+            20
+          ],
+          "dtype": "float32",
+          "bytes": 80
+        }
+      },
+      "input_bytes": 3448
+    }
+  ],
+  "python": "3.11.15 (main, May 13 2026, 09:41:37) [GCC 12.3.1 (openEuler 12.3.1-99.oe2403sp2)]",
+  "onnx_version": "1.17.0",
+  "numpy_version": "1.26.4",
+  "cann_latest": "/usr/local/Ascend/cann-9.0.0",
+  "npu_smi_exit": 0,
+  "npu_smi": "+------------------------------------------------------------------------------------------------+\n| npu-smi 25.5.t6.b001             Version: 25.5.t6.b001                                         |\n+---------------------------+---------------+----------------------------------------------------+\n| NPU   Name                | Health        | Power(W)    Temp(C)           Hugepages-Usage(page)|\n| Chip  Phy-ID              | Bus-Id        | AICore(%)   Memory-Usage(MB)  HBM-Usage(MB)        |\n+===========================+===============+====================================================+\n| 0     Ascend910           | OK            | 166.3       41                0    / 0             |\n| 0     0                   | 0000:9D:00.0  | 0           0    / 0          64859/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 0     Ascend910           | OK            | -           40                0    / 0             |\n| 1     1                   | 0000:9F:00.0  | 0           0    / 0          64342/ 65536         |\n+===========================+===============+====================================================+\n| 1     Ascend910           | OK            | 161.0       40                0    / 0             |\n| 0     2                   | 0000:99:00.0  | 0           0    / 0          64906/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 1     Ascend910           | OK            | -           42                0    / 0             |\n| 1     3                   | 0000:9B:00.0  | 0           0    / 0          64448/ 65536         |\n+===========================+===============+====================================================+\n| 2     Ascend910           | OK            | 168.0       41                0    / 0             |\n| 0     4                   | 0000:95:00.0  | 0           0    / 0          64909/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 2     Ascend910           | OK            | -           40                0    / 0             |\n| 1     5                   | 0000:97:00.0  | 0           0    / 0          64450/ 65536         |\n+===========================+===============+====================================================+\n| 3     Ascend910           | OK            | 165.5       41                0    / 0             |\n| 0     6                   | 0000:91:00.0  | 0           0    / 0          64903/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 3     Ascend910           | OK            | -           41                0    / 0             |\n| 1     7                   | 0000:93:00.0  | 0           0    / 0          64448/ 65536         |\n+===========================+===============+====================================================+\n| 4     Ascend910           | OK            | 185.5       40                0    / 0             |\n| 0     8                   | 0000:8D:00.0  | 0           0    / 0          57880/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 4     Ascend910           | OK            | -           43                0    / 0             |\n| 1     9                   | 0000:8F:00.0  | 0           0    / 0          57469/ 65536         |\n+===========================+===============+====================================================+\n| 5     Ascend910           | OK            | 203.5       42                0    / 0             |\n| 0     10                  | 0000:89:00.0  | 0           0    / 0          57907/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 5     Ascend910           | OK            | -           41                0    / 0             |\n| 1     11                  | 0000:8B:00.0  | 0           0    / 0          57471/ 65536         |\n+===========================+===============+====================================================+\n| 6     Ascend910           | OK            | 178.1       42                0    / 0             |\n| 0     12                  | 0000:85:00.0  | 0           0    / 0          57905/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 6     Ascend910           | OK            | -           41                0    / 0             |\n| 1     13                  | 0000:87:00.0  | 0           0    / 0          57466/ 65536         |\n+===========================+===============+====================================================+\n| 7     Ascend910           | OK            | 201.0       41                0    / 0             |\n| 0     14                  | 0000:81:00.0  | 0           0    / 0          57871/ 65536         |\n+------------------------------------------------------------------------------------------------+\n| 7     Ascend910           | OK            | -           41                0    / 0             |\n| 1     15                  | 0000:83:00.0  | 0           0    / 0          57469/ 65536         |\n+===========================+===============+====================================================+\n+---------------------------+---------------+----------------------------------------------------+\n| NPU     Chip              | Process id    | Process name             | Process memory(MB)      |\n+===========================+===============+====================================================+\n| 0       0                 | 174660        |                          | 61513                   |\n| 0       1                 | 174662        |                          | 61469                   |\n+===========================+===============+====================================================+\n| 1       0                 | 174664        |                          | 61620                   |\n| 1       1                 | 174666        |                          | 61576                   |\n+===========================+===============+====================================================+\n| 2       0                 | 174667        |                          | 61620                   |\n| 2       1                 | 174668        |                          | 61576                   |\n+===========================+===============+====================================================+\n| 3       0                 | 174669        |                          | 61620                   |\n| 3       1                 | 174672        |                          | 61576                   |\n+===========================+===============+====================================================+\n| 4       0                 | 240766        |                          | 54600                   |\n| 4       1                 | 240767        |                          | 54600                   |\n+===========================+===============+====================================================+\n| 5       0                 | 240768        |                          | 54600                   |\n| 5       1                 | 240769        |                          | 54600                   |\n+===========================+===============+====================================================+\n| 6       0                 | 240770        |                          | 54600                   |\n| 6       1                 | 240771        |                          | 54600                   |\n+===========================+===============+====================================================+\n| 7       0                 | 240772        |                          | 54600                   |\n| 7       1                 | 240774        |                          | 54600                   |\n+===========================+===============+====================================================+\n",
+  "device_test_started": false,
+  "reason": "User requested design first; all 16 logical devices occupied by external processes"
+}

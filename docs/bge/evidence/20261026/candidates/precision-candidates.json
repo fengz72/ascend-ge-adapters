@@ -1,0 +1,22 @@
+[
+  {
+    "name": "cube-fp16in-fp32out",
+    "precision_mode": "cube_fp16in_fp32out",
+    "config": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/cube-fp16in-fp32out.yaml",
+    "sha256": "6a174a23050fbb5e96433351643b7bb31890854808b8851d013f65e03a4491ab",
+    "source_unchanged": true,
+    "build_dtype_is_external_io_dtype": true,
+    "actual_kernel_dtype": "pending GE final graph and kernel evidence",
+    "device_validation": "not run by preparation script"
+  },
+  {
+    "name": "auto-mixed-fp16",
+    "precision_mode": "allow_mix_precision_fp16",
+    "config": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/auto-mixed-fp16.yaml",
+    "sha256": "96d7bb276eb0843d6cff4c87ffb2d04ba60b2db4403a0050f780b5e79b2b0082",
+    "source_unchanged": true,
+    "build_dtype_is_external_io_dtype": true,
+    "actual_kernel_dtype": "pending GE final graph and kernel evidence",
+    "device_validation": "not run by preparation script"
+  }
+]

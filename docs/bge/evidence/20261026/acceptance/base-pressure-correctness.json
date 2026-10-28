@@ -1,0 +1,31 @@
+{
+  "kind": "pressure",
+  "passed": true,
+  "requests": 2000,
+  "instances": 1,
+  "per_instance_case_counts": {
+    "0/case-0000": 430,
+    "0/case-0001": 421,
+    "0/case-0002": 394,
+    "0/case-0003": 422,
+    "0/case-0004": 333
+  },
+  "worst": {
+    "max_abs_error": 0.00021588802337646484,
+    "relative_l2": 0.0004473780329645365,
+    "top10_max_abs_error": 9.595939636231066e-05
+  },
+  "failed_requests": 0,
+  "failures": [],
+  "manifest_sha256": "f8a65f2c3bcd73d08f4b7e6b9e947f192d1bd7338c3b0785c9ad2f34dd784d12",
+  "binary_sha256": "ff1a31aa121e8adbf35d24dfb9fe7c1242bd3f5c1accd3d8d0359f52001c6ae8",
+  "events_sha256": "4a0c0f21415fe04801a99deb837adc4d69e9d3da9e62bbbee43f2a510fc88643",
+  "reference_sha256": "a59f406eb5782926181963e94cb1f87e1728621dedc3d613f88a7317d8213f35",
+  "thresholds": {
+    "cosine_min": 0.9999,
+    "relative_l2_max": 0.001,
+    "max_abs_error": 0.001,
+    "top10_atol": 0.001,
+    "top10_rtol": 0
+  }
+}

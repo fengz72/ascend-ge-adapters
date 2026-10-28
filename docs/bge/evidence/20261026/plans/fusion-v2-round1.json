@@ -1,0 +1,599 @@
+{
+  "backend": "ge_session",
+  "graph": {
+    "format": "onnx",
+    "path": "/export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/build/model.onnx",
+    "om_path": null
+  },
+  "io": {
+    "schema": "ge-io/1",
+    "inputs": [
+      {
+        "name": "input_ids",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          -1
+        ],
+        "dynamic_dims": [
+          0,
+          1
+        ],
+        "node": "input_ids"
+      },
+      {
+        "name": "attention_mask",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          -1
+        ],
+        "dynamic_dims": [
+          0,
+          1
+        ],
+        "node": "attention_mask"
+      },
+      {
+        "name": "long_cid3_raw",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          -1
+        ],
+        "dynamic_dims": [
+          0,
+          1
+        ],
+        "node": "long_cid3_raw"
+      },
+      {
+        "name": "long_action",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          -1
+        ],
+        "dynamic_dims": [
+          0,
+          1
+        ],
+        "node": "long_action"
+      },
+      {
+        "name": "long_time_bucket",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          -1
+        ],
+        "dynamic_dims": [
+          0,
+          1
+        ],
+        "node": "long_time_bucket"
+      },
+      {
+        "name": "stat_dense_raw",
+        "dtype": "int64",
+        "shape": [
+          -1,
+          20
+        ],
+        "dynamic_dims": [
+          0
+        ],
+        "node": "stat_dense_raw"
+      },
+      {
+        "name": "stat_ratio",
+        "dtype": "float32",
+        "shape": [
+          -1,
+          20
+        ],
+        "dynamic_dims": [
+          0
+        ],
+        "node": "stat_ratio"
+      },
+      {
+        "name": "stat_count",
+        "dtype": "int64",
+        "shape": [
+          -1
+        ],
+        "dynamic_dims": [
+          0
+        ],
+        "node": "stat_count"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "scores",
+        "dtype": "float32",
+        "shape": [
+          -1,
+          10112
+        ],
+        "dynamic_dims": [
+          0
+        ]
+      }
+    ]
+  },
+  "inputs": {
+    "file": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/original-inputs/inputs.bin",
+    "cases": [
+      {
+        "id": "case-0000",
+        "samples": 1,
+        "tensors": [
+          {
+            "name": "input_ids",
+            "dtype": "int64",
+            "shape": [
+              1,
+              6
+            ],
+            "offset": 0,
+            "bytes": 48
+          },
+          {
+            "name": "attention_mask",
+            "dtype": "int64",
+            "shape": [
+              1,
+              6
+            ],
+            "offset": 48,
+            "bytes": 48
+          },
+          {
+            "name": "long_cid3_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 96,
+            "bytes": 1024
+          },
+          {
+            "name": "long_action",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 1120,
+            "bytes": 1024
+          },
+          {
+            "name": "long_time_bucket",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 2144,
+            "bytes": 1024
+          },
+          {
+            "name": "stat_dense_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 3168,
+            "bytes": 160
+          },
+          {
+            "name": "stat_ratio",
+            "dtype": "float32",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 3328,
+            "bytes": 80
+          },
+          {
+            "name": "stat_count",
+            "dtype": "int64",
+            "shape": [
+              1
+            ],
+            "offset": 3408,
+            "bytes": 8
+          }
+        ],
+        "output_capacities": {
+          "scores": 40448
+        }
+      },
+      {
+        "id": "case-0001",
+        "samples": 1,
+        "tensors": [
+          {
+            "name": "input_ids",
+            "dtype": "int64",
+            "shape": [
+              1,
+              9
+            ],
+            "offset": 3416,
+            "bytes": 72
+          },
+          {
+            "name": "attention_mask",
+            "dtype": "int64",
+            "shape": [
+              1,
+              9
+            ],
+            "offset": 3488,
+            "bytes": 72
+          },
+          {
+            "name": "long_cid3_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 3560,
+            "bytes": 1024
+          },
+          {
+            "name": "long_action",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 4584,
+            "bytes": 1024
+          },
+          {
+            "name": "long_time_bucket",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 5608,
+            "bytes": 1024
+          },
+          {
+            "name": "stat_dense_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 6632,
+            "bytes": 160
+          },
+          {
+            "name": "stat_ratio",
+            "dtype": "float32",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 6792,
+            "bytes": 80
+          },
+          {
+            "name": "stat_count",
+            "dtype": "int64",
+            "shape": [
+              1
+            ],
+            "offset": 6872,
+            "bytes": 8
+          }
+        ],
+        "output_capacities": {
+          "scores": 40448
+        }
+      },
+      {
+        "id": "case-0002",
+        "samples": 1,
+        "tensors": [
+          {
+            "name": "input_ids",
+            "dtype": "int64",
+            "shape": [
+              1,
+              8
+            ],
+            "offset": 6880,
+            "bytes": 64
+          },
+          {
+            "name": "attention_mask",
+            "dtype": "int64",
+            "shape": [
+              1,
+              8
+            ],
+            "offset": 6944,
+            "bytes": 64
+          },
+          {
+            "name": "long_cid3_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 7008,
+            "bytes": 1024
+          },
+          {
+            "name": "long_action",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 8032,
+            "bytes": 1024
+          },
+          {
+            "name": "long_time_bucket",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 9056,
+            "bytes": 1024
+          },
+          {
+            "name": "stat_dense_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 10080,
+            "bytes": 160
+          },
+          {
+            "name": "stat_ratio",
+            "dtype": "float32",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 10240,
+            "bytes": 80
+          },
+          {
+            "name": "stat_count",
+            "dtype": "int64",
+            "shape": [
+              1
+            ],
+            "offset": 10320,
+            "bytes": 8
+          }
+        ],
+        "output_capacities": {
+          "scores": 40448
+        }
+      },
+      {
+        "id": "case-0003",
+        "samples": 1,
+        "tensors": [
+          {
+            "name": "input_ids",
+            "dtype": "int64",
+            "shape": [
+              1,
+              13
+            ],
+            "offset": 10328,
+            "bytes": 104
+          },
+          {
+            "name": "attention_mask",
+            "dtype": "int64",
+            "shape": [
+              1,
+              13
+            ],
+            "offset": 10432,
+            "bytes": 104
+          },
+          {
+            "name": "long_cid3_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 10536,
+            "bytes": 1024
+          },
+          {
+            "name": "long_action",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 11560,
+            "bytes": 1024
+          },
+          {
+            "name": "long_time_bucket",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 12584,
+            "bytes": 1024
+          },
+          {
+            "name": "stat_dense_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 13608,
+            "bytes": 160
+          },
+          {
+            "name": "stat_ratio",
+            "dtype": "float32",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 13768,
+            "bytes": 80
+          },
+          {
+            "name": "stat_count",
+            "dtype": "int64",
+            "shape": [
+              1
+            ],
+            "offset": 13848,
+            "bytes": 8
+          }
+        ],
+        "output_capacities": {
+          "scores": 40448
+        }
+      },
+      {
+        "id": "case-0004",
+        "samples": 1,
+        "tensors": [
+          {
+            "name": "input_ids",
+            "dtype": "int64",
+            "shape": [
+              1,
+              8
+            ],
+            "offset": 13856,
+            "bytes": 64
+          },
+          {
+            "name": "attention_mask",
+            "dtype": "int64",
+            "shape": [
+              1,
+              8
+            ],
+            "offset": 13920,
+            "bytes": 64
+          },
+          {
+            "name": "long_cid3_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 13984,
+            "bytes": 1024
+          },
+          {
+            "name": "long_action",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 15008,
+            "bytes": 1024
+          },
+          {
+            "name": "long_time_bucket",
+            "dtype": "int64",
+            "shape": [
+              1,
+              128
+            ],
+            "offset": 16032,
+            "bytes": 1024
+          },
+          {
+            "name": "stat_dense_raw",
+            "dtype": "int64",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 17056,
+            "bytes": 160
+          },
+          {
+            "name": "stat_ratio",
+            "dtype": "float32",
+            "shape": [
+              1,
+              20
+            ],
+            "offset": 17216,
+            "bytes": 80
+          },
+          {
+            "name": "stat_count",
+            "dtype": "int64",
+            "shape": [
+              1
+            ],
+            "offset": 17296,
+            "bytes": 8
+          }
+        ],
+        "output_capacities": {
+          "scores": 40448
+        }
+      }
+    ]
+  },
+  "device": 10,
+  "instances": 1,
+  "warmup": 0,
+  "iterations": 1,
+  "seed": 2027,
+  "options": {
+    "precision_mode": "must_keep_origin_dtype",
+    "graph_run_mode": 0
+  },
+  "observability": {
+    "profiling": false,
+    "dump": false
+  },
+  "output_dir": "/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/fusion-v2-round1",
+  "mode": "bench",
+  "monitor_resources": true,
+  "replay": {
+    "run_id": "fusion-v2-round1",
+    "min_seconds": 60,
+    "max_seconds": 300,
+    "min_requests": 10000,
+    "max_requests": 2000000,
+    "warmup_per_case": 10,
+    "capture_outputs": false
+  },
+  "runtime_env": {
+    "LD_PRELOAD": "/usr/lib64/libtcmalloc.so.4.5.16:/export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/candidates/libbge_add_layernorm_pass_v2.so"
+  }
+}

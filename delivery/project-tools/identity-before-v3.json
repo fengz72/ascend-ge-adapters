@@ -1,0 +1,28 @@
+{
+  "schema": "bge100-runtime-identity/1",
+  "project_root": "/export/home/ext.hejun23/workspace/bge-opt-100",
+  "logical_device": 2,
+  "physical_devices": [
+    "100/0000:99:00.0",
+    "100/0000:9B:00.0"
+  ],
+  "binary": {
+    "path": "/export/home/ext.hejun23/workspace/bge-opt-100/runner/runtime/build/ge_runtime",
+    "sha256": "8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d"
+  },
+  "graph": {
+    "path": "/export/home/ext.hejun23/workspace/bge-opt-100/materials/exported/model.onnx",
+    "sha256": "5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822"
+  },
+  "weights": {
+    "path": "/export/home/ext.hejun23/workspace/bge-opt-100/materials/exported/weights.data",
+    "sha256": "5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d"
+  },
+  "plugins": {
+    "/export/home/ext.hejun23/workspace/bge-opt-100/candidates/libbge_add_layernorm_pass_v2.so": "76ea9fb0f1800369b023e22d71298e508dcfaa6f69f34bcf952af4a1b5fa48ed"
+  },
+  "required_preloads": [
+    "/usr/lib64/libtcmalloc.so.4.5.16"
+  ],
+  "npu_id": 1
+}
