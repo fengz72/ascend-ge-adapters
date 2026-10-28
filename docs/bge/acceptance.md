@@ -95,3 +95,53 @@ python3 /export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/run_c
 恢复不重新计预算、不覆盖旧run、不跳过前置设备门禁。恢复后先补固定case原FP32单实例基线，再开展OPT009半核的固定case对照与全五例压力；有收益才考虑四分核，最多再一个最佳N/core上的融合V2组合，每个新组合先分编号并独立验数。最终冻结配置后使用seed2027/2028/2029进行三轮≥60秒且≥10000请求，与同口径单实例基线交错；专门完整输出压力每实例×case≥20，最终10分钟稳定性、≥3次加载/销毁及设备/锁释放全部通过，才更新最终接纳和收益。至少预留50分钟设备预算，不能缩短门槛换取完成状态。
 
 本轮暂缺：半核/最佳并发融合组合、冻结后性能复验、10分钟稳定性。更大shape/生产输入分布、明确p99约束和极端数值边界不在现有五例验收范围。代码未commit/push，源模型和样例只读。
+
+## 附录：业务样例独立验证（2026-10-22，自模型 README 移入）
+
+The five supplied `../sample_inputs.json` cases were executed individually on
+GE Session device 0 in prediction mode (`graph_run_mode=0`), using FP32 and
+`must_keep_origin_dtype`. The original graph retains all 30 Slice nodes and
+zero Range nodes. Node, initializer value, interface and opset signatures match
+between the source and export; the original source file SHA-256 is unchanged.
+
+Expected results come directly from `../expected_outputs.json`. Candidate IDs
+are `argsort(-scores[0])[:10] + 1`. All 50 IDs match in order. Scores pass with
+absolute tolerance `1e-3` and zero relative tolerance; all observed errors are
+also below `1e-4`. The expected scores are supplied to six decimal places.
+
+| Case | Top-10 IDs and order | Maximum absolute score error | Mean absolute score error |
+|---|---:|---:|---:|
+| 0 | Exact match | 6.869653702e-05 | 2.606389084e-05 |
+| 1 | Exact match | 9.422024536e-05 | 3.696981087e-05 |
+| 2 | Exact match | 7.459005737e-05 | 3.298873844e-05 |
+| 3 | Exact match | 8.469063377e-05 | 4.139411488e-05 |
+| 4 | Exact match | 9.572097778e-05 | 5.397958374e-05 |
+
+Artifacts: `work/bge-provided-samples/run-20261022-gemode0/` contains
+`top10_comparison.json` (all 50 rank comparisons), `outputs.npz` (all five
+full score vectors), `graph_integrity.json`, resolved configuration, input
+mapping, and `infer-stage/infer-runtime.log`. The reusable validation script is
+`work/bge-provided-samples/validate_samples.py`. No synthetic samples were used.
+
+## 附录：七步样例流水线（2026-10-22，自模型 README 移入）
+
+The default `bash models/bge/run.sh run --device 0` completed all seven stages
+with the supplied five samples. Both CPU full-score comparison and the external
+Top-10 business checks passed. The original graph and weights are preserved
+(30 Slice, zero Range); runtime logs confirm prediction mode 0.
+
+| Case | CPU/GE cosine | CPU/GE relative L2 | CPU/GE max absolute error | Expected Top-10 max absolute error | IDs and order |
+|---|---:|---:|---:|---:|---|
+| case-0000 | 0.999999978438 | 0.000209465401 | 9.848922491e-05 | 6.869653702e-05 | Exact match |
+| case-0001 | 0.999999958158 | 0.00028989152 | 0.0001145526767 | 9.422024536e-05 | Exact match |
+| case-0002 | 0.999999952284 | 0.0003110775458 | 0.000119931995 | 7.459005737e-05 | Exact match |
+| case-0003 | 0.999999922195 | 0.0003950748066 | 0.000137783587 | 8.469063377e-05 | Exact match |
+| case-0004 | 0.999999905871 | 0.0004473723288 | 0.000215953216 | 9.572097778e-05 | Exact match |
+
+Complete stage results and all 50 rank comparisons are in
+`work/bge/results/20261022T071838-a6374be8/result.json`; the same directory
+contains `graph_integrity.json` and `infer-runtime.log`. Benchmark input pool
+size is 5 (six smoke calls, zero execution errors). The ordinary Python suite
+passed 88 tests and skipped five opt-in hardware probes; the C++ contract test
+also passed.
+
