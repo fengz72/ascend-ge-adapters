@@ -1,0 +1,120 @@
+{
+  "schema": "bge-precompute-case0/1",
+  "host": "100",
+  "container": "hejun-cann9-bge",
+  "device": "physical NPU 0, logical 1, chip 1, PCI 0000:9F:00.0",
+  "workload": "fixed case-0000",
+  "latency_scope": "h2d_desc_execute_sync_d2h",
+  "config": {
+    "precision_mode": "force_fp16",
+    "graph_run_mode": 0,
+    "instances": 10,
+    "aicore_num": "12|24",
+    "fias_layers": 24
+  },
+  "runs": [
+    {
+      "run_id": "bench-baseline-fixed-r2",
+      "variant": "baseline",
+      "round": 2,
+      "qps": 1107.5763825346892,
+      "avg_ms": 9.026775909334384,
+      "p99_ms": 12.076283,
+      "requests": 66464,
+      "errors": 0,
+      "window_successes": 66455,
+      "wall_ms": 60000.376541,
+      "hbm_after_setup_mb": 6595.69921875,
+      "fias_pass_count": 10,
+      "precompute_pass_count": 0,
+      "pre_gate_clean": true,
+      "post_gate_clean": true,
+      "plan_sha256": "a845bb5751f49d6518bfcc2a0dcf2f0e4fa8314cfaa03c2c3d8969d53c756338",
+      "log_sha256": "a435bd17dec6b49a9eb40d5db9d4d658b0a512eaf039a08ad5e1a8e3a2fd741e"
+    },
+    {
+      "run_id": "bench-precompute-fixed-r2",
+      "variant": "precompute",
+      "round": 2,
+      "qps": 1190.2104606820105,
+      "avg_ms": 8.400228179213919,
+      "p99_ms": 11.55423,
+      "requests": 71423,
+      "errors": 0,
+      "window_successes": 71414,
+      "wall_ms": 60001.153039,
+      "hbm_after_setup_mb": 6573.69921875,
+      "fias_pass_count": 10,
+      "precompute_pass_count": 10,
+      "pre_gate_clean": true,
+      "post_gate_clean": true,
+      "plan_sha256": "4577042d9f2f6e205b027a60223adddfde75fae281d8ef1e6aa871d9901a7bec",
+      "log_sha256": "a8380efecf2afda0aeb349714672d70450dc4543f74e763f7fb4a3942df37bad"
+    },
+    {
+      "run_id": "bench-baseline-fixed-r3",
+      "variant": "baseline",
+      "round": 3,
+      "qps": 1070.2279894236124,
+      "avg_ms": 9.341843411310409,
+      "p99_ms": 12.665108,
+      "requests": 64224,
+      "errors": 0,
+      "window_successes": 64215,
+      "wall_ms": 60001.233975,
+      "hbm_after_setup_mb": 6595.69921875,
+      "fias_pass_count": 10,
+      "precompute_pass_count": 0,
+      "pre_gate_clean": true,
+      "post_gate_clean": true,
+      "plan_sha256": "52017a0bf7f80a8a0cc6d8164222c2abcc3acb3f3c376d3967f757b3a5712177",
+      "log_sha256": "b965c9e13301a97176f6a306e35dc68aaeed976d46523418953683523df47589"
+    },
+    {
+      "run_id": "bench-precompute-fixed-r3",
+      "variant": "precompute",
+      "round": 3,
+      "qps": 1200.9484003567466,
+      "avg_ms": 8.324879331016053,
+      "p99_ms": 13.790749,
+      "requests": 72066,
+      "errors": 0,
+      "window_successes": 72057,
+      "wall_ms": 60000.079919,
+      "hbm_after_setup_mb": 6573.6953125,
+      "fias_pass_count": 10,
+      "precompute_pass_count": 10,
+      "pre_gate_clean": true,
+      "post_gate_clean": true,
+      "plan_sha256": "67b303964b26de748a26038139ea850b02983783888d989e4c205828faada5b7",
+      "log_sha256": "c03430631b9e776b03ba2b86a311a004fe7f11834fccf3e6906c1e126d8fd02d"
+    }
+  ],
+  "paired": [
+    {
+      "round": 2,
+      "qps_gain_percent": 7.460801751497548
+    },
+    {
+      "round": 3,
+      "qps_gain_percent": 12.214258291220336
+    }
+  ],
+  "aggregate": {
+    "baseline": {
+      "qps": 1088.9020525485162,
+      "avg_ms": 9.18160952257294,
+      "p99_ms": 12.440766,
+      "requests": 130688
+    },
+    "precompute": {
+      "qps": 1195.579382506964,
+      "avg_ms": 8.362384929248886,
+      "p99_ms": 12.470718,
+      "requests": 143489
+    },
+    "qps_gain_percent": 9.79677921524489,
+    "avg_change_percent": -8.922450811156734,
+    "p99_change_percent": 0.24075687943974078
+  }
+}

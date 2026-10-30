@@ -52,3 +52,55 @@ ctest --test-dir runtime/build --output-on-failure
 - 10 实例为用户指定配置，不声称实例数或随机场景吞吐最优；12 实例未完成独立全量输出与稳定性验收。
 - 更换实例数、精度策略、图或融合插件需重新执行全量输出正确性与稳定性验收；`--capture` 压力检查与正式 QPS 轮分开，性能路径不采集逐请求输出。
 - 更换输入需重跑 `data`/`baseline`/`infer`；仅更换期望 JSON 或分数阈值只需重跑 `compare`，它直接读取当前文件，不依赖原始模型、输入 JSON 或 NPU。
+
+## Appendix: Experimental FIAS and precompute (2026-10-29 / 30)
+
+The default YAML still runs the original ONNX without a custom pass. These
+optional GE passes and their host tests are now in this runner. Build them
+inside the CANN 9.0.0 container:
+
+    bash tools/build_bge_experimental_passes.sh
+
+The normal data, baseline and build stages must first create the input pool,
+CPU golden and exported ONNX in work/bge. For a fresh checkout, run those
+stages through models/bge/run.sh with the same chosen device and target.
+After confirming an idle, exclusive physical NPU, run five-case accuracy on
+the chosen logical device ID (set DEVICE_ID to that integer):
+
+    bash models/bge/run_experimental.sh fias infer --device "$DEVICE_ID" --case-ids all
+    bash models/bge/run.sh compare --case-ids all
+    bash models/bge/run_experimental.sh precompute infer --device "$DEVICE_ID" --case-ids all
+    bash models/bge/run.sh compare --case-ids all
+
+The pass environment applies to the native GE child only. The seven-stage
+bench omits per-request D2H and is not comparable with the full-transfer
+figures below. These experiments ran in the earlier isolated checkout, using
+GE mode 0, force_fp16, 10 instances, 12|24 cores, 60-second no-profiling
+rounds, and H2D plus full D2H. The new runner build has not been independently
+rebenchmarked.
+
+| Optimization / workload | Before QPS / avg / p99 ms | After QPS / avg / p99 ms | QPS change | Decision |
+|---|---:|---:|---:|---|
+| OPT-018 first-layer FIAS, fixed case0, 30s exploration | 875.043 / n.a. / 16.102 | 873.593 or 913.729 / n.a. / 26.885 or 15.482 | -0.17% or +4.42% | No stable benefit |
+| OPT-019 all 24 FIAS, fixed case0 round 1 | 865.5 / n.a. / 29.10 | 1060.4 / n.a. / 12.78 | +22.5% | Accepted in isolated experiment |
+| OPT-019 all 24 FIAS, fixed case0 round 2 | 878.7 / n.a. / 25.06 | 1074.6 / n.a. / 12.45 | +22.3% | Accepted in isolated experiment |
+| OPT-019 all 24 FIAS, five-case random round 1 | 782.1 / n.a. / 27.64 | 1049.6 / n.a. / 12.92 | +34.2% | Accepted in isolated experiment |
+| OPT-019 all 24 FIAS, five-case random round 2 | 741.1 / n.a. / 36.90 | 1054.7 / n.a. / 12.81 | +42.3% | Accepted in isolated experiment |
+| OPT-020 structural matching | Same FIAS behavior | Five-case outputs identical | Not independently measured | Accepted as matcher refactor |
+| OPT-021 precompute, fixed case0 pair 1 | 1107.576 / 9.027 / 12.076 | 1190.210 / 8.400 / 11.554 | +7.461% | Accepted in isolated experiment |
+| OPT-021 precompute, fixed case0 pair 2 | 1070.228 / 9.342 / 12.665 | 1200.948 / 8.325 / 13.791 | +12.214% | Accepted in isolated experiment |
+| OPT-021 two-pair pooled | 1088.902 / 9.182 / 12.441 | 1195.579 / 8.362 / 12.471 | +9.797% | Fixed case0 only; pooled p99 +0.241% |
+
+OPT-021 compares FIAS-only with FIAS plus precomputation. It is not an
+additive gain over OPT-019's original-model comparison. Both pairs used
+opposite A/B order and had zero errors. Five-case full-output and expected
+Top10 checks passed. No random-case performance test or new-runner performance
+acceptance has been completed for OPT-021. Full records:
+[OPT-018](../../docs/bge/experiments/OPT-018.md),
+[OPT-019](../../docs/bge/experiments/OPT-019.md),
+[OPT-020](../../docs/bge/experiments/OPT-020.md),
+[OPT-021](../../docs/bge/experiments/OPT-021.md), and
+[case0 summary](../../docs/bge/evidence/20261030-precompute-case0-summary.json).
+The earlier [GE graph and profiling analysis](../../docs/bge/analysis/fias-fp16-graph-profile-20261029.md)
+explains the candidate constant-chain cost. No post-precompute final graph or
+profiling capture has yet confirmed which kernels disappeared.

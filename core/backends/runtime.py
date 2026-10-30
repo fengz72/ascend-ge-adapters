@@ -1,5 +1,6 @@
 """Native execution and self-contained graph IO; no build or data generation."""
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -15,7 +16,12 @@ def call(plan,path=None):
     # CANN compiler workers can inherit stdout and outlive a crashed runtime.
     # A regular file lets us report the parent's failure without waiting for pipe EOF.
     with (Path(path).open('w+',encoding='utf-8') if path else tempfile.TemporaryFile(mode='w+',encoding='utf-8')) as log:
-        process=subprocess.run([str(RUNTIME)],input=json.dumps(plan),text=True,stdout=log,stderr=subprocess.STDOUT)
+        env=os.environ.copy()
+        # Experimental custom pass: preload only the native runtime. The native
+        # process clears LD_PRELOAD before CANN spawns Python compiler workers.
+        if pass_so:=env.get('BGE_FIAS_PASS_SO'):
+            env['LD_PRELOAD']=pass_so
+        process=subprocess.run([str(RUNTIME)],input=json.dumps(plan),text=True,stdout=log,stderr=subprocess.STDOUT,env=env)
         log.seek(0);output=log.read()
     messages=[line[len('GE_RESULT '):] for line in output.splitlines() if line.startswith('GE_RESULT ')]
     if len(messages)!=1:

@@ -267,8 +267,8 @@ public:
         auto t0 = Clock::now();
         ge::Status st = session_->LoadGraph(ctx->graphId, {}, ctx->stream);
         if (st != ge::SUCCESS) {
-            fprintf(stderr, "[ERROR] LoadGraph(gid=%u) failed (tid=%d), ret=%d\n",
-                    ctx->graphId, tid, st);
+            fprintf(stderr, "[ERROR] LoadGraph(gid=%u) failed (tid=%d), ret=%d: %s\n",
+                    ctx->graphId, tid, st, ge::GEGetErrorMsg().c_str());
             ReleaseContext(*ctx);
             return false;
         }

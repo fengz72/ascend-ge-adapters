@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -20,6 +21,11 @@ using namespace ge_runtime;
 int main(int argc,char **argv) {
     try {
         if(argc!=1) throw std::runtime_error("ge_runtime takes a JSON execution request on stdin");
+        // The experimental pass is already registered by LD_PRELOAD's static
+        // initializer. Do not preload GE libraries again into CANN's Python
+        // forkserver/compiler children: that corrupts their signal handlers.
+        if(std::getenv("BGE_FIAS_PASS_SO") && unsetenv("LD_PRELOAD")!=0)
+            throw std::runtime_error("cannot clear experimental LD_PRELOAD");
         Json plan=Json::parse(std::cin);
         std::string mode=plan.at("mode").get<std::string>();
         if(mode=="write_io" || mode=="read_io") {

@@ -8,6 +8,8 @@
 
 2026-10-28 修复输出 dtype 别名与材料/交付路径后重建了 runtime。上述三轮中位数属于旧二进制；新构建已通过五例全量输出及固定/随机各一轮性能检查，稳定吞吐尚待三轮复核。证据和两个二进制的 SHA256 见 [runner 修复报告](docs/bge/analysis/100-runner-review-fix-20261028.md)。
 
+FIAS 与候选表预计算的可选实验源码、记录和 case-0000 性能已归档到 [BGE 实验附录](models/bge/README.md#appendix-experimental-fias-and-precompute-2026-10-29--30)。默认 BGE 配置仍不启用实验 pass；历史性能数字属于隔离副本，迁入后新构建尚未独立压测。
+
 一个模型一份 YAML，模型改动集中在独立适配文件。框架提供运行能力，优化策略交给 Skills。
 
 ## 环境

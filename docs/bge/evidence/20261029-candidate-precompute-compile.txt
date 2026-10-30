@@ -1,0 +1,150 @@
+[BGE_PRECOMPUTE] matched=1
+[BGE_PRECOMPUTE] replaced=1 rows=10112 width=512 tables_bytes=41418752
+[BGE_FIAS] matched_subgraphs=24
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.0/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.1/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.2/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.3/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.4/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.5/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.6/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.7/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.8/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.9/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.10/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.11/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.12/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.13/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.14/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.15/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.16/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.17/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.18/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.19/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.20/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.21/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.22/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] ports query=0 key=1 value=2 mask=4
+[BGE_FIAS] input_desc port=0 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=1 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=2 status=0 dtype=0 shape=-1,-1,-1,-1,
+[BGE_FIAS] input_desc port=4 status=0 dtype=12 shape=-1,-1,-1,-1,
+[BGE_FIAS] tail_consumers=1 /encoder/backbone/encoder/layer.23/attention/self/Reshape_3:0(Reshape)
+[BGE_FIAS] replaced_subgraphs=24
+[BGE_FIAS] post_opt_subgraphs=24 descriptors_ok=1
+[BGE_PRECOMPUTE] compile_only_passed

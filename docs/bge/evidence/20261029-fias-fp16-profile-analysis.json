@@ -1,0 +1,264 @@
+{
+  "session": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fias-all-20261029/diagnostics-fias-20261029/profile-runtime/bench-profiling/PROF_000001_20261029175515681_00490000MCNNMNJC",
+  "op_csv": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fias-all-20261029/diagnostics-fias-20261029/profile-runtime/bench-profiling/PROF_000001_20261029175515681_00490000MCNNMNJC/mindstudio_profiler_output/op_summary_20261029175828.csv",
+  "step_csv": "/export/home/ext.hejun23/workspace/bge-opt-100/work/fias-all-20261029/diagnostics-fias-20261029/profile-runtime/bench-profiling/PROF_000001_20261029175515681_00490000MCNNMNJC/mindstudio_profiler_output/step_trace_20261029175828.csv",
+  "op_csv_sha256": "a7ea675fced5188e92e379cf0ae9705ca96a100469fddf8e4318e25ba8548f65",
+  "step_csv_sha256": "720a667d2c8de160661263147c6a6d2b6bfae2ff6f9ba72de5cb8c4ffa70b5d2",
+  "model_ids": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "warmup_steps": 100,
+  "measured_steps": 100,
+  "kernels_per_step": 392,
+  "all_op_rows_uniquely_assigned": 78400,
+  "type_sequence_sha256": "f29d91a1b6de4303c3a4c533ea96270b51f1096718bb1b13391f79b9a1b65e46",
+  "total_summed_kernel_us_per_request": 4614.426640000085,
+  "groups": {
+    "candidate_constant_chain": {
+      "kernels_per_request": 6.0,
+      "sum_us_per_request": 334.95987000000036,
+      "fraction_of_summed_kernel_time": 0.07258970531602041
+    },
+    "long_behavior_branch": {
+      "kernels_per_request": 33.0,
+      "sum_us_per_request": 129.7064099999999,
+      "fraction_of_summed_kernel_time": 0.028108889818648734
+    },
+    "stat_branch": {
+      "kernels_per_request": 24.0,
+      "sum_us_per_request": 70.20778999999992,
+      "fraction_of_summed_kernel_time": 0.015214845847023505
+    },
+    "embedding": {
+      "kernels_per_request": 9.0,
+      "sum_us_per_request": 33.96851,
+      "fraction_of_summed_kernel_time": 0.007361371769472831
+    },
+    "encoder": {
+      "kernels_per_request": 296.0,
+      "sum_us_per_request": 3911.4526700000324,
+      "fraction_of_summed_kernel_time": 0.8476573527236658
+    },
+    "query_gate_score": {
+      "kernels_per_request": 23.0,
+      "sum_us_per_request": 122.84552000000039,
+      "fraction_of_summed_kernel_time": 0.026622055042573638
+    },
+    "qkv_projection": {
+      "kernels_per_request": 72.0,
+      "sum_us_per_request": 1021.3472399999985,
+      "fraction_of_summed_kernel_time": 0.22133784317784266
+    },
+    "attention_fias": {
+      "kernels_per_request": 24.0,
+      "sum_us_per_request": 487.0237000000004,
+      "fraction_of_summed_kernel_time": 0.1055437084595176
+    },
+    "attention_output_projection": {
+      "kernels_per_request": 24.0,
+      "sum_us_per_request": 341.1573300000003,
+      "fraction_of_summed_kernel_time": 0.07393276708371162
+    },
+    "ffn_up_projection": {
+      "kernels_per_request": 24.0,
+      "sum_us_per_request": 709.6705599999993,
+      "fraction_of_summed_kernel_time": 0.15379387632869296
+    },
+    "ffn_down_projection": {
+      "kernels_per_request": 24.0,
+      "sum_us_per_request": 815.3975299999988,
+      "fraction_of_summed_kernel_time": 0.17670614219581215
+    },
+    "layernorm": {
+      "kernels_per_request": 49.0,
+      "sum_us_per_request": 316.6043900000005,
+      "fraction_of_summed_kernel_time": 0.06861185900226915
+    },
+    "gelu": {
+      "kernels_per_request": 24.0,
+      "sum_us_per_request": 127.91380999999954,
+      "fraction_of_summed_kernel_time": 0.027720412519115736
+    },
+    "gate_weighting": {
+      "kernels_per_request": 10.0,
+      "sum_us_per_request": 49.207909999999885,
+      "fraction_of_summed_kernel_time": 0.010663927252292166
+    },
+    "final_score_matmul_cast": {
+      "kernels_per_request": 2.0,
+      "sum_us_per_request": 32.39928,
+      "fraction_of_summed_kernel_time": 0.0070213013506699486
+    },
+    "candidate_l2": {
+      "kernels_per_request": 4.0,
+      "sum_us_per_request": 66.60577000000006,
+      "fraction_of_summed_kernel_time": 0.01443424615804464
+    },
+    "stat_l2": {
+      "kernels_per_request": 4.0,
+      "sum_us_per_request": 9.531779999999992,
+      "fraction_of_summed_kernel_time": 0.0020656477486008565
+    },
+    "long_l2": {
+      "kernels_per_request": 4.0,
+      "sum_us_per_request": 8.805999999999992,
+      "fraction_of_summed_kernel_time": 0.0019083627689874443
+    },
+    "query_l2": {
+      "kernels_per_request": 4.0,
+      "sum_us_per_request": 9.983989999999995,
+      "fraction_of_summed_kernel_time": 0.0021636469227734457
+    },
+    "fused_l2": {
+      "kernels_per_request": 4.0,
+      "sum_us_per_request": 9.441359999999994,
+      "fraction_of_summed_kernel_time": 0.0020460526814225872
+    }
+  },
+  "op_types": {
+    "Add": {
+      "kernels_per_request": 55.0,
+      "sum_us_per_request": 102.22186999999941,
+      "fraction_of_summed_kernel_time": 0.02215266987102812
+    },
+    "BatchMatMulV2": {
+      "kernels_per_request": 4.0,
+      "sum_us_per_request": 277.6973299999998,
+      "fraction_of_summed_kernel_time": 0.060180245925416785
+    },
+    "Cast": {
+      "kernels_per_request": 13.0,
+      "sum_us_per_request": 18.23173000000002,
+      "fraction_of_summed_kernel_time": 0.0039510282473576575
+    },
+    "ClipByValue": {
+      "kernels_per_request": 6.0,
+      "sum_us_per_request": 28.89284000000002,
+      "fraction_of_summed_kernel_time": 0.006261414960971074
+    },
+    "Data": {
+      "kernels_per_request": 1.0,
+      "sum_us_per_request": 11.285869999999997,
+      "fraction_of_summed_kernel_time": 0.002445779482583732
+    },
+    "Expand": {
+      "kernels_per_request": 7.0,
+      "sum_us_per_request": 23.528739999999985,
+      "fraction_of_summed_kernel_time": 0.005098952011944771
+    },
+    "Fill": {
+      "kernels_per_request": 2.0,
+      "sum_us_per_request": 5.840479999999996,
+      "fraction_of_summed_kernel_time": 0.001265700043721984
+    },
+    "FusedInferAttentionScore": {
+      "kernels_per_request": 24.0,
+      "sum_us_per_request": 487.0237000000004,
+      "fraction_of_summed_kernel_time": 0.1055437084595176
+    },
+    "GatherV2": {
+      "kernels_per_request": 10.0,
+      "sum_us_per_request": 52.920080000000034,
+      "fraction_of_summed_kernel_time": 0.01146839772925701
+    },
+    "Gelu": {
+      "kernels_per_request": 24.0,
+      "sum_us_per_request": 127.91380999999954,
+      "fraction_of_summed_kernel_time": 0.027720412519115736
+    },
+    "Greater": {
+      "kernels_per_request": 1.0,
+      "sum_us_per_request": 2.560860000000001,
+      "fraction_of_summed_kernel_time": 0.0005549681899374508
+    },
+    "GreaterEqual": {
+      "kernels_per_request": 1.0,
+      "sum_us_per_request": 2.8958399999999993,
+      "fraction_of_summed_kernel_time": 0.0006275622576589376
+    },
+    "LayerNorm": {
+      "kernels_per_request": 49.0,
+      "sum_us_per_request": 316.6043900000005,
+      "fraction_of_summed_kernel_time": 0.06861185900226915
+    },
+    "Less": {
+      "kernels_per_request": 3.0,
+      "sum_us_per_request": 8.17703,
+      "fraction_of_summed_kernel_time": 0.0017720576439806289
+    },
+    "LessEqual": {
+      "kernels_per_request": 1.0,
+      "sum_us_per_request": 3.065279999999999,
+      "fraction_of_summed_kernel_time": 0.0006642818792325502
+    },
+    "LogicalAnd": {
+      "kernels_per_request": 2.0,
+      "sum_us_per_request": 2.5250600000000016,
+      "fraction_of_summed_kernel_time": 0.0005472099129524692
+    },
+    "LpNormV2": {
+      "kernels_per_request": 5.0,
+      "sum_us_per_request": 47.26664000000001,
+      "fraction_of_summed_kernel_time": 0.010243231432106835
+    },
+    "MatMulV2": {
+      "kernels_per_request": 147.0,
+      "sum_us_per_request": 2949.236689999985,
+      "fraction_of_summed_kernel_time": 0.6391339423265662
+    },
+    "Maximum": {
+      "kernels_per_request": 7.0,
+      "sum_us_per_request": 11.198559999999992,
+      "fraction_of_summed_kernel_time": 0.0024268583886295748
+    },
+    "Mul": {
+      "kernels_per_request": 7.0,
+      "sum_us_per_request": 21.45618999999999,
+      "fraction_of_summed_kernel_time": 0.004649806286659178
+    },
+    "RealDiv": {
+      "kernels_per_request": 7.0,
+      "sum_us_per_request": 31.293769999999935,
+      "fraction_of_summed_kernel_time": 0.00678172445710381
+    },
+    "ReduceSum": {
+      "kernels_per_request": 4.0,
+      "sum_us_per_request": 26.38827999999998,
+      "fraction_of_summed_kernel_time": 0.005718647636794913
+    },
+    "SelectV2": {
+      "kernels_per_request": 2.0,
+      "sum_us_per_request": 4.082850000000001,
+      "fraction_of_summed_kernel_time": 0.0008848011505065179
+    },
+    "SoftmaxV2": {
+      "kernels_per_request": 1.0,
+      "sum_us_per_request": 5.383439999999999,
+      "fraction_of_summed_kernel_time": 0.0011666541522913666
+    },
+    "StridedSliceV3": {
+      "kernels_per_request": 6.0,
+      "sum_us_per_request": 39.579589999999996,
+      "fraction_of_summed_kernel_time": 0.008577358161229596
+    },
+    "Sub": {
+      "kernels_per_request": 3.0,
+      "sum_us_per_request": 7.155719999999999,
+      "fraction_of_summed_kernel_time": 0.001550727871144543
+    }
+  },
+  "limitations": [
+    "Kernel durations are additive work across ten concurrent streams, not request wall time.",
+    "The 392-position labels apply only to this verified graph and fixed case.",
+    "Profiling adds overhead and does not establish throughput or p99 acceptance."
+  ]
+}
