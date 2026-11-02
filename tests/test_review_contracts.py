@@ -106,23 +106,30 @@ class FailedMeasurements(unittest.TestCase):
     def payload(self):
         return {'status':'failed','error':'execute failed','performance':{'requests':3,'errors':1,'qps':2.0}}
 
+    def write_runtime(self,path,stdout,exit_code):
+        import sys
+        path.write_text('#!'+sys.executable+'\nimport sys\n'
+                        'sys.stdout.write('+repr(stdout)+')\n'
+                        'sys.stdout.flush()\n'
+                        'sys.exit('+str(exit_code)+')\n')
+        path.chmod(0o700)
+
     def test_native_nonzero_preserves_structured_partial_measurements_and_log(self):
         from core.backends.runtime import call
         payload=self.payload()
         with tempfile.TemporaryDirectory() as directory:
-            binary=Path(directory,'runtime');binary.touch();log=Path(directory,'bench.log')
-            process=subprocess.CompletedProcess([],1,'ACL execute returned 500002\nGE_RESULT '+json.dumps(payload)+'\n')
-            def run(*args,**kwargs):
-                kwargs['stdout'].write(process.stdout)
-                return process
-            with patch('core.backends.runtime.RUNTIME',binary),patch('core.backends.runtime.subprocess.run',side_effect=run):
+            binary=Path(directory,'runtime');log=Path(directory,'bench.log')
+            stdout='ACL execute returned 500002\nGE_RESULT '+json.dumps(payload)+'\n'
+            self.write_runtime(binary,stdout,1)
+            with patch('core.backends.runtime.RUNTIME',binary):
                 result=call({},log)
             self.assertEqual(result['performance'],payload['performance'])
             self.assertIn('500002',result['error']);self.assertIn(str(log),result['error'])
-            self.assertEqual(log.read_text(),process.stdout)
-            process.stdout='load graph failed\n'
-            with patch('core.backends.runtime.RUNTIME',binary),patch('core.backends.runtime.subprocess.run',side_effect=run):
-                with self.assertRaisesRegex(RuntimeError,'load graph failed'):call({},log)
+            self.assertEqual(log.read_text(),stdout)
+            failed=Path(directory,'runtime2');log2=Path(directory,'infer.log')
+            self.write_runtime(failed,'load graph failed\n',1)
+            with patch('core.backends.runtime.RUNTIME',failed):
+                with self.assertRaisesRegex(RuntimeError,'load graph failed'):call({},log2)
 
     def test_crashed_runtime_does_not_wait_for_inherited_stdout_pipe(self):
         import os
@@ -143,13 +150,16 @@ class FailedMeasurements(unittest.TestCase):
             began=time.monotonic()
             try:
                 with patch('core.backends.runtime.RUNTIME',binary):
-                    with self.assertRaisesRegex(RuntimeError,'exit 17.*compiler crashed'):
+                    with self.assertRaises(RuntimeError) as ctx:
                         call({})
+                    self.assertIn('exit 17',str(ctx.exception))
+                    self.assertIn('compiler crashed',str(ctx.exception))
                 self.assertLess(time.monotonic()-began,4)
             finally:
                 if child_file.exists():
                     try:os.kill(int(child_file.read_text()),signal.SIGTERM)
                     except ProcessLookupError:pass
+
 
     def test_worker_preserves_partial_result_and_cleans_only_packed_buffers(self):
         from core.worker import infer_or_bench
@@ -182,5 +192,124 @@ class FailedMeasurements(unittest.TestCase):
                 self.assertEqual(partial['performance']['requests'],3)
                 self.assertEqual(partial['performance']['errors'],1)
                 self.assertEqual([c.args[0] for c in perform.call_args_list],['bench'] if stage=='bench' else list(STEPS))
+
+
+class ExecuteProtocol(unittest.TestCase):
+    """The shared ge_runtime subprocess protocol (core.backends.runtime.execute)."""
+
+    def write_runtime(self,path,stdout='',exit_code=0):
+        import sys
+        path.write_text('#!'+sys.executable+'\nimport sys\n'
+                        'sys.stdout.write('+repr(stdout)+')\n'
+                        'sys.exit('+str(exit_code)+')\n')
+        path.chmod(0o700)
+
+    def test_missing_binary_raises_the_caller_error_type(self):
+        from core.backends.runtime import execute
+        class Custom(RuntimeError):
+            pass
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(Custom) as ctx:
+                execute(Path(directory,'missing'),{},error=Custom)
+            self.assertIn('build it',str(ctx.exception))
+
+    def test_single_ge_result_returns_result_text_and_wall(self):
+        from core.backends.runtime import execute
+        with tempfile.TemporaryDirectory() as directory:
+            binary=Path(directory,'runtime');log=Path(directory,'run.log')
+            self.write_runtime(binary,'started\nGE_RESULT '+json.dumps({'status':'success'})+'\n')
+            result,text,wall=execute(binary,{'mode':'infer'},log_path=log)
+            self.assertEqual(result,{'status':'success'})
+            self.assertIn('GE_RESULT',text);self.assertIn('started',text)
+            self.assertGreaterEqual(wall,0.0)
+            self.assertTrue(log.is_file())
+
+    def test_temp_log_used_when_no_path_given(self):
+        from core.backends.runtime import execute
+        with tempfile.TemporaryDirectory() as directory:
+            binary=Path(directory,'runtime')
+            self.write_runtime(binary,'GE_RESULT '+json.dumps({'status':'success'})+'\n')
+            result,text,wall=execute(binary,{'mode':'infer'})
+            self.assertEqual(result,{'status':'success'})
+            self.assertIn('GE_RESULT',text)
+
+    def test_failed_status_with_nonzero_exit_returns_result_with_error(self):
+        from core.backends.runtime import execute
+        with tempfile.TemporaryDirectory() as directory:
+            binary=Path(directory,'runtime');log=Path(directory,'run.log')
+            self.write_runtime(binary,'ACL execute returned 500002\nGE_RESULT '
+                                +json.dumps({'status':'failed','performance':{'requests':3}})+'\n',exit_code=1)
+            result,text,wall=execute(binary,{'mode':'bench'},log_path=log)
+            self.assertEqual(result['status'],'failed')
+            self.assertEqual(result['performance'],{'requests':3})
+            self.assertIn('500002',result['error']);self.assertIn(str(log),result['error'])
+
+    def test_nonzero_exit_without_failed_status_raises(self):
+        from core.backends.runtime import execute
+        with tempfile.TemporaryDirectory() as directory:
+            binary=Path(directory,'runtime')
+            self.write_runtime(binary,'GE_RESULT '+json.dumps({'status':'success'})+'\n',exit_code=2)
+            with self.assertRaisesRegex(RuntimeError,'exited 2'):execute(binary,{'mode':'infer'})
+
+    def test_multiple_ge_result_lines_raise(self):
+        from core.backends.runtime import execute
+        with tempfile.TemporaryDirectory() as directory:
+            binary=Path(directory,'runtime')
+            payload='GE_RESULT '+json.dumps({'status':'success'})+'\n'
+            self.write_runtime(binary,payload+payload)
+            with self.assertRaisesRegex(RuntimeError,'2 GE_RESULT lines'):
+                execute(binary,{'mode':'infer'},log_path=Path(directory,'run.log'))
+
+    def test_non_json_ge_result_raises(self):
+        from core.backends.runtime import execute
+        with tempfile.TemporaryDirectory() as directory:
+            binary=Path(directory,'runtime')
+            self.write_runtime(binary,'GE_RESULT {not json}\n')
+            with self.assertRaisesRegex(RuntimeError,'is not JSON'):execute(binary,{'mode':'infer'})
+
+    def test_timeout_kills_the_child_and_reports(self):
+        import sys
+        import time
+        from core.backends.runtime import execute
+        with tempfile.TemporaryDirectory() as directory:
+            binary=Path(directory,'runtime')
+            binary.write_text('#!'+sys.executable+'\nimport time\ntime.sleep(30)\n')
+            binary.chmod(0o700)
+            began=time.monotonic()
+            with self.assertRaisesRegex(RuntimeError,'did not finish within 0.5s'):
+                execute(binary,{'mode':'infer'},log_path=Path(directory,'run.log'),
+                        timeout=0.5,poll_interval=0.05)
+            self.assertLess(time.monotonic()-began,5)
+
+    def test_abort_kills_only_own_group_and_raises_aborted_error(self):
+        import os
+        import sys
+        import time
+        from core.backends.runtime import execute
+        class AbortedError(RuntimeError):
+            pass
+        with tempfile.TemporaryDirectory() as directory:
+            binary=Path(directory,'runtime');pid_file=Path(directory,'child.pid')
+            binary.write_text('#!'+sys.executable+'\nimport os,sys,time\n'
+                              'open('+repr(str(pid_file))+',"w").write(str(os.getpid()))\n'
+                              'sys.stdout.write("working\\n")\n'
+                              'sys.stdout.flush()\n'
+                              'time.sleep(30)\n')
+            binary.chmod(0o700)
+            began=time.monotonic()
+            def should_abort():
+                return pid_file.is_file() and time.monotonic()-began>0.3
+            with self.assertRaises(AbortedError) as ctx:
+                execute(binary,{'mode':'infer'},log_path=Path(directory,'run.log'),
+                        timeout=30.0,should_abort=should_abort,poll_interval=0.05,
+                        error=RuntimeError,aborted_error=AbortedError)
+            self.assertIn('aborted',str(ctx.exception))
+            pid=int(pid_file.read_text())
+            try:
+                os.kill(pid,0)
+                self.fail('the aborted child survived the group kill')
+            except ProcessLookupError:
+                pass
+
 
 if __name__=='__main__':unittest.main()
