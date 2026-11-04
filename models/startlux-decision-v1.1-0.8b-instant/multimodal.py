@@ -528,7 +528,8 @@ def describe(config):
             "vision_forward_outside_graph": False,
         },
         "native_gdr": text_report["native_gdr"],
-        "required_dependencies": ["chunk_gated_delta_rule_proto"],
+        "gdn_route": text_report["gdn_route"],
+        "required_dependencies": text_report["required_dependencies"],
         "changes": [
             "unified single-AIR graph: official FP32 vision tower + injection + decoder + head26",
             "in-graph image-feature injection equivalent to official masked_scatter",
@@ -580,7 +581,8 @@ def build_unified_model(model, config):
     visual.float()                                # exact upcast; no-op when already f32
     body = base._model_body(model)
     body.to(torch.bfloat16)
-    decoder = base.StartLuxTextDecoder(body, letters, params["chunk_size"])
+    decoder = base.StartLuxTextDecoder(body, letters, params["chunk_size"],
+                                        gdn_route=params["gdn_route"])
     restore = base._restore_and_verify(body, decoder, model, params)
     unified = MultimodalDecoder(decoder, vision_tower, SLOTS)
     unified.requires_grad_(False).eval()
