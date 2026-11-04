@@ -20,6 +20,10 @@ c1f8816ee25e03119b2522e55adb49ebf42a88692791b179920f5f60221edba1），路径不�
 （决策语义、native 依赖、P6 统一图过程记录）与本次清理前的原始文档快照见
 [work/startlux-archive/cleanup-20261102/](../../work/startlux-archive/cleanup-20261102/)。
 
+独立脚本与 C++ runtime 执行的待实施方案见
+[docs/standalone-runtime-plan.md](docs/standalone-runtime-plan.md)；该文档记录目标结构，
+当前正式入口与验收结果保持不变。
+
 目录内容与保留原因：
 
 - `unified_adapter.py` / `unified_preprocess.py` / `unified_readout.py` /
