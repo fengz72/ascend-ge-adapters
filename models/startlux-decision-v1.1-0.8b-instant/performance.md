@@ -85,3 +85,175 @@ chunk proto 兼容库。
 - host 侧（100 主机 UID1130）：`~/.local/state/startlux-air-monitor/`
   （state.json、monitor.log、jobs/p8-20261101T025001-1672406/）。监控单次任务
   已完成，不再自动重启。
+
+## Appendix: standalone-flow validation measurement (2026-11-05)
+
+The standalone shell flow (docs/standalone-runtime-plan.md, implemented
+2026-11-05) was validated end-to-end by `run.sh` launched from a different
+working directory on an idle card (Chip Logic ID 4, AICore 0%), same CANN /
+container Python / runtime binary.  This appendix records that measurement;
+the P8 job above remains the formal benchmark of record.
+
+| item | value |
+|---|---|
+| entry | `run.sh` full flow (env check -> inputs -> golden -> prepare -> runtime -> export -> infer -> compare -> business -> idle confirm -> bench) |
+| device | ASCEND_RT_VISIBLE_DEVICES=4, in-process device 0, idle card |
+| AIR | re-exported by `export_air.py`, 1,907,534,423 bytes (identical to the formal AIR size), sha256 `c73c7b622d19e5f81f3683ce29cb8f0441759a23ef9673682bdf2d67712faf05` (exports are not byte-reproducible; the embedded IO contract was verified byte-identical to the formal AIR via runtime `read_io`) |
+| precision | 12 cases / 16 rows all pass, worst cosine 0.999995, worst relative L2 0.004004; b4-long 4/4 rows; business gate 11 cases, worst active-probability max abs 0.005507 |
+| bench plan | instances 1, warmup 32 (per-instance preheat, not consumed from the measurement sequence), 2048 total measured requests, seed 42, closed loop |
+| wall | 76,349.4 ms; warmup 32 runs / 1,419.6 ms; load 7,179.2 ms and specialize 307.4 ms outside the timed window |
+| graph executions/s | 26.824065 (a same-parameter repeat measured 27.133183; P8 formal 27.341990 -- within normal run-to-run variance) |
+| readout rows/s | 29.260235 (2,234 weighted rows / 2048 requests from requests.csv `samples`; repeat 29.597427; P8 formal 29.825198) |
+| e2e latency (n=2048) | P50/P95/P99 = 36.589/43.808/43.929 ms (avg 37.277441) |
+| components (avg) | exec 37.072920 ms; h2d 0.202222 ms; desc 0.001000 ms |
+| integrity | 2,048 requests, 0 errors; every `first_hit` = 0 (both distinct shapes [B1,S256] and [B2,S256] covered inside warmup; no compile/first-execution pollution in the measure phase) |
+| timing scope | warm-graph h2d + descriptor update + execute + sync, no D2H, official CPU preprocessing outside the window -- same scope as P8; graph executions/s is NOT a full business QPS |
+
+Evidence (machine-local, gitignored `work/`):
+
+- requests + result: `models/startlux-decision-v1.1-0.8b-instant/work/bench/{request.json,result.json,requests.csv}`
+- precision: `models/startlux-decision-v1.1-0.8b-instant/work/infer/{comparison.json,business.json,result.json}` and `work/golden/`
+- full stage logs: `models/startlux-decision-v1.1-0.8b-instant/work/logs/`
+
+## Appendix: mega fused-GDR route measurement (2026-11-05, route rolled back)
+
+The GDR route was temporarily switched to the MegaGdnPrefillV2 fused operator
+(`gdn_route=mega`; decision record in validation.md 2026-11-05) and rolled
+back the same day: the fused operator is internally 128-aligned and this
+model's shapes are too small for the fusion to pay off (see the numbers
+below).  This appendix keeps the measurement as investigation evidence only;
+the route is NOT delivered.  Same standalone flow, same CANN / container
+Python / runtime binary, idle card (Chip Logic ID 3, AICore 0%); the operator
+dependency was `work/deps/mega_gdn_prefill` (loading via activator import +
+ASCEND_CUSTOM_OPP_PATH, no LD_PRELOAD).  The P8 job above remains the formal
+benchmark (native route).
+
+| item | value | native-route reference |
+|---|---|---|
+| AIR | re-exported by `export_air.py`, 1,905,954,657 bytes, sha256 `201432d308e78e5f638a99fc5cc52fa22eeb4ecf62aca77b63dbba3eb6d51177` (exports are not byte-reproducible; embedded IO verified by runtime `read_io`) | 1,907,534,423 bytes |
+| precision | 12 cases / 16 rows all pass, worst cosine 0.999981, worst relative L2 0.010130 | 0.999995 / 0.004004 |
+| business gate | 8/11: the three image cases fail `prob_max_abs` 0.012299/0.013162/0.014652 > 0.01 (top1 consistent, margins 0.256/0.392/0.574) -- the inherent mega-route precision already recorded at commit `eb8de21` | 11/11, worst 0.005507 |
+| bench plan | instances 1, warmup 32 (2,057.95 ms), 2048 measured requests, seed 42, closed loop | same |
+| wall | 99,682.353 ms | 76,349.4 ms (P8 74,903.1) |
+| graph executions/s | 20.545261 (2,048 requests, 0 errors) | 26.824065 (P8 27.341990) |
+| readout rows/s | 22.411188 (2,234 weighted rows) | 29.260235 (P8 29.825198) |
+| e2e latency (n=2048) | P50/P95/P99 = 46.843/48.5/65.705 ms (avg 48.670) | 36.589/43.8/43.929 (avg 37.277) |
+| components (avg) | exec 48.482 ms; h2d 0.186093 ms; desc 0.000813 ms | exec 37.072920; h2d 0.202222 |
+| per-case e2e P50 (ms) | text B1 46.79–46.82; image B1 46.79–46.83; mixed B2 65.224 | text/image 35.9–36.6; mixed 43.238 |
+
+- Throughput is **~23% below the native route** (20.545 vs 26.824–27.342
+  executions/s); the B2 mixed case is disproportionately slower (P50 65.2 vs
+  43.2 ms, +51%) while B1 cases are +28% (the fused op processes the full
+  padded width through the 128-chunk pipeline per row).
+- Integrity: 2,048 requests, 0 errors; every `first_hit` = 0 (both distinct
+  shapes covered inside warmup); HBM stage samples 142.4 -> 3,870.4 MB.
+- Evidence paths: same `work/bench/`, `work/infer/`, `work/logs/` locations as
+  the standalone appendix above (bench run of 2026-11-05 06:36–06:38,
+  `run_id` inside `result.json`).
+
+## Appendix: fp32-Conv2D causal_conv4 replacement measurement (2026-11-05)
+
+The causal 4-tap short conv inside the native route was replaced by ONE fp32
+depthwise Conv2D node (decision record in validation.md 2026-11-05; the
+bf16-input Conv1D/Conv2D path miscompiles this depthwise configuration while
+the fp32-input node is correct -- GE graph-mode small-graph gates at
+C=6144/S256/S2048, relL2 1.41 vs 2.41e-3 against an fp64 golden, and 27-45%
+faster per conv).  Same standalone flow, same CANN / container Python /
+runtime binary, idle card (Chip Logic ID 3, AICore 0%), LD_PRELOAD chunk
+proto loading unchanged.  The P8 job above was measured with the previous
+shift-chain conv.
+
+| item | value | shift-chain conv (2026-11-05 standalone) | P8 formal (native, chip 1) |
+|---|---|---|---|
+| AIR | re-exported by `export_air.py`, 1,907,534,423 bytes (same size; exports are not byte-reproducible) | 1,907,534,423 | 1,907,534,423 |
+| precision | 12 cases / 16 rows all pass, worst cosine 0.999995, worst relative L2 0.004004 -- identical to the pre-replacement values | identical | 0.9999985 / 0.00303 |
+| business gate | 11/11, worst active-probability max abs 0.005507 -- identical to the pre-replacement value | 11/11, 0.005507 | 0.0055074 |
+| bench plan | instances 1, warmup 32 (1,323.7 ms), 2048 measured requests, seed 42, closed loop | same | same |
+| wall | 69,982.0 ms | 76,349.4 ms | 74,903.1 ms |
+| graph executions/s | **29.264686** (2,048 requests, 0 errors) | 26.824065 | 27.341990 |
+| readout rows/s | 31.922514 (2,234 weighted rows) | 29.260235 | 29.825198 |
+| e2e latency (n=2048) | **P50/P99 = 33.561/40.101 ms** (avg 34.168) | 36.589/43.929 (avg 37.277) | 35.903/43.293 |
+| components (avg) | exec 33.958 ms | exec 37.072920 | exec 36.379711 |
+| per-case e2e P50 (ms) | text/image B1 33.549–33.563; mixed B2 40.004 | text/image 35.9–36.6; mixed 43.238 | 35.9 / 43.2 |
+
+- Net effect: **+9.1% executions/s and −3.0 ms e2e P50 vs the same-day
+  shift-chain measurement on the same card** (+7.0% vs the P8 formal
+  benchmark), zero precision or business-gate movement, zero dependency
+  changes.  The conv micro-gain (0.05–0.25 ms x 18 layers) compounds with
+  reduced GE elementwise-node scheduling in the full graph.
+- Cross-card note: this run is Chip 3, the shift-chain standalone run Chip 4,
+  the P8 job Chip 1 (same Ascend910_9382 SKU); the +9.1% is a same-day
+  same-card-class comparison, well above the observed run-to-run variance
+  (26.82 vs 27.13 / 27.34 on the old conv).
+- Integrity: 2,048 requests, 0 errors; every `first_hit` = 0 (both distinct
+  shapes covered inside warmup).
+- Evidence paths: same `work/bench/`, `work/infer/`, `work/logs/` locations
+  as the standalone appendix above (bench run of 2026-11-05 09:09–09:10).
+
+## Appendix: FIA full-attention replacement measurement (2026-11-05, net regression)
+
+The 6 bidirectional full-attention layers were switched from the eager-math
+chain to the CANN `fused_infer_attention_score` operator (BNSD, native GQA
+Q8/KV2/D256, per-row `actual_seq_lengths` with an in-graph int64 cast,
+sparse_mode=0, no additive mask; projections / Q-K RMSNorm / partial RoPE /
+sigmoid gate stay outside).  GE small-graph gates passed first (static +
+dynamic B/S, D=256, mixed lengths: valid-prefix relL2 1.9e-3 -- 2.2e-3), then
+the full standalone flow on an idle window (Chip 3; the host watchdog
+intermittently kills NPU-idle processes, the run was taken in a recovery
+window).
+
+| item | value | conv2d-conv baseline (same day, chip 3) |
+|---|---|---|
+| precision | 12 cases / 16 rows all pass, worst cosine 0.999995, worst relative L2 0.006763 | 0.999995 / 0.004004 |
+| business gate | 11/11, worst active-probability max abs 0.006332 | 11/11, 0.005507 |
+| graph executions/s | **28.248243** (2,048 requests, 0 errors) | 29.264686 |
+| readout rows/s | 30.813757 | 31.922514 |
+| e2e latency (n=2048) | P50/P99 = 34.521/41.630 ms (avg 35.398) | 33.561/40.101 |
+| per-case e2e P50 (ms) | text/image B1 34.47-34.55; mixed B2 41.010 | 33.55; 40.004 |
+
+- Net effect: **-3.5% executions/s and +0.96 ms e2e P50 vs the conv2d-conv
+  baseline** -- the PA kernel's short-sequence scheduling overhead plus the
+  q/k/v contiguous copies and the output transpose outweigh the removal of
+  the ~15-node eager-math chain per layer.  Precision also moves slightly
+  worse (relL2 0.0068 vs 0.0040, business worst 0.0063 vs 0.0055, both still
+  inside the gates).
+- Recommendation: keep the eager-math full attention (roll the FIA switch
+  back) -- it is both faster and numerically closer on this workload's
+  short-sequence shapes; revisit FIA only if the workload moves to long
+  sequences where PA's asymptotic advantage can materialize.
+- Evidence paths: same `work/bench/`, `work/infer/`, `work/logs/` locations
+  (bench run of 2026-11-05 13:09-13:11).
+
+## Appendix: MatMul patch-embed replacement measurement (2026-11-06)
+
+The vision patch-embed Conv3d was replaced by the mathematically identical
+per-patch MatMul (`MatMulPatchEmbed`, model/vision.py -- stride == kernel
+makes the conv a full connection per patch; weight/bias held by reference,
+no copies).  Driver: the Conv3DV2 node was MTE1-saturated (mac 0.22, mte1
+0.97) at a fixed 6854 us per request including pure-text requests (20% of
+all AI time, work/prof-fia).  Same standalone flow, idle card Chip 3, with
+the FIA full-attention switch rolled back (eager math) so this gate measures
+the clean delivered configuration: fp32-Conv2D conv + eager-math attention +
+MatMul patch-embed.
+
+| item | value | conv2d-conv baseline (2026-11-05) |
+|---|---|---|
+| precision | 12 cases / 16 rows all pass, worst cosine 0.999995, worst relative L2 0.005749 | 0.999995 / 0.004004 |
+| business gate | 11/11, worst active-probability max abs 0.007576 | 11/11, 0.005507 |
+| graph executions/s | **35.989044** (2,048 requests, 0 errors) | 29.264686 |
+| readout rows/s | 39.257580 | 31.922514 |
+| e2e latency (n=2048) | **P50/P99 = 27.130/33.897 ms** (avg 27.784) | 33.561/40.101 |
+| per-case e2e P50 (ms) | text/image B1 27.10-27.13; mixed B2 33.818 | 33.55; 40.004 |
+
+- Net effect: **+23.0% executions/s and -6.43 ms e2e P50 vs the baseline**
+  (P50 27.13 ms), matching the removed 6.9 ms Conv3DV2 task.  Profiling
+  re-collection confirms: Conv3DV2 disappears from the operator table; the
+  patch-embed now rides inside MatMulV2 (+~25 us/request; MatMulV2 total
+  169.9 ms/40 requests vs 170.9 ms before) -- a ~270x reduction of that
+  stage.  ChunkGatedDeltaRule becomes the largest AIC operator (11.0%).
+- Precision moves slightly (relL2 0.0057 vs 0.0040, business worst 0.0076 vs
+  0.0055 -- matmul vs conv accumulation order, ulp-level per patch), all
+  inside the gates (11/11 business, 12/12 numeric).
+- Evidence paths: `work/bench/`, `work/infer/`, `work/logs/` (bench of
+  2026-11-06 03:29-03:31); profiling sessions `work/prof-fia/` (before,
+  Conv3DV2 present) and `work/prof-matmul/` (after, Conv3DV2 gone).

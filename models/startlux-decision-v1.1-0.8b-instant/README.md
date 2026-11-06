@@ -1,120 +1,129 @@
-# StartLux-Decision v1.1 0.8B Instant Ascend GE 适配
+# StartLux-Decision v1.1 0.8B Instant Ascend GE 适配（独立脚本流程）
 
 ## 是什么
 
 [StartLux-Decision-v1.1-0.8B-Instant](https://huggingface.co/startlux-models/StartLux-Decision-v1.1-0.8B-Instant)
 决策模型（Qwen3_5ForConditionalGeneration 骨干：文本 24 层、hidden=1024，18 层
-Gated DeltaNet + 6 层双向 full attention；读出 A–Z 26 列 letter logits）的独立 GE
-适配目录。
+Gated DeltaNet + 6 层双向 full attention；读出 A–Z 26 列 letter logits）的独立
+GE 适配目录。
 
-最终交付（已验收）：视觉塔 + 图像特征注入 + 三轴 MRoPE + 文本 decoder + 26 列
-letter 读出头整合在**单一 AIR、单次 GESession** 中执行；拆分多图仅允许用于调试
-精度。正式 config 唯一：`config/model.yaml`（unified_adapter）。正式 AIR
-`work/startlux-decision/build/model.air`（1,907,534,423 bytes，sha256
-c1f8816ee25e03119b2522e55adb49ebf42a88692791b179920f5f60221edba1），路径不变。
+交付形态为**独立脚本流程**（[docs/standalone-runtime-plan.md](docs/standalone-runtime-plan.md)
+定稿方案，2026-11-05 实施并通过全流程验收）：Shell 串行调度
+（`run.sh`），Python 直接完成数据（`generate_inputs.py`）、官方 CPU 参考
+（`decider/golden.py`）与 AIR 导出（`model/model.py` + `model/export_air.py`），现有 C++ runtime
+完成推理与性能，公共工具（`tools/compare.py`）完成精度比较，业务概率门禁由
+`model/verify_business.py` 承担。**不依赖 `core` 流程框架**，无 YAML / adapter /
+handle；固定参数集中在 `run.sh` 顶部。
 
-当前精度/性能验收状态见 [validation.md](validation.md) 与
-[performance.md](performance.md)；适配方案见
-[docs/adaptation-plan.md](docs/adaptation-plan.md)，生产集成说明见
-[docs/production-integration.md](docs/production-integration.md)。历史阶段文档
-（决策语义、native 依赖、P6 统一图过程记录）与本次清理前的原始文档快照见
-[work/startlux-archive/cleanup-20261102/](../../work/startlux-archive/cleanup-20261102/)。
+单图交付：视觉塔 + 图像特征注入 + 三轴 MRoPE + 文本 decoder + 26 列读出头整
+合在单一动态 AIR、单次 GESession 中执行。验收状态见
+[validation.md](validation.md)（历史精度事实）与
+[performance.md](performance.md)（P8 正式基准 + 独立流程验证测量附录）。
 
-独立脚本与 C++ runtime 执行的待实施方案见
-[docs/standalone-runtime-plan.md](docs/standalone-runtime-plan.md)；该文档记录目标结构，
-当前正式入口与验收结果保持不变。
+目录内容：
 
-目录内容与保留原因：
-
-- `unified_adapter.py` / `unified_preprocess.py` / `unified_readout.py` /
-  `unified_verify.py` / `generate_unified_cases.py` / `multimodal.py`：正式
-  统一图路线与 CPU 单测直接加载的模块。
-- `startlux_npu_adapter.py` / `decision.py` / `reference.py` / `ge_readout.py` /
-  `verify.py`：**正式路线与 CPU 测试共享依赖，不是废文件**——`decision.py`/
-  `reference.py` 承载官方业务语义与独立 CPU FP32 oracle，`ge_readout.py` 为
-  真实 GESession read-out 共享实现（`unified_readout.py` 与
-  `scripts/run_unified_performance.py` 加载），`startlux_npu_adapter.py` 为
-  文本 decoder 适配器（2026-11-02 起收敛为 native chunk GDR 单路线，原
-  `startlux_native_adapter.py`/`gated_delta.py`/`operator_checks.py` 已按
-  决策删除），`verify.py` 为验收钩子；tests/ 下 CPU 单测从本目录逐文件加载
-  它们。
-- `vendor/`：官方推理代码逐字节子集（13 个 Python 模块与固定上游 commit
-  一致，`work/startlux-cannbot/review-vendor.json`）。
-- `native_proto/` 与 `scripts/`：ChunkGatedDeltaRule GE 兼容原型源码、构建/
-  显式局部加载环境脚本、P8 监控与基准脚本（均保留原路径）。
-- `config/model.yaml`、`fixtures/`：正式唯一模型配置与固定读出 fixtures。
+- **独立流程入口**：`run.sh`（完整流程）、`prepare.sh`（构建安装 pass 与自
+  定义算子）、`generate_inputs.py`（输入池生成）、
+  `scripts/env_python.sh`（A3 容器 Python 引导）。
+- **`model/`**（模型构建与导出）：`model.py`（单图组合入口）、
+  `startlux_npu_adapter.py`（native chunk GDR 文本 decoder）、`multimodal.py`
+  （统一图组合与组批校验，图边界常量单一来源）、`vision.py`（固定网格
+  FP32 视觉塔）、`unified_preprocess.py`（官方 CPU 预处理）、
+  `export_air.py`（AIR 导出与请求生成）。
+- **`decider/`**（decider 业务语义与官方管线）：`decision.py`（业务语义桥）、
+  `reference.py`（CPU FP32 HF 参考）、`golden.py`（官方 CPU golden）、
+  `ge_readout.py` / `unified_readout.py`（GESession 读出会话，前者为后者模块
+  依赖；ge_runtime 子进程协议与 IOSpec 校验为标注来源的内联实现，不依赖
+  `core`）、`verify_business.py`（业务概率门禁）、`fixtures/`（固定读出
+  fixtures 与 B4 边界用例）、`vendor/`（官方推理代码逐字节子集，13 个
+  Python 模块与固定上游 commit 一致）。
+- `native_proto/` 与 `scripts/`：ChunkGatedDeltaRule GE 兼容原型源码、
+  构建/显式局部加载脚本、P8 监控存档（`monitor_idle_benchmark.py`，历史证据，
+  不在新流程内自动调用）。
+- `work/`：全部生成产物（inputs / golden / build / infer / bench / deps /
+  logs），不提交 Git。
 
 ## 怎么用
 
-环境：CANN 容器（CANN 9.1.0、torch 2.12.0+cpu、torch_npu 2.12.0、
-transformers 5.8.1，Ascend910_9382）与 NPU；依赖为 CANN + 容器 Python +
-任务局部 pip --target 包（Pillow/torchvision，PYTHONPATH 注入），正式
-AIR `work/startlux-decision/build/model.air`、runtime
-`runtime/build/ge_runtime`。CPU 单测不需要 NPU，但仍按
-`work/startlux-validation/p7-final/env.sh` 的 scoped 环境为准；work/ 中保存
-模型材料、任务局部依赖和验收证据，正式运行依赖这些材料，本目录不是自包含
-离线包。
+环境（沿用既有已验证组合）：CANN 容器（CANN 9.1.0、torch 2.12.0+cpu、
+torch_npu 2.12.0、transformers 5.8.1，Ascend910_9382）与 NPU。前置条件：
 
-CPU 单测（pytest 未安装，用例基于 unittest；2026-11-02 native-only 收敛后
-302 项全过，收敛前 317 项全过，见 `validation.md`）：
+1. 权重材料通过环境变量提供（不自动下载）：
+
+```bash
+export STARTLUX_MODEL_DIR=/path/to/hf-model
+# 本机已验证材料：work/startlux-materials/model-6496ae641cc71b149ce9dad69bd97f2a44e7bf11
+```
+
+2. **官方预处理的 Pillow/torchvision 是环境前置依赖**（任务局部安装，勿系统
+   安装）：已验证安装为
+   `work/startlux-validation/p6-official/deps/{pillow,torchvision}`（wheel
+   sha256 文件在同目录）；`run.sh` 会自动把它们前置到 PYTHONPATH。缺包时会在
+   生成输入阶段自然报错（DEPS_HINT 指向上述路径）。
+
+完整流程（从任何当前目录启动一致；bench 前会等待人工确认卡空闲）：
+
+```bash
+bash models/startlux-decision-v1.1-0.8b-instant/run.sh [--device <chip>]
+```
+
+NPU 卡用 `--device` 指定（npu-smi 的 Chip Logic ID，默认 4）；其余固定参数在
+`run.sh` 顶部（精度门限 cosine 0.999 / relL2 0.02、单实例 / warmup 32 /
+总测量请求 2048 / seed 42），是唯一可调处。
+流程：检查环境及权重 → 生成输入（官方预处理一次完成）→ CPU golden →
+构建/安装 pass 与自定义算子（`work/deps/`）→ 构建 C++ runtime（复用
+`runtime/build.sh`）→ 导出单 AIR 并自动生成 infer/bench 请求 → 精度推理 →
+数值比较（`tools/compare.py`）→ 业务概率校验 → **人工确认卡空闲** → 性能
+测试。产物在 `work/infer/`（comparison.json + business.json）与
+`work/bench/`（result.json + requests.csv），日志在 `work/logs/`。
+
+单独重跑（每条只执行本步，缺输入直接报错）：
+
+```bash
+python3 models/startlux-decision-v1.1-0.8b-instant/generate_inputs.py   # 数据
+python3 models/startlux-decision-v1.1-0.8b-instant/decider/golden.py    # 官方 CPU 参考
+bash   models/startlux-decision-v1.1-0.8b-instant/prepare.sh            # 依赖构建
+# 导出（LD_PRELOAD 指向 work/deps/.../install/lib/libchunk_gated_delta_rule_compat_proto.so）：
+LD_PRELOAD=<proto.so> python3 models/startlux-decision-v1.1-0.8b-instant/model/export_air.py \
+    --device 0 --instances 1 --warmup 32 --iterations 2048 --seed 42
+LD_PRELOAD=<proto.so> runtime/build/ge_runtime < models/.../work/infer/request.json
+python3 tools/compare.py --golden models/.../work/golden --output models/.../work/infer \
+    --cosine-min 0.999 --relative-l2-max 0.02
+python3 models/startlux-decision-v1.1-0.8b-instant/decider/verify_business.py
+```
+
+CPU 单测（pytest 未安装，用例基于 unittest）：
 
 ```bash
 python3 -m unittest tests.test_startlux_decision tests.test_startlux_native_proto
-python3 -m unittest tests.test_startlux_adapter tests.test_startlux_ge_readout
-python3 -m unittest tests.test_startlux_verify tests.test_startlux_multimodal
-python3 -m unittest tests.test_startlux_unified_adapter tests.test_startlux_unified_preprocess
-python3 -m unittest tests.test_startlux_unified_readout tests.test_startlux_unified_verify
-python3 -m unittest tests.test_startlux_unified_cases tests.test_torchair_example_inputs
+python3 -m unittest tests.test_startlux_adapter tests.test_startlux_multimodal
+python3 -m unittest tests.test_startlux_unified_preprocess tests.test_startlux_unified_readout
+python3 -m unittest tests.test_startlux_ge_readout tests.test_torchair_example_inputs
 ```
-
-正式六阶段 CLI（唯一正式配置 = 统一图 `config/model.yaml`；2026-10-31 P7 已
-真实通过一次）：先 source 正式 scoped 环境（CANN + A3 容器 Python + 8 线程 +
-任务局部 Pillow/torchvision + STARTLUX_MODEL_DIR；ASCEND_RT_VISIBLE_DEVICES=1
-取 npu-smi info -m 的 Chip Logic ID 1，对进程暴露为 runtime device 0，可按卡况
-改配），prepare 之后做 canonical proto 的一次加载（勿再 source 携带其他
-compat.so 的旧任务 env，双注册已知会崩）：
-
-```bash
-source work/startlux-validation/p7-final/env.sh
-CFG=models/startlux-decision-v1.1-0.8b-instant/config/model.yaml
-python3 -m core.pipeline data     --config $CFG --target Ascend910_9382
-python3 -m core.pipeline baseline --config $CFG --target Ascend910_9382
-python3 -m core.pipeline prepare  --config $CFG --target Ascend910_9382
-source models/startlux-decision-v1.1-0.8b-instant/scripts/env_chunk_proto.sh \
-  work/startlux-decision
-python3 -m core.pipeline build    --config $CFG --device 0
-python3 -m core.pipeline infer    --config $CFG --device 0
-python3 -m core.pipeline compare  --config $CFG --target Ascend910_9382
-```
-
-业务读出入口（正式 AIR + 官方 Decider，每 read-out 一个冷 ge_runtime 子进程）：
-`work/startlux-validation/p7-final/run_p7_business.py`。算子级门禁（P1 历史
-入口）与历史实验入口的命令在归档文档快照中保留，不在本文重复。
 
 ## 使用限制
 
 - 图边界：官方 processed grid [1,16,16]（256x256 输入）；每次调用全局最多 2
-  张图（pixel_values 静态 [512,1536] 双图位）；B<=4、S<=2048、最小物理宽度
-  256（短行右 pad 至该下限，actual_seq_lengths 保真长）；超限请求拒绝、不截
-  断。边界证据与 B4 补验见 `validation.md`。
-- 混精度：视觉塔 FP32 + 文本 decoder BF16；原 checkpoint 视觉权重 BF16 存储、
-  本工程导出前转 FP32；A_log 自 checkpoint 逐层恢复 F32、head26 F32。BF16
-  视觉路线 relL2 0.1139/0.1095 未过门限，已归档于
-  `work/startlux-validation/p6-official/archive/bf16-failed-route`。
+  张图（pixel_values 静态 [512,1536] 双图位）；B≤4、S≤2048、最小物理宽度 256
+  （短行右 pad 至该下限，actual_seq_lengths 保真长）；超限拒绝、不截断。边界
+  常量单一来源为 `multimodal.py` / `vision.py` 顶层，生成输入时强制执行。
+- 混精度：视觉塔 FP32 + 文本 decoder BF16；A_log 自 checkpoint 逐层恢复 F32、
+  head26 F32。
 - wide_27 跨 dtype 分支披露（保留）：FP32 末轮第 6 名入围者 cause_18，官方
-  BF16 与 GE 均为 cause_23（GE 落在 BF16 分支）；不能宣称全 FP32 业务分布门限
-  通过，业务判据为 GE vs 相同 dtype 官方 BF16 动态参考，GE vs FP32 同 prompt
-  16/16 过（详见 `validation.md`）。
-- processor 链：AutoProcessor 整体 factory 加载失败（Qwen3VLVideoProcessor
-  backend setter），官方组件分别构建（Qwen2VLImageProcessorPil +
-  Qwen3VLProcessor + Qwen2Tokenizer）成功。
-- conv4：生产统一使用共享 `causal_conv4`（4-tap 位移乘加 + SiLU）。实测
-  TorchAir/GE 对真实配置（C=6144、kernel=4、groups=C、padding=3）的 Conv1D
-  转换存在数值错误，该结论仅针对该实测配置。
-- GDR：唯一路线为原生 CANN kernel + 项目兼容原型（非官方文件，仅 IR 注册不含
-  计算内核），加载方式为显式局部加载（`env_chunk_proto.sh`/LD_PRELOAD；自动
-  vendor 加载已复现崩溃并弃用），CANN 升级/换 SoC 需重跑其门禁且**无标准路线
-  兜底**（纯 Torch 标准路线已按决策删除，P3 standard 7/7 验收转为历史声明）。
-- 性能：唯一正式实测为 P8 单实例 warm 稳态基准，口径与数值见
-  `performance.md`；graph executions/s 不是完整业务 QPS。NPU 侧测试已停止，
-  不自动重启监控或基准。
+  BF16 与 GE 均为 cause_23；业务判据为 GE vs 相同 dtype 官方 BF16 动态参考，
+  详见 `validation.md`。
+- processor 链：AutoProcessor 整体 factory 加载失败，官方组件分别构建成功；
+  conv4 使用共享 `causal_conv4`。
+- GDR：唯一路线为原生 CANN kernel + 项目兼容原型（非官方文件，仅 IR 注册不
+  含计算内核），加载方式为显式局部加载（activator dlopen + run.sh 对
+  export/infer/bench 子进程注入 LD_PRELOAD；自动 vendor 加载已复现崩溃并弃
+  用），CANN 升级/换 SoC 需重跑其门禁且无标准路线兜底。2026-11-05 曾按用户
+  决策切换为 MegaGdnPrefillV2 融合算子并完成全量门禁，因融合算子内部 128
+  对齐、本模型 shape 偏小（B1 −28% / B2 −51%，吞吐 −23%）同日回退；mega 分
+  支保留为 `gdn_route="mega"` 休眠选项，证据见 validation.md /
+  performance.md。
+- 性能：口径与数值见 [performance.md](performance.md)；graph executions/s
+  不是完整业务 QPS。bench 前需人工确认卡空闲。
+- AIR 导出非字节可复现（同源同参数多次导出 sha256 不同、字节数恒定
+  1,907,534,423，嵌入 IO 契约经 runtime read_io 验证一致）；正式证据以
+  数值验收为准。

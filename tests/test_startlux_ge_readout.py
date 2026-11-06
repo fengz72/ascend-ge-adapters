@@ -21,7 +21,7 @@ import unittest
 from pathlib import Path
 
 MODEL_DIR = Path("models/startlux-decision-v1.1-0.8b-instant").resolve()
-_spec = importlib.util.spec_from_file_location("ge_readout", MODEL_DIR / "ge_readout.py")
+_spec = importlib.util.spec_from_file_location("ge_readout", MODEL_DIR / "decider" / "ge_readout.py")
 ge_readout = importlib.util.module_from_spec(_spec)
 sys.modules["ge_readout"] = ge_readout
 _spec.loader.exec_module(ge_readout)
@@ -29,7 +29,7 @@ from ge_readout import (GraphSpec, ReadoutError, encode_b1_dynamic,           # 
                         encode_padded, parse_timings, run_plan,
                         source_vocab_size, startlux_decision)
 
-VENDOR = MODEL_DIR / "vendor"
+VENDOR = MODEL_DIR / "decider" / "vendor"
 if str(VENDOR) not in sys.path:               # the pinned official package (decision.py's path)
     sys.path.insert(0, str(VENDOR))
 from startlux_decide.backends.fake import FakeTokenizer    # noqa: E402
@@ -647,7 +647,7 @@ class TestOfficialWiring(unittest.TestCase):
 class TestModulePurity(unittest.TestCase):
     def test_ge_readout_imports_without_torch(self):
         code = ("import importlib.util, sys\n"
-                f"spec = importlib.util.spec_from_file_location('ge_readout', {str(MODEL_DIR / 'ge_readout.py')!r})\n"
+                f"spec = importlib.util.spec_from_file_location('ge_readout', {str(MODEL_DIR / 'decider' / 'ge_readout.py')!r})\n"
                 "m = importlib.util.module_from_spec(spec)\n"
                 "spec.loader.exec_module(m)\n"
                 "assert 'torch' not in sys.modules, sorted(m for m in sys.modules if 'torch' in m)\n"

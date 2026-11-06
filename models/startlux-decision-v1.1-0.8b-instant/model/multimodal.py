@@ -69,7 +69,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-MODEL_DIR = Path(__file__).resolve().parent
+MODEL_DIR = Path(__file__).resolve().parents[1]   # the model root
 ROOT = MODEL_DIR.parents[1]
 
 SLOTS = 2                                    # fixed GLOBAL image slots of the single AIR
@@ -93,8 +93,8 @@ def _load_module(name, filename):
     return module
 
 
-base = _load_module("startlux_npu_adapter_for_native", "startlux_npu_adapter.py")
-vision_mod = _load_module("startlux_vision_tower", "vision.py")
+base = _load_module("startlux_npu_adapter_for_native", "model/startlux_npu_adapter.py")
+vision_mod = _load_module("startlux_vision_tower", "model/vision.py")
 
 VisionTowerWrapper = vision_mod.VisionTowerWrapper
 GRID_THW = vision_mod.GRID_THW

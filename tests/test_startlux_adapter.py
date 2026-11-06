@@ -32,13 +32,13 @@ def _decision_folder():
 
 class TestP3Adapter(unittest.TestCase):
     def setUp(self):
-        self.adapter = load("startlux_npu_adapter", "startlux_npu_adapter.py")
+        self.adapter = load("startlux_npu_adapter", "model/startlux_npu_adapter.py")
         self._decision, self.decision_folder = _decision_folder()
         self.addCleanup(self._decision.cleanup)
 
     def config(self, **override):
         params = {"max_seq_len": 2048, "compiled_seq_len": 256, "chunk_size": 64,
-                  "max_batch": 4, "fixtures_file": "fixtures/p2b-readouts.json"}
+                  "max_batch": 4, "fixtures_file": "decider/fixtures/p2b-readouts.json"}
         params.update(override)
         return {"model": {"params": params},
                 "source": {"ref": str(self.decision_folder)}}
@@ -214,6 +214,40 @@ class TestP3Adapter(unittest.TestCase):
         self.assertEqual(by_type["allow_none-r0"], "choice")
         self.assertTrue(all(t == "choice" for c, t in by_type.items() if c.startswith("wide_27")))
 
+    def test_causal_conv4_matches_official_conv1d(self):
+        """The fp32 Conv2D node form keeps the official compute order
+        (fp32 conv -> cast to input dtype -> SiLU) on transposed views."""
+        import torch.nn.functional as F
+        channels, seq = 64, 37
+        generator = torch.Generator().manual_seed(2026)
+        x = torch.randn(2, seq, channels, generator=generator).transpose(1, 2)
+        weight = torch.randn(channels, 1, 4, generator=generator) * 0.2
+        reference32 = F.conv1d(x.float(), weight.float(), groups=channels,
+                               padding=3)[:, :, :seq]
+        for dtype, bound in ((torch.float32, 1e-6), (torch.bfloat16, 1e-2)):
+            out = self.adapter.causal_conv4(x.to(dtype), weight.to(dtype))
+            reference = F.silu(reference32.to(dtype))
+            rel = float((out.float() - reference.float()).norm()
+                        / reference.float().norm())
+            # fp32: same-math conv implementations; bf16: that difference
+            # crosses quantization boundaries around the SiLU, so allow the
+            # full bf16-quantization magnitude (CPU conv1d vs conv2d kernels
+            # are not bit-identical in fp32 accumulate).
+            self.assertLess(rel, bound, f"{dtype}: rel {rel}")
+
+    def test_causal_conv4_is_causal(self):
+        """Positions only ever see tokens up to t (left zero padding)."""
+        generator = torch.Generator().manual_seed(2027)
+        channels, seq = 48, 40
+        x = torch.randn(2, seq, channels, generator=generator).transpose(1, 2)
+        weight = torch.randn(channels, 1, 4, generator=generator) * 0.2
+        perturbed = x.clone()
+        perturbed[:, :, 20:] += 5.0
+        out = self.adapter.causal_conv4(x, weight)
+        out_perturbed = self.adapter.causal_conv4(perturbed, weight)
+        self.assertTrue(torch.equal(out[:, :, :17], out_perturbed[:, :, :17]))
+        self.assertFalse(torch.equal(out[:, :, 17:], out_perturbed[:, :, 17:]))
+
 
 class TestNativeGdrContract(unittest.TestCase):
     """Contract of the single native chunk-GDR route (merged from the former
@@ -221,13 +255,13 @@ class TestNativeGdrContract(unittest.TestCase):
     removed, 2026-11-02)."""
 
     def setUp(self):
-        self.adapter = load("startlux_npu_adapter", "startlux_npu_adapter.py")
+        self.adapter = load("startlux_npu_adapter", "model/startlux_npu_adapter.py")
         self._decision, self.decision_folder = _decision_folder()
         self.addCleanup(self._decision.cleanup)
 
     def config(self, **override):
         params = {"max_seq_len": 2048, "compiled_seq_len": 256, "chunk_size": 64,
-                  "max_batch": 4, "fixtures_file": "fixtures/p2b-readouts.json"}
+                  "max_batch": 4, "fixtures_file": "decider/fixtures/p2b-readouts.json"}
         params.update(override)
         return {"model": {"params": params},
                 "source": {"ref": str(self.decision_folder)}}

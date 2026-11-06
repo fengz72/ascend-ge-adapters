@@ -1,6 +1,6 @@
 # StartLux 独立脚本与 C++ runtime 执行方案
 
-日期：2026-11-04。状态：设计方案，尚未实施；本文不代表现有入口、AIR 或验收结果已经迁移。
+日期：2026-11-04。状态：设计已与维护者逐项对齐（同日完成，决策已并入正文），尚未实施；本文不代表现有入口、AIR 或验收结果已经迁移。
 
 ## 1. 目标与范围
 
@@ -22,11 +22,19 @@ ascend-ge-adapters/
 └── models/startlux-decision-v1.1-0.8b-instant/
     ├── README.md
     ├── run.sh                       # 完整流程入口
-    ├── prepare.sh                   # 构建、安装依赖
-    ├── model.py                     # 完整单图模型
-    ├── export_air.py                # 导出 AIR
+    ├── prepare.sh                   # 构建安装 pass 与自定义算子
+    ├── model.py                     # 单图模型组合入口
+    ├── export_air.py                # 导出 AIR 与运行请求
     ├── generate_inputs.py           # 生成输入及用例索引
     ├── golden.py                    # 官方 CPU 参考
+    ├── verify_business.py           # 业务概率门禁（迁移自 unified_verify.py）
+    ├── multimodal.py                # 以下为 model.py 复用的已验证模块，保持原位
+    ├── startlux_npu_adapter.py
+    ├── vision.py
+    ├── decision.py
+    ├── reference.py
+    ├── unified_preprocess.py
+    ├── scripts/                     # env_python.sh、算子构建与显式加载、P8 监控存档
     ├── fixtures/                    # 固定测试材料
     ├── vendor/                      # 必需的官方参考代码
     ├── native_proto/                # 当前路线需要的兼容原型
@@ -50,7 +58,7 @@ ascend-ge-adapters/
         └── logs/
 ```
 
-模型侧保留四个 Python 入口、两个 Shell 入口。`vendor/` 和必要的原型源码不为减少文件数而展开复制进 `model.py`。
+模型侧保留五个 Python 入口（model、export_air、generate_inputs、golden、verify_business）、两个 Shell 入口。计算实现通过 import 复用上述既有已验证模块，不物理合并；`vendor/` 和必要的原型源码不为减少文件数而展开复制进 `model.py`。
 
 新的模型内 `work/` 与现有工程根目录的 `work/startlux-decision/` 分开；迁移期间保留旧 AIR 和全部验收证据。实施时将模型内 `work/` 加入 Git 忽略规则。
 
@@ -62,12 +70,13 @@ ascend-ge-adapters/
 export STARTLUX_MODEL_DIR=/path/to/hf-model
 ```
 
-`model.py` 和 `golden.py` 读取同一个变量。`run.sh` 开始时检查变量已设置、目录存在以及必要运行环境。
+`model.py` 和 `golden.py` 读取同一个变量。`run.sh` 开始时检查变量已设置、目录存在；不做依赖 import 预检，缺包由对应阶段自然报错。
 
 | 项目 | 约定 |
 |---|---|
 | 工作目录 | 本模型目录下的 `work/` |
 | 权重 | `STARTLUX_MODEL_DIR` |
+| 官方预处理依赖 | 任务局部 Pillow/torchvision，环境前置，安装方式见 README |
 | 后端 | `ge_session` |
 | AIR | `work/build/model.air` |
 | 设备 | 在 `run.sh` 顶部固定设备号，区分可见设备映射与进程内编号 |
@@ -76,17 +85,16 @@ export STARTLUX_MODEL_DIR=/path/to/hf-model
 
 其他参数固定在 `run.sh` 顶部，不提供 YAML、参数覆盖优先级或自动发现。`run.sh` 根据自身位置定位模型目录和工程根目录，从任何当前目录启动都一致。
 
-环境沿用既有已验证组合；现有版本与限制见模型 README。移除流程框架不意味着更换 CANN、Torch、TorchNPU、Transformers 或 SoC。
+环境沿用既有已验证组合；现有版本与限制见模型 README。移除流程框架不意味着更换 CANN、Torch、TorchNPU、Transformers 或 SoC。官方预处理依赖的任务局部 Pillow/torchvision 属环境前置条件，README 记录已验证安装路径；不做 import 预检，缺包时保留现有 DEPS_HINT 报错提示。
 
 ## 4. 各入口职责
 
 ### 4.1 model.py
 
-- 合并视觉塔、图像特征注入、三轴 MRoPE、文本 decoder 和26列字母读出头。
-- 提供直接的权重加载函数和一个完整 `nn.Module`，最终导出一张 AIR。
+- 组合视觉塔、图像特征注入、三轴 MRoPE、文本 decoder 和26列字母读出头，提供直接的权重加载函数和一个完整 `nn.Module`，最终导出一张 AIR。
 - 保留已验收的视觉 FP32、文本 BF16、A_log 从 checkpoint 恢复 FP32、FP32 读出头及现有算子实现。
 - 不包含 pipeline adapter、handle、配置解析和业务调度。
-- 模型相关计算集中在该文件，官方参考代码保留在 `vendor/`。
+- 计算实现通过 import 复用 `multimodal.py`、`startlux_npu_adapter.py`、`vision.py` 等已验证模块，不物理合并、不复制源码；这些模块及其 CPU 单测保持不动。官方参考代码保留在 `vendor/`。
 
 图边界维持 B≤4、S≤2048、最小物理宽度256、每次调用全局最多两张图片；使用已验收的固定图像处理网格及双图槽位。不截断超限请求。
 
@@ -95,9 +103,11 @@ export STARTLUX_MODEL_DIR=/path/to/hf-model
 - 读取固定 fixtures，调用官方预处理。
 - 保存预处理后的 Tensor、必要的原始用例信息和输入索引。
 - 固定定义精度用例集及性能输入池，二者可以复用输入文件。
+- 精度用例集包含 B4 混合有效长度用例（行长 1/65/129/2048），与普通用例同样生成、同样参与 golden 与逐样本比较，不设单独补验步骤。
+- 组批与编码时强制图边界（B≤4、S≤2048、最小物理宽度256、全局最多两张图片），超限拒绝；边界值写入 README 使用限制。
 - 不让 golden 和导出阶段分别重复预处理。
 
-模型边界、输入含义及 IO 定义保留明确的单一来源，不在多个脚本复制同一套常量。用例索引由数据阶段生成，实际图节点信息由导出阶段生成。
+模型边界、输入含义及 IO 定义保留明确的单一来源，不在多个脚本复制同一套常量：边界常量沿用 `multimodal.py` / `vision.py` 顶层的既有定义，新入口直接 import。用例索引由数据阶段生成，实际图节点信息由导出阶段生成；`golden.py` 不导入这些模块（26 列字母 id 与温度读官方 `decision_config.json`）。
 
 ### 4.3 golden.py
 
@@ -105,7 +115,7 @@ export STARTLUX_MODEL_DIR=/path/to/hf-model
 - 使用已保存的预处理结果，生成与 AIR 一致的26列 logits。
 - 统一读出位置、字母顺序、有效长度、padding 和图片语义。
 - 不调用 `model.py` 的适配计算逻辑，不导入 NPU 注册模块。
-- 输出 `outputs.bin` 和对应 Tensor 索引。
+- 输出 `outputs.bin` 和 `result.json`，结构与 runtime infer 结果完全同构（顶层 `status`/`mode`/`backend`，`outputs` 按 case→rows→tensors），比较工具统一处理两侧、无需特判。
 
 参考计算独立不等于重复实现预处理。CPU FP32 数值比较与既有 BF16 业务分支差异分别记录，不扩大原有验收结论，不通过放宽门限消除差异；已有精度事实仍以 `validation.md` 为准。
 
@@ -124,9 +134,15 @@ export STARTLUX_MODEL_DIR=/path/to/hf-model
 
 `prepare.sh` 只负责构建、安装必要 pass 和自定义算子，复用现有构建逻辑，模型专用安装产物放在固定的 `work/deps/`。构建缓存可以沿用原有构建系统的位置，不额外实现缓存管理。
 
-`run.sh` 显式设置后续子进程需要的库路径、Python 路径及算子加载变量。不能在子 Shell 内 `export` 后假定父进程环境已改变。
+`run.sh` 显式设置后续子进程需要的库路径、Python 路径及算子加载变量。不能在子 Shell 内 `export` 后假定父进程环境已改变。A3 容器 Python 引导从 `models/qwen2.5-0.5b/scripts/env_a3.sh` 复制收敛为本模型 `scripts/env_python.sh`，不引用其他模型目录。
 
 继续使用当前已验证的显式局部加载方式，避免兼容原型重复注册。确实需要系统安装的操作在 README 和执行输出中明确说明，不隐藏在普通导入过程中。
+
+### 4.6 verify_business.py
+
+- 迁移 `unified_verify.py` 的业务概率校验逻辑到新路径，纯 CPU NumPy，不加载权重、不碰 NPU。
+- 读取 `STARTLUX_MODEL_DIR` 的官方 `decision_config.json`（26 个字母 token id 与各题型温度）和用例 rows_meta，对 `infer/` 与 `golden/` 的 26 列 logits 做校验。
+- 公共比较工具保持模型无关，业务语义不并入 `tools/compare.py`。
 
 ## 5. 完整执行顺序
 
@@ -147,7 +163,9 @@ C++ GESession 精度推理
     ↓
 公共工具比较精度
     ↓
-检查既有空闲门禁
+业务概率校验
+    ↓
+人工确认卡空闲（打印提醒并等待确认）
     ↓
 C++ GESession 性能测试
 ```
@@ -165,7 +183,7 @@ C++ runtime 保留现有 stdin JSON 接口：
 
 ## 6. 结果格式与公共精度比较
 
-golden 与推理结果采用兼容的 Tensor 索引：case、输出名称、dtype、shape、offset、bytes，复用 runtime 当前的输出结构。golden 不需要模拟 runtime 的实例、计时或性能状态字段。
+golden 与推理结果采用兼容的 Tensor 索引：case、输出名称、dtype、shape、offset、bytes，复用 runtime 当前的输出结构（行内 `instance` 字段固定为0，保持同构）；golden 不需要模拟 bench 专属的计时与性能状态字段。
 
 ```text
 golden/：outputs.bin + result.json
@@ -182,7 +200,7 @@ python3 "$ROOT/tools/compare.py" \
   --relative-l2-max 0.02
 ```
 
-`tools/compare.py` 仅依赖 NumPy，不导入模型模块、Torch、TorchNPU 或 `core`。第一版只支持当前需要的 F32 输出，不预先设计多格式转换、指标插件和输出策略配置。
+`tools/compare.py` 仅依赖 NumPy，不导入模型模块、Torch、TorchNPU 或 `core`。现有实现是依赖 `core.verify` 的 .npy 位置参数工具，仓库内无其他使用方，原地重写为新 CLI 并删除旧接口。第一版只支持当前需要的 F32 输出，不预先设计多格式转换、指标插件和输出策略配置。
 
 比较行为：
 
@@ -193,9 +211,13 @@ python3 "$ROOT/tools/compare.py" \
 5. 所有行同时满足两个门限才通过。
 6. 控制台打印最差指标和失败项，保存 `infer/comparison.json`；通过返回0，失败返回非零并阻止性能阶段继续。
 
+### 6.1 业务概率门禁
+
+数值比较通过后运行 `verify_business.py`（与 P7 验收同口径）：按 rows_meta 与官方 `decision_config.json`，对 K 个有效选项列在官方温度下做 softmax，检查候选与 golden 的 max |Δp| ≤ 0.01、参考 top1-top2 概率间隔 > 0.02 时候选 top1 一致、全部 26 列有限。失败返回非零并阻止性能阶段。
+
 ## 7. 性能测试
 
-性能输入池与精度用例集分别固定。正式计时前应覆盖输入池实际形状，确认现有 runtime 预热机制有效，测量记录无首次编译等污染。warmup32 的具体执行单位按 runtime 现有实现核对并在报告中写明，不与每用例次数混淆；2048指总测量请求数。
+性能输入池与精度用例集分别固定。正式计时前应覆盖输入池实际形状，确认现有 runtime 预热机制有效，测量记录无首次编译等污染。warmup32 为每实例预热请求数、不消耗测量序列（已按 runtime/bench.h 现有实现核对）；2048指总测量请求数。
 
 原始 `requests.csv` 保留在 `work/bench/`，不新增 CSV 汇总文件。性能结果及口径写入英文文件名文档的附录表格，并链接原始证据。
 
@@ -203,7 +225,7 @@ python3 "$ROOT/tools/compare.py" \
 
 计时范围继续是 warm graph 的 H2D＋描述符更新＋execute＋sync，不包含官方 CPU 预处理和 D2H，不称完整业务 QPS。HBM 阶段采样不称峰值。
 
-精度通过不代表卡已空闲。卡忙时不直接测试：复用已有空闲门禁或交给既有监控执行，不在模型目录再实现一套后台调度，不绕过门禁启动第二份 benchmark。实际接入既有监控时需显式指向新请求，不能沿用指向旧产物的调度命令。当前只记录方案，不重启监控或测试。
+精度通过不代表卡已空闲。进入性能测试前 run.sh 打印提醒并等待人工确认卡空闲；不内置利用率轮询、不接入后台监控、不绕过确认启动第二份 benchmark。`scripts/monitor_idle_benchmark.py` 保留为 P8 历史证据与手动工具，不在本流程内自动调用。
 
 ## 8. 运行、重跑和失败行为
 
@@ -225,14 +247,14 @@ bash models/startlux-decision-v1.1-0.8b-instant/run.sh
 1. 保留现有源码、正式 AIR 和全部验收证据，先实现独立入口及模型内新 `work/`。
 2. 迁移现有已验证计算与导出逻辑，不同时修改第三方算子实现。
 3. 完成 CPU、单 AIR 精度和空闲条件下的性能验证。
-4. 全部通过后，再移除旧 pipeline 专用配置和包装代码，调整受影响的测试引用。此前不提前删除当前正式入口。
+4. 全部通过后，再移除旧 pipeline 专用配置和包装代码：删除 `config/model.yaml`、`config/model-mega.yaml`、`unified_adapter.py`、`unified_verify.py`、`verify.py`、`generate_unified_cases.py`、`scripts/run_unified_performance.py`；保留被复用的 `multimodal.py`、`startlux_npu_adapter.py`、`vision.py`、`decision.py`、`reference.py`、`unified_preprocess.py`、`scripts/monitor_idle_benchmark.py` 及其既有 CPU 单测；业务门禁逻辑完成向 `verify_business.py` 的迁移后删除原文件。实施修正（2026-11-05）：`ge_readout.py` 与 `unified_readout.py` 一并保留——保留的 `unified_readout.py`（GESession 读出会话）在模块级依赖 `ge_readout.py`，二者及其单测不在删除范围。调整受影响的测试引用（删除被移除文件对应的 test_startlux_unified_adapter / test_startlux_unified_verify / test_startlux_verify / test_startlux_unified_cases），此前不提前删除当前正式入口。实施修正（2026-11-06）：为满足"独立入口不直接或间接依赖 `core`"的验收项，`core.backends.runtime.execute`（ge_runtime 子进程协议，未用的 abort 钩子已去除）与 `core.contracts.validate_io`（IOSpec 校验）自 `ebb6fbd` 内联进 `ge_readout.py` 并标注来源；`unified_readout.py` 改用 `ge_readout.validate_io`，二者不再 import `core`。
 
 验收项：
 
 - 独立入口不直接或间接依赖 `core`。
 - 官方 CPU golden 与 NPU 使用相同预处理输入及读出语义，参考计算独立。
-- AIR 为包含完整数值前向的单图；动态尺寸和既有边界用例通过，包括 B4 混合有效长度补验。
-- 精度逐样本通过既有门限，跨 dtype 业务差异保持原有披露。
+- AIR 为包含完整数值前向的单图；动态尺寸和既有边界用例通过，包括精度用例集内的 B4 混合有效长度用例。
+- 精度逐样本通过既有门限，业务概率门禁通过，跨 dtype 业务差异保持原有披露。
 - 性能符合空闲及预热要求，无首次命中污染，原始记录完整，计时范围准确。
 - 从不同当前目录启动、单独重跑推理及比较均正常，不误用上一次失败前留下的产物。
 - README 更新为真实已实施入口、环境和证据路径；新方案验收前仍保留现有流程说明。

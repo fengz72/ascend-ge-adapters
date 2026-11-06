@@ -40,8 +40,8 @@ def load(name, filename):
     return module
 
 
-multimodal = load("startlux_multimodal_for_unified_test", "multimodal.py")
-unified_preprocess = load("startlux_unified_preprocess_test", "unified_preprocess.py")
+multimodal = load("startlux_multimodal_for_unified_test", "model/multimodal.py")
+unified_preprocess = load("startlux_unified_preprocess_test", "model/unified_preprocess.py")
 
 
 def fake_folder_config(image_token=100, vision_start=102, vision_end=103, vocab=128):
@@ -98,8 +98,8 @@ RED = str(FIXTURES / "fixture-image-a-red.ppm")
 BLUE = str(FIXTURES / "fixture-image-b-blue.ppm")
 
 sys.path.insert(0, str(MODEL_DIR))
-sys.path.insert(0, str(MODEL_DIR / "vendor"))
-spec = importlib.util.spec_from_file_location("unified_preprocess", MODEL_DIR / "unified_preprocess.py")
+sys.path.insert(0, str(MODEL_DIR / "decider" / "vendor"))
+spec = importlib.util.spec_from_file_location("unified_preprocess", MODEL_DIR / "model" / "unified_preprocess.py")
 up = importlib.util.module_from_spec(spec); sys.modules["unified_preprocess"] = up
 spec.loader.exec_module(up)
 

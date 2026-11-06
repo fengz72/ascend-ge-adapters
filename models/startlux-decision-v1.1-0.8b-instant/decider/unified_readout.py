@@ -58,7 +58,7 @@ from pathlib import Path
 
 import numpy as np
 
-MODEL_DIR = Path(__file__).resolve().parent
+MODEL_DIR = Path(__file__).resolve().parents[1]   # the model root
 ROOT = MODEL_DIR.parents[1]
 
 if str(MODEL_DIR) not in sys.path:
@@ -79,13 +79,13 @@ def _load_module(name, filename):
     return module
 
 
-ge_readout = _load_module("startlux_ge_readout_for_unified", "ge_readout.py")
+ge_readout = _load_module("startlux_ge_readout_for_unified", "decider/ge_readout.py")
 unified_preprocess = _load_module("startlux_unified_preprocess_for_readout",
-                                  "unified_preprocess.py")
-multimodal = _load_module("startlux_multimodal_for_readout", "multimodal.py")
+                                  "model/unified_preprocess.py")
+multimodal = _load_module("startlux_multimodal_for_readout", "model/multimodal.py")
 
-if str(MODEL_DIR / "vendor") not in sys.path:      # the pinned official package
-    sys.path.insert(0, str(MODEL_DIR / "vendor"))
+if str(MODEL_DIR / "decider" / "vendor") not in sys.path:      # the pinned official package
+    sys.path.insert(0, str(MODEL_DIR / "decider" / "vendor"))
 from startlux_decide.backends.base import Backend, BackendRequestError  # noqa: E402
 
 ReadoutError = ge_readout.ReadoutError
@@ -140,9 +140,7 @@ class UnifiedGraphSpec:
     @classmethod
     def from_io(cls, io, vocab_size=None, max_seq_len=None):
         try:
-            from core.contracts import validate_io
-
-            validate_io(io)
+            ge_readout.validate_io(io)
         except ValueError as error:
             raise ReadoutError(f"the AIR's IOSpec is not valid: {error}") from None
         inputs = {node["name"]: node for node in io["inputs"]}
@@ -442,7 +440,7 @@ def startlux_unified_decision(model_dir, session, tokenizer=None, *, none_check=
     caller loads no model weights: the tokenizer and the official processor
     settings are the only folder reads.
     """
-    bridge = _load_module("startlux_decision_for_unified_readout", "decision.py")
+    bridge = _load_module("startlux_decision_for_unified_readout", "decider/decision.py")
     folder = bridge.load_model_folder(str(model_dir))
     if not folder.vision:
         raise ReadoutError(f"{folder.path}: the unified read-out needs the vision folder "

@@ -45,10 +45,10 @@ def load(name, filename):
     return module
 
 
-multimodal = load("startlux_multimodal_for_readout_test", "multimodal.py")
+multimodal = load("startlux_multimodal_for_readout_test", "model/multimodal.py")
 unified_preprocess = load("startlux_unified_preprocess_readout_test",
-                          "unified_preprocess.py")
-unified_readout = load("startlux_unified_readout_test", "unified_readout.py")
+                          "model/unified_preprocess.py")
+unified_readout = load("startlux_unified_readout_test", "decider/unified_readout.py")
 
 
 def workdir(prefix):
@@ -465,7 +465,7 @@ class TestDecisionImagesCompat(unittest.TestCase):
              "wide_choice": {"group": 25, "keep": 3, "residual": 0.001},
              "format": "StartLux-Decision-v1.1", "release_date": "2026-10-30"}))
         self.folder = folder
-        sys.path.insert(0, str(MODEL_DIR / "vendor"))
+        sys.path.insert(0, str(MODEL_DIR / "decider" / "vendor"))
         from startlux_decide.backends.fake import FakeTokenizer
 
         self.tok = FakeTokenizer()
@@ -477,7 +477,7 @@ class TestDecisionImagesCompat(unittest.TestCase):
 
         self.readout = readout
         self.decision = unified_readout._load_module(
-            "startlux_decision_compat", "decision.py").StartluxDecision(
+            "startlux_decision_compat", "decider/decision.py").StartluxDecision(
             folder, self.tok, readout=readout)
 
     def test_images_none_is_identical_to_the_old_text_behavior(self):
@@ -509,7 +509,7 @@ RED = ROOT / "work/startlux-validation/p6-image/fixture-image-a-red.ppm"
 BLUE = ROOT / "work/startlux-validation/p6-image/fixture-image-b-blue.ppm"
 
 sys.path.insert(0, str(MODEL_DIR))
-sys.path.insert(0, str(MODEL_DIR / "vendor"))
+sys.path.insert(0, str(MODEL_DIR / "decider" / "vendor"))
 
 def load(name, filename):
     spec = importlib.util.spec_from_file_location(name, str(MODEL_DIR / filename))
@@ -517,9 +517,9 @@ def load(name, filename):
     spec.loader.exec_module(module)
     return module
 
-unified_readout = load("unified_readout_real", "unified_readout.py")
-unified_preprocess = load("unified_preprocess_real", "unified_preprocess.py")
-bridge = load("startlux_decision_real", "decision.py")
+unified_readout = load("unified_readout_real", "decider/unified_readout.py")
+unified_preprocess = load("unified_preprocess_real", "model/unified_preprocess.py")
+bridge = load("startlux_decision_real", "decider/decision.py")
 
 from transformers import AutoTokenizer
 

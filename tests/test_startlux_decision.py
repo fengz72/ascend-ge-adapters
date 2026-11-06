@@ -22,7 +22,7 @@ import unittest
 from pathlib import Path
 
 MODEL_DIR = Path("models/startlux-decision-v1.1-0.8b-instant").resolve()
-_spec = importlib.util.spec_from_file_location("startlux_decision_p2a_bridge", MODEL_DIR / "decision.py")
+_spec = importlib.util.spec_from_file_location("startlux_decision_p2a_bridge", MODEL_DIR / "decider" / "decision.py")
 bridge = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bridge)      # also puts the vendored package on sys.path
 
@@ -863,7 +863,7 @@ class RealTokenizerIntegration(unittest.TestCase):
 
 
 _reference_spec = importlib.util.spec_from_file_location(
-    "startlux_decision_reference_review", MODEL_DIR / "reference.py")
+    "startlux_decision_reference_review", MODEL_DIR / "decider" / "reference.py")
 reference = importlib.util.module_from_spec(_reference_spec)
 _reference_spec.loader.exec_module(reference)
 

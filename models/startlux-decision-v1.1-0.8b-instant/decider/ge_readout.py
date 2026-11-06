@@ -52,18 +52,15 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
-import sys
+import signal
+import subprocess
+import tempfile
 import time
 from pathlib import Path
 
 import numpy as np
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-from core.backends.runtime import execute as _execute  # noqa: E402
-from core.contracts import validate_io  # noqa: E402
 
 RUNTIME = Path("runtime/build/ge_runtime")
 AIR_DEFAULT = Path("work/startlux-validation/native-full/model-work/build/model.air")
@@ -78,6 +75,7 @@ OUTPUT_NAME = "scores"
 LETTER_COLUMNS = 26
 PAD_ID = 0
 DEFAULT_OPTIONS = {"graph_run_mode": 0, "precision_mode": "must_keep_origin_dtype"}
+_RESULT_PREFIX = "GE_RESULT "
 
 
 class ReadoutError(RuntimeError):
@@ -86,6 +84,136 @@ class ReadoutError(RuntimeError):
 
 def _log_tail(text: str, limit: int = 4000) -> str:
     return text[-limit:] if len(text) > limit else text
+
+
+def _kill_group(process):
+    """Kill exactly the child's own process group (CANN compiler workers can
+    inherit stdout and outlive a killed runtime); then reap the child."""
+    try:
+        group = os.getpgid(process.pid)
+    except OSError:
+        group = None
+    if group is not None:
+        try:
+            os.killpg(group, signal.SIGKILL)
+        except OSError:
+            pass
+    try:
+        process.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _execute(runtime_bin, plan, *, log_path=None, timeout=None, error=RuntimeError):
+    """One ge_runtime subprocess under ``plan``; returns (result, log_text, wall_seconds).
+
+    Inlined from core/backends/runtime.py (commit ebb6fbd) so this module does
+    not depend on the repository's ``core`` package; the unused abort hooks of
+    the original are dropped, everything else is behavior-identical.  The child
+    runs in its own process group (start_new_session) so a timeout kills exactly
+    that group.  Stdout+stderr go to ``log_path`` (a regular file, parents
+    created, kept as evidence) or to a temporary file.  Exactly one GE_RESULT
+    line must come back; a nonzero exit whose parsed status is 'failed' returns
+    the result with an 'error' detail attached, every other deviation raises
+    ``error`` with the log tail.
+    """
+    runtime_bin = Path(runtime_bin)
+    if not runtime_bin.is_file():
+        raise error(f"runtime binary missing: {runtime_bin}; build it: bash runtime/build.sh")
+    # A regular file (not an inherited pipe) lets us report the parent's failure
+    # without waiting for a surviving compiler worker's stdout to close.
+    if log_path is None:
+        log_file = tempfile.TemporaryFile(mode='w+', encoding='utf-8', errors='replace')
+        log_name = None
+    else:
+        log_path = Path(log_path)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_file = log_path.open('w+', encoding='utf-8', errors='replace')
+        log_name = str(log_path)
+    started = time.perf_counter()
+    payload = json.dumps(plan)
+    with log_file as log:
+        try:
+            process = subprocess.Popen([str(runtime_bin)], stdin=subprocess.PIPE, stdout=log,
+                                       stderr=subprocess.STDOUT, text=True, start_new_session=True)
+        except OSError as failure:
+            raise error(f"cannot execute runtime {runtime_bin}: {failure}") from failure
+        try:
+            process.stdin.write(payload)
+            process.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
+        while process.poll() is None:
+            elapsed = time.perf_counter() - started
+            if timeout is not None and elapsed >= timeout:
+                log.seek(0)
+                raise error(f"ge_runtime did not finish within {timeout}s (plan mode {plan.get('mode')}); "
+                            f"log tail:\n{_log_tail(log.read())}")
+            time.sleep(0.2 if timeout is None else min(0.2, max(0.0, timeout - elapsed)))
+        log.seek(0)
+        text = log.read()
+    wall = time.perf_counter() - started
+    messages = [line[len(_RESULT_PREFIX):] for line in text.splitlines()
+                if line.startswith(_RESULT_PREFIX)]
+    if len(messages) != 1:
+        detail = (f"ge_runtime (exit {process.returncode}) produced {len(messages)} GE_RESULT lines "
+                  f"instead of exactly one; log tail:\n{_log_tail(text)}")
+        raise error(detail + (f"\nlog: {log_name}" if log_name else ''))
+    try:
+        result = json.loads(messages[0])
+    except ValueError as failure:
+        raise error(f"ge_runtime GE_RESULT is not JSON: {messages[0][:500]}") from failure
+    if process.returncode and result.get('status') != 'failed':
+        detail = f"ge_runtime exited {process.returncode}; log tail:\n{_log_tail(text)}"
+        raise error(detail + (f"\nlog: {log_name}" if log_name else ''))
+    if process.returncode:
+        detail = f"ge_runtime exited {process.returncode}; log tail:\n{_log_tail(text)}"
+        result['error'] = detail + (f"\nlog: {log_name}" if log_name else '')
+    return result, text, wall
+
+
+def _exact_keys(value, allowed, where, required=()):
+    if not isinstance(value, dict):
+        raise ValueError(f"{where}: expected object")
+    unknown = set(value) - set(allowed)
+    missing = set(required) - set(value)
+    if unknown or missing:
+        raise ValueError(f"{where}: unknown={sorted(unknown)}, missing={sorted(missing)}")
+
+
+def _tensor_name(name):
+    if not isinstance(name, str) or not name or '\0' in name:
+        raise ValueError(f"invalid tensor name: {name!r}")
+    return name
+
+
+def validate_io(io):
+    """Inlined from core/contracts.py (commit ebb6fbd) so this module does not
+    depend on the repository's ``core`` package; behavior is identical."""
+    _exact_keys(io, ("schema", "inputs", "outputs"), "IOSpec",
+                ("schema", "inputs", "outputs"))
+    if io["schema"] != "ge-io/1":
+        raise ValueError("unsupported IOSpec schema")
+    for side in ("inputs", "outputs"):
+        names = []
+        if not io[side]:
+            raise ValueError(f"IOSpec {side} is empty")
+        for item in io[side]:
+            _exact_keys(item, ("name", "dtype", "shape", "dynamic_dims", "node", "format",
+                               "max_bytes"), f"IOSpec.{side}", ("name", "dtype", "shape"))
+            _tensor_name(item["name"])
+            names.append(item["name"])
+            dynamic = item.get("dynamic_dims", [])
+            if sorted(set(dynamic)) != dynamic or any(i < 0 or i >= len(item["shape"])
+                                                      for i in dynamic):
+                raise ValueError(f"invalid dynamic axes: {item}")
+            if any(d == 0 or d < -1 for d in item["shape"]):
+                raise ValueError(f"invalid shape: {item}")
+            if {i for i, d in enumerate(item["shape"]) if d == -1} != set(dynamic):
+                raise ValueError(f"shape and dynamic_dims disagree: {item}")
+        if len(set(names)) != len(names):
+            raise ValueError(f"duplicate {side}: {names}")
+    return io
 
 
 def _require_true_int(value, what: str) -> int:
@@ -119,8 +247,8 @@ def run_plan(runtime_bin, plan: dict, log_path, timeout: float = 600.0):
     Stdout+stderr of the runtime go to a regular file at ``log_path``; the call is
     bounded by ``timeout`` seconds; exactly one ``GE_RESULT`` line must come back.
     Every deviation raises ReadoutError with the log tail.  The subprocess protocol
-    itself (own process group, timeout/abort kill, GE_RESULT parsing) is the shared
-    core implementation -- core.backends.runtime.execute.
+    itself (own process group, timeout kill, GE_RESULT parsing) is the inlined
+    ``_execute`` above.
     """
     result, text, _wall = _execute(runtime_bin, plan, log_path=log_path,
                                     timeout=timeout, error=ReadoutError)

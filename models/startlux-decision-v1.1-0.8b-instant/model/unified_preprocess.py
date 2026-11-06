@@ -75,7 +75,7 @@ from pathlib import Path
 
 import numpy as np
 
-MODEL_DIR = Path(__file__).resolve().parent
+MODEL_DIR = Path(__file__).resolve().parents[1]   # the model root
 ROOT = MODEL_DIR.parents[1]
 
 DEPS_HINT = ("the official image preprocessing needs Pillow (and torchvision for the "
@@ -102,7 +102,7 @@ def _load_module(name, filename):
     return module
 
 
-multimodal = _load_module("startlux_multimodal_for_unified", "multimodal.py")
+multimodal = _load_module("startlux_multimodal_for_unified", "model/multimodal.py")
 
 GRID_THW = multimodal.GRID_THW                    # (1, 16, 16): 256x256 official processing
 PATCH_ROWS = multimodal.PATCH_ROWS                # 256 patch rows per slot
@@ -114,8 +114,8 @@ IMAGE_TOKENS_PER_IMAGE = MERGED_ROWS              # 64 merged tokens per 256x256
 
 
 def _vendor_path():
-    if str(MODEL_DIR / "vendor") not in sys.path:
-        sys.path.insert(0, str(MODEL_DIR / "vendor"))
+    if str(MODEL_DIR / "decider" / "vendor") not in sys.path:
+        sys.path.insert(0, str(MODEL_DIR / "decider" / "vendor"))
 
 
 def image_data_uri(path):

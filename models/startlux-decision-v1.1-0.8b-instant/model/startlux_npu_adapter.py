@@ -68,15 +68,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-MODEL_DIR = Path(__file__).resolve().parent
+MODEL_DIR = Path(__file__).resolve().parents[1]   # the model root
 ROOT = MODEL_DIR.parents[1]
-VENDOR = MODEL_DIR / "vendor"
+VENDOR = MODEL_DIR / "decider" / "vendor"
 
 
 def _params(config):
     params = {"max_seq_len": 2048, "compiled_seq_len": 256, "chunk_size": 64,
               "max_batch": 4, "gdn_route": "native",
-              "fixtures_file": "fixtures/p2b-readouts.json",
+              "fixtures_file": "decider/fixtures/p2b-readouts.json",
               **config["model"]["params"]}
     allowed = {"max_seq_len", "compiled_seq_len", "chunk_size", "max_batch",
                "fixtures_file", "gdn_route"}
@@ -218,7 +218,7 @@ def describe(config):
                         "q/k masked at true length, FP32 L2norm (eps 1e-6) once, cast BF16; kernel applies Dk**-0.5 once",
                         "v/beta BF16, g FP32; zero initial_state [B,Hv,Dv,Dk] BF16 per layer, no state cache or reuse",
                         "padded B*S flatten passes per-row physical width S as actual_seq_lengths; readout gathers true L-1",
-                        "GE-exact 4-tap causal conv shift (causal_conv4), replaces Conv1D",
+                        "causal short conv as one fp32 depthwise Conv2D node (causal_conv4), replaces Conv1D",
                         "eager-math bidirectional full attention",
                         "in-graph partial RoPE from position_ids (text [B,S] or official [3,B,S] MRoPE planes)",
                         "shared forward_embeddings decoder loop (unified multimodal injection entry)",
@@ -266,7 +266,7 @@ def describe(config):
                                  if params["gdn_route"] == "mega" else None),
                 "short_conv": ("inside MegaGdnPrefillV2 (width 4, cache rows discarded)"
                                if params["gdn_route"] == "mega"
-                               else "causal_conv4 (shared GE-exact 4-tap shift, SiLU included)"),
+                                else "causal_conv4 (one fp32 depthwise Conv2D node; SiLU after the bf16 cast)"),
                 "dependency_loading": ("core.dependencies.prepare (operator installed into "
                                        "the CANN global opp by install.sh; torch binding "
                                        "pip-installed editable -- the activator finds the "
@@ -309,31 +309,30 @@ def _softplus(x):
 
 
 def causal_conv4(x, weight):
-    """Shared GE-exact causal 4-tap depthwise short conv for the GDR path.
+    """Shared causal 4-tap depthwise short conv for the GDR path: ONE fp32
+    depthwise Conv2D node.
 
-    Replaces ``F.silu(conv1d(x, weight, padding=3)[:, :, :S])`` with the
-    explicit accumulation ``w0*x[t-3] + w1*x[t-2] + w2*x[t-1] + w3*x[t]`` over
-    left-zero-padded input: FP32 multiply/add, cast to the input dtype, then
-    SiLU - the exact HF compute order (conv -> BF16 -> SiLU). The HF conv is
-    bias-free, so no bias term. Accepts non-contiguous [B, C, S] transposed
-    views; returns the SiLU-activated [B, C, S].
+    Replaces ``F.silu(conv1d(x, weight, padding=3)[:, :, :S])`` with a
+    [B,C,1,S] x [C,1,1,4] depthwise Conv2D (groups=C, padding=(0,3), sliced
+    to the first S columns): FP32 multiply/accumulate, cast to the input
+    dtype, then SiLU - the exact HF compute order (conv -> BF16 -> SiLU).
+    The HF conv is bias-free, so no bias term. Accepts non-contiguous
+    [B, C, S] transposed views; returns the SiLU-activated [B, C, S].
 
-    Real-weight layer0 evidence (work/startlux-validation/p3/debug-qkvconv):
-    the TorchAir/GE Conv1D conversion miscompiles this depthwise
-    (C=6144, groups=C, kernel=4, padding=3) configuration on contiguous and
-    transposed input alike (relL2 1.077 vs eager, maxabs 20.25), while this
-    shift form is bit-exact under GE and bit-exact vs the Conv1d path in NPU
-    eager. Kernel size is fixed at 4 per the StartLux linear_conv_kernel_dim.
+    Route evidence (2026-11-05, GE graph-mode small-graph gates + eager, at
+    C=6144/groups=C/kernel=4/S256 and S2048): the bf16-input Conv1D AND
+    Conv2D nodes both miscompile this configuration (relL2 1.41 vs an fp64
+    golden -- the P3 finding, work/startlux-validation/p3/debug-qkvconv;
+    torchair routes aten.conv1d to the same Conv2D node), while the fp32-input
+    Conv2D node is numerically correct (relL2 2.41e-3 = the expected bf16
+    output quantization, matching the previous shift form and eager exactly)
+    and 27-45% faster in GE than the explicit 4-tap shift chain. Kernel size
+    is fixed at 4 per the StartLux linear_conv_kernel_dim.
     """
     channels, seq = x.shape[1], x.shape[2]
-    x32 = x.float()
-    w = weight.float().reshape(1, channels, 4)
-    xp = F.pad(x32, (3, 0))
-    y = (xp[:, :, 0:seq] * w[:, :, 0:1]
-         + xp[:, :, 1:seq + 1] * w[:, :, 1:2]
-         + xp[:, :, 2:seq + 2] * w[:, :, 2:3]
-         + xp[:, :, 3:seq + 3] * w[:, :, 3:4])
-    return F.silu(y.to(x.dtype))
+    w = weight.float().reshape(channels, 1, 1, 4)
+    y = F.conv2d(x.float().unsqueeze(2), w, groups=channels, padding=(0, 3))
+    return F.silu(y[..., :seq].squeeze(2).to(x.dtype))
 
 
 def rope_cos_sin(position_ids, inv_freq, dtype):

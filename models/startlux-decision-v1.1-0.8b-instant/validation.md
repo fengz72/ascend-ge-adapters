@@ -47,8 +47,118 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `review-p7-unittest-final-state.log`（Ran 317 tests in 27.635s，OK）。清理
 （2026-11-02）后主 agent 再次复跑 317 项全部通过：
 `work/startlux-cannbot/cleanup-20261102/unittest.log`（Ran 317 tests in
-28.531s，OK）。全仓套件另有 4 个预存 error（上游 onnx 缺包
-ModuleNotFoundError，非本模型引入），不据此宣称全 repo 通过。
+ 28.531s，OK）。全仓套件另有 4 个预存 error（上游 onnx 缺包
+ ModuleNotFoundError，非本模型引入），不据此宣称全 repo 通过。
+
+## 2026-11-05 变更：目录重组（model/ 与 decider/）
+
+**决策**（用户拍板）：模型根下的散置 Python 文件按职责归组——
+
+- **`model/`**（模型构建与导出）：`model.py`、`startlux_npu_adapter.py`、
+  `multimodal.py`、`vision.py`、`unified_preprocess.py`、`export_air.py`；
+- **`decider/`**（decider 业务语义与官方管线）：`decision.py`、
+  `reference.py`、`golden.py`、`ge_readout.py`、`unified_readout.py`、
+  `verify_business.py`、`fixtures/`、`vendor/`（官方 startlux_decide
+  逐字节子集）；
+- 根目录保留流程入口与基础设施：`run.sh`、`prepare.sh`、
+  `generate_inputs.py`、README/validation/performance、`docs/`、`scripts/`、
+  `native_proto/`、`work/`。
+
+实施：git mv 保留历史；所有文件的 `MODEL_DIR` 语义改为模型根
+（`parents[1]`），`_load_module` 调用改带 `model/`/`decider/` 前缀，
+`vendor`/`fixtures` 引用改 `decider/` 子路径（含 adapter `_params` 的
+`fixtures_file` 默认值）；`run.sh` 三处阶段路径、tests 7 个文件路径同步。
+验证：全部 startlux CPU 单测 242 项通过；数据阶段冒烟通过
+（`generate_inputs.py` 12 cases / `decider/golden.py` 16 rows /
+`model/verify_business.py` 11/11 PASS）；`model.py`/`export_air.py` import
+链冒烟通过。运行产物路径（`work/`、AIR、bench 请求）不变。
+
+## 2026-11-06 变更：视觉 patch-embed Conv3D 替换为等价 MatMul（含 FIA 调查回退）
+
+**决策**（用户拍板，profiling 驱动）：GE profiling（work/prof-fia）显示
+Conv3DV2（视觉 patch-embed，fp32）为最大热点——每请求固定 6854 µs、占全部
+AI 时间 20%，且**纯文本请求也在跑**（单图架构代价）；指标 mac 0.22 /
+mte1 0.97 = 访存受限、退化 tiling。stride==kernel 使该卷积在数学上等价于
+每 patch 全连接，改为单个 MatMulV2（`model/vision.py` 的 `MatMulPatchEmbed`：
+持有官方 conv 引用、无权重拷贝、输入 cast 语义与官方一致）。
+
+- 前置调查（同日）：`fused_infer_attention_score` 替换 6 层双向 full
+  attention 已通过全部门禁（数值 12/12 relL2 0.0068、业务 11/11 worst
+  0.0063、bench 28.25 exec/s）但**净负收益 −3.5%**（配套 TransData/Cast 与
+  host 调度大于 kernel 节省，FIA 仅占 0.65% AI 时间）——**已回退**为
+  eager-math attention；测量表见 performance.md 附录。
+- 整模门禁（MatMul patch-embed + conv2d conv + eager-math attention，
+  `run.sh --device 3`）：数值 12/12（worst cosine 0.999995 / relL2 0.005749，
+  略移但远低于门限）、业务 11/11（worst 0.007576）。
+- bench（2,048 请求 0 错误）：**35.989 exec/s（+23.0%）**、e2e P50
+  **27.130 ms（−6.43 ms）**；profiling 复采确认 Conv3DV2 消失、该阶段开销
+  ~25 µs/请求（约 270×），ChunkGatedDeltaRule 成为最大 AIC 算子（11.0%）。
+- CPU 单测：新增 `MatMulPatchEmbed` 等价性 2 项（fp32 对官方 Conv3d ≤1e-6、
+  wrapper 接线），全套 244 项通过。
+
+## 2026-11-05 变更：MegaGdnPrefillV2 融合算子切换尝试与同日回退
+
+**决策**（用户拍板）：尝试将 GDR 路线由 native ChunkGatedDeltaRule 切换为
+**MegaGdnPrefillV2 整块融合算子**（vendored
+`third_party/ascend-ops/mega-gdn-prefill`，custom-op-v2），完成全量门禁后
+**同日回退 native 单路线**。原因：融合算子内部按 **128 对齐**设计，本模型
+shape 偏小（hidden 1024、Nk=Nv=16/Dk=Dv=128、有效长度多在 S256 量级），
+融合收益为负。mega 分支保留为 `gdn_route="mega"` 休眠选项（代码、
+`scripts/build_mega_gdn.sh`、vendored 算子包均在）。
+
+切换期间的全量门禁结果（Chip 3 空闲卡，独立流程完整重跑）：
+
+- 流程接线（已回退，记录备查）：`prepare.sh` → `build_mega_gdn.sh`（装入
+  CANN 全局 opp + pip 注册 torch 绑定）；`export_air.py` import activator；
+  export/infer/bench GE 子进程改用 `ASCEND_CUSTOM_OPP_PATH=<install>/opp`
+  替代 chunk 原型 LD_PRELOAD。接线本身全程无故障。
+- **数值门禁**：12 cases / 16 rows 全过，worst cosine 0.999981 / relL2
+  0.010130（native 0.999995 / 0.004004）。逐用例看，图像用例 logits 误差
+  与文本同量级（relL2 0.0028–0.0038 vs 文本 0.0015–0.0044）。
+- **业务门禁 8/11**：3 个图像用例 `prob_max_abs` 0.0123/0.0132/0.0147 >
+  0.01（top1 一致、margin 0.256/0.392/0.574）——logits 误差经温度归一化放
+  大所致，与 `eb8de21` 记录的路线固有精度一致（native 为 11/11，worst
+  0.0055）。
+- **bench**：2,048 请求 0 错误，20.545 graph exec/s、22.411 rows/s、e2e P50
+  46.843 ms（B2 用例 P50 65.2 ms）——对比 native 26.824–27.342 exec/s、
+  P50 36.6 ms，**吞吐约 −23%、B2 用例 −51%**（详见 performance.md 附录）。
+- **回退执行**：默认 `gdn_route` 还原为 native；`prepare.sh`/`export_air.py`/
+  `run.sh` 恢复 chunk 原型显式局部加载契约；单测还原并通过（240 项）。
+  回退后 `run.sh --device 3` 全量重跑精度链恢复通过（数值 12/12：worst
+  cosine 0.999995 / relL2 0.004004；业务 11/11：worst 0.005507，与 11-05
+  凌晨 native 验收一致）；`work/` 精度产物已覆盖为 native，mega 调查的
+  bench 残留已清理（native 正式基准仍为 P8 与 standalone 附录记录）。
+  `run.sh` 新增 `--device <Chip Logic ID>` 卡选择参数（默认 4）为本日唯一
+  保留变更。
+
+## 2026-11-05 变更：causal_conv4 替换为 fp32 depthwise Conv2D 节点
+
+**决策**（用户拍板，"零依赖方案 B"）：`causal_conv4` 内部实现由显式 4 抽头
+移位乘加改为**单个 fp32 depthwise Conv2D 节点**（[B,C,1,S]×[C,1,1,4]、
+groups=C、padding=(0,3) 切前 S），函数签名/调用点/数值顺序（fp32 conv →
+cast 输入 dtype → SiLU）不变；CANN 内置 FusedCausalConv1d/MaskedCausalConv1d
+因 **K 固定 3** 不可用，vendored xllm CausalConv1d（K=4）需引入 vendor 包
+依赖，未采用。
+
+前置证据（GE 图模式小图门禁，C=6144/groups=C/kernel=4，S256 与 S2048）：
+- bf16 输入的 Conv1D 与 Conv2D **均**错编译（relL2 1.41 vs fp64 golden；
+  P3 复现，torchair 将 conv1d 转同一 Conv2D 节点）；
+- fp32 输入的 Conv2D 正确（2.41e-03 = BF16 输出量化预期，与移位形式及
+  eager 完全同值），图模式单 conv 快 27%（S256）–45%（S2048）；
+- CANN 内置 `npu_fused_causal_conv1d` / `npu_masked_causal_conv1d` 文档
+  明确 K/W 固定 3，直接排除。
+
+整模门禁（2026-11-05，`run.sh --device 3` 全量重跑）：
+
+- 数值 12 cases / 16 rows 全过：worst cosine 0.999995 / relL2 0.004004，
+  **与替换前逐项一致**（conv 替换无数值可见影响）。
+- 业务 11/11 全过：worst 0.005507，与替换前一致。
+- bench（2,048 请求 0 错误）：**29.265 exec/s**（+9.1% vs 同日同卡类移位
+  形式 26.824；+7.0% vs P8 正式 27.342）；e2e P50 **33.561 ms**（−3.0 ms）；
+  P99 40.101 ms。测量表见 performance.md 附录。
+- 新增 CPU 单测 2 项（等价性：fp32 ≤1e-6 / bf16 ≤1e-2 对官方 conv1d 顺
+  序、非连续转置视图；因果性：t 仅依赖 ≤t 的 token）；startlux 全套
+  CPU 单测通过。
 
 ## 2026-11-02 变更：收敛为 native chunk GDR 单路线
 

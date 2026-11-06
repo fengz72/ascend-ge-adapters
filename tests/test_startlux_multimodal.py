@@ -25,8 +25,8 @@ def load(name, filename):
     return module
 
 
-npu = load("startlux_npu_adapter_for_native", "startlux_npu_adapter.py")
-multimodal = load("startlux_multimodal_under_test", "multimodal.py")
+npu = load("startlux_npu_adapter_for_native", "model/startlux_npu_adapter.py")
+multimodal = load("startlux_multimodal_under_test", "model/multimodal.py")
 
 
 def official_interleave(freqs, section):
@@ -607,7 +607,7 @@ class TestRuntimeHandleEncode(unittest.TestCase):
             "text_config": {"vocab_size": cls.VOCAB}, **cls.TOKENS}))
         cls.config = {"model": {"params": {"max_seq_len": 2048, "compiled_seq_len": 256,
                                            "chunk_size": 64, "max_batch": 4,
-                                           "fixtures_file": "fixtures/p2b-readouts.json"}},
+                                           "fixtures_file": "decider/fixtures/p2b-readouts.json"}},
                       "source": {"ref": str(folder)}}
         cls.handle = multimodal.MultimodalRuntimeHandle(cls.config, {"schema": "ge-io/1"})
         cls.zeros_pixels = [[0.0] * 1536 for _ in range(2 * multimodal.PATCH_ROWS)]
@@ -769,6 +769,34 @@ class TestVisionBufferProvenance(unittest.TestCase):
             self.assertEqual(getattr(wrapper, name).device, device)
         # the real non-CPU source-device coverage is the NPU eager stage of
         # work/startlux-validation/p6-unified (device audit, no masking .to)
+
+
+class TestMatMulPatchEmbed(unittest.TestCase):
+    """MatMulPatchEmbed must reproduce the official Conv3d patch embed
+    exactly (stride == kernel: a per-patch full connection)."""
+
+    def test_matches_official_conv3d(self):
+        torch.manual_seed(313)
+        patch_rows = 9
+        visual = tiny_vision_model()
+        reference = visual.patch_embed
+        equivalent = multimodal.vision_mod.MatMulPatchEmbed(reference)
+        pixels = torch.randn(patch_rows * 1536, dtype=torch.float32) * 4.0
+        with torch.inference_mode():
+            official = reference(pixels)
+            mine = equivalent(pixels)
+        rel = float((mine - official).norm() / official.norm())
+        self.assertLess(rel, 1e-6, f"fp32 accumulate drift {rel}")
+        self.assertEqual(mine.shape, official.shape)
+
+    def test_wrapper_uses_matmul_patch_embed(self):
+        visual = tiny_vision_model()
+        tower = multimodal.vision_mod.VisionTowerWrapper(visual, (1, 8, 8), slots=2)
+        self.assertIsInstance(tower.patch_embed, multimodal.vision_mod.MatMulPatchEmbed)
+        with torch.inference_mode():
+            tower.eval()
+            features = tower(torch.randn(2 * 64, 1536, dtype=torch.float32))
+        self.assertEqual(tuple(features.shape), (2 * 16, 64))
 
 
 if __name__ == "__main__":
