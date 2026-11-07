@@ -568,6 +568,10 @@ def build_unified_model(model, config):
     Returns (unified MultimodalDecoder, report).
     """
     params = base._params(config)
+    vision_dtype = {"fp32": torch.float32, "fp16": torch.float16}.get(
+        str(params.get("vision_linear_dtype", "fp16")))
+    if vision_dtype is None:
+        raise ValueError("vision_linear_dtype must be 'fp32' or 'fp16'")
     letters = base._letters_from_model(model)
     decision = base._decision_config(config)
     if decision["letter_token_ids"] != letters:
@@ -577,7 +581,8 @@ def build_unified_model(model, config):
     on_cpu_f32 = all(p.device.type == "cpu" and p.dtype == torch.float32
                      for p in visual.parameters())
     buffer_source = visual if on_cpu_f32 else copy.deepcopy(visual).to("cpu", torch.float32)
-    vision_tower = VisionTowerWrapper(visual, GRID_THW, SLOTS, buffer_source=buffer_source)
+    vision_tower = VisionTowerWrapper(visual, GRID_THW, SLOTS, buffer_source=buffer_source,
+                                      linear_dtype=vision_dtype)
     visual.float()                                # exact upcast; no-op when already f32
     body = base._model_body(model)
     body.to(torch.bfloat16)

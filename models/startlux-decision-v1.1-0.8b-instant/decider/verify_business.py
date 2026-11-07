@@ -25,7 +25,7 @@ temperature):
     top1 must agree;
   * all 26 scores finite.
 
-Cases flagged ``business: false`` in the case index (the b4-long boundary
+Cases flagged ``business: false`` in the case index (non-business boundary
 case: a shape-coverage row without business semantics) are listed explicitly
 in the report as numeric-gate-only -- never silently passed here; they are
 fully gated by the numeric comparison stage that must run first.  Failures

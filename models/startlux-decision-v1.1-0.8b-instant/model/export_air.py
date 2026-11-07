@@ -10,7 +10,7 @@ frozen-parameter + specialize_float dynamo context -- migrated here with no
 ``write_io`` mode, and generates both execution requests automatically:
 
 * ``work/infer/request.json``  -- mode infer, the full precision pool
-  (12 cases including b4-long), one execution per case;
+  (all official example cases), one execution per case;
 * ``work/bench/request.json``  -- mode bench, the formal-11 bench pool,
   single instance, warmup 32 (per-instance preheat requests, not consumed
   from the measurement sequence), 2048 total measured requests, seed 42

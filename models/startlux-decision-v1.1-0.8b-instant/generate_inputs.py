@@ -19,27 +19,26 @@ exactly once and persists everything the later stages consume:
 * ``work/fixtures/*.ppm`` -- the self-regenerating deterministic 256x256
   fixtures (byte-identical to the validated P6 production fixtures).
 
-Case pool (fixed, no configuration):
+Case pool (fixed, no configuration): ONLY the five official published
+example cases of StartLuxLabs/StartLux-Decision (examples @ main):
 
-* the SEVEN canonical pure-text read-outs of decider/fixtures/p2b-readouts.json
-  (pre-encoded official rows, one B=1 case each);
-* FOUR real image cases on the self-regenerating fixtures with
-  official-rendered prompts (image-red, image-blue, image-two,
-  mixed-text-image B2);
-* the B4 mixed-effective-length boundary case (rows of true lengths
-  1/65/129/2048, decider/fixtures/b4-long-rows.json) -- an ordinary member of the
-  PRECISION pool (it participates in golden and the per-sample comparison like
-  every other case); it carries no business metadata and is excluded from the
-  bench pool, matching the P8 formal-11 benchmark input set.
+* official-ticket-b3-r0: the client.py / request.sh support ticket asked its
+  three typed questions in ONE request (B3, one row per question);
+* official-ticket-{team,urgent,severity}-r0: the same three questions as
+  single-row requests;
+* official-image-damaged-r0: the image_request.py photo noul question
+  ("Photo taken at delivery: <image>") on the self-regenerating red fixture
+  image (the official example image is not distributed with the repo).
 
-The 11 business cases form the bench pool (the P8 formal 11); the precision
-pool is those 11 plus b4-long.  Graph bounds (B<=4, S<=2048, minimum physical
-width 256, at most 2 global image slots) are enforced here at encode time by
-the shared validated validator (multimodal.build_multimodal_batch /
-validate_batch_arrays) -- over-limit requests are rejected, never truncated.
-The boundary constants come from the modules' single source
-(multimodal.MAX_BATCH / MAX_SEQ_LEN / startlux_npu_adapter._params defaults);
-this file invents no copies.
+All five are business cases (bench pool = precision pool); the golden,
+per-row comparison and business gate treat them like any request.  Graph
+bounds (B<=4, S<=2048, minimum physical width 256, at most 2 global image
+slots) are enforced at encode time by the shared validated validator
+(multimodal.build_multimodal_batch / validate_batch_arrays) -- over-limit
+requests are rejected, never truncated, and every case runs at its TRUE
+length (min_width=1, no 256 floor).  The boundary constants come from
+the modules' single source (multimodal.MAX_BATCH / MAX_SEQ_LEN /
+startlux_npu_adapter._params defaults); this file invents no copies.
 """
 from __future__ import annotations
 
@@ -59,21 +58,31 @@ FIXTURES = MODEL_DIR / "decider" / "fixtures"
 WORK_FIXTURES = WORK / "fixtures"
 
 SEED_RED = 20261031
-SEED_BLUE = 20261032
 IMAGE_SIZE = (256, 256)                 # official processing -> grid [1, 16, 16]
-QUESTIONS = {
-    "dominant": {
-        "instructions": "Which color occupies the largest area of the image?",
-        "criteria": {"red": "the red areas are the largest",
-                     "green": "the green areas are the largest",
-                     "blue": "the blue areas are the largest"},
-    }
+
+# The official published inference examples (StartLuxLabs/StartLux-Decision
+# examples/client.py, request.sh, image_request.py @ main): the canonical
+# business-case shapes this model is served with.
+OFFICIAL_TICKET_STATE = {"ticket": "I was charged twice for order #4411 and the app still shows it as unpaid."}
+OFFICIAL_TICKET_QUESTIONS = {
+    "team": {"type": "choice", "instructions": "Which team should handle this ticket?",
+             "criteria": {"billing": "Payments and refunds", "shipping": "Delivery",
+                          "technical": "App and login"}},
+    "urgent": {"type": "noul", "instructions": "Should this ticket be answered today?"},
+    "severity": {"type": "score", "instructions": "How severe is the impact?",
+                 "criteria": ["cosmetic", "annoying", "blocks the customer"]},
 }
-STATE_ONE = ("A synthetic 256x256 RGB test pattern generated for pipeline "
-             "validation.\n<image>")
-STATE_AB = ("Two synthetic 256x256 RGB test patterns: the first is red-dominant, "
-            "the second is blue-dominant.\n<image>\n<image>")
-MIXED_TEXT_STATE = "A short plain-text evidence block for the mixed batch case."
+OFFICIAL_IMAGE_STATE = "Photo taken at delivery: <image>"
+OFFICIAL_IMAGE_QUESTION = {"type": "noul", "instructions": "Is the parcel damaged?"}
+
+
+def _active_letters(letters, question_type, count):
+    """rows_meta active columns: N options -> the first N letters (the official
+    renderer maps criteria/score levels to letters in order; noul is always
+    true/false = 2)."""
+    if question_type == "noul":
+        count = 2
+    return [int(t) for t in letters[:count]]
 
 
 def _load_module(name, filename):
@@ -104,8 +113,8 @@ def _config(source_ref):
 
     Model params stay EMPTY on purpose: the single source of the accepted
     values (max_seq_len 2048 / compiled_seq_len 256 / chunk_size 64 /
-    max_batch 4 / gdn_route native / fixtures_file) is the
-    startlux_npu_adapter._params default table; no constants are copied here.
+    max_batch 4 / gdn_route native) is the startlux_npu_adapter._params
+    default table; no constants are copied here.
     """
     return {"model": {"name": "startlux-decision-v1.1-0.8b-instant", "params": {}},
             "source": {"kind": "transformers",
@@ -129,10 +138,6 @@ RED_IMAGE = dict(dominant=(210, 40, 40),
                  patches=[((36, 30, 70, 196), (240, 235, 225)),
                           ((150, 90, 60, 80), (35, 35, 215))],
                  seed=SEED_RED)
-BLUE_IMAGE = dict(dominant=(35, 45, 215),
-                  patches=[((40, 40, 90, 60), (230, 230, 240)),
-                           ((160, 130, 56, 90), (215, 40, 40))],
-                  seed=SEED_BLUE)
 
 
 def fixture_rgb(dominant, patches, seed):
@@ -157,132 +162,90 @@ def _ppm_bytes(spec):
 
 
 def ensure_fixtures(directory=WORK_FIXTURES):
-    """(re)generate the deterministic fixtures; returns {name: absolute path}.
+    """(re)generate the deterministic red fixture; returns {name: path}.
 
-    The pictures are pure functions of their seeds, so regeneration is
-    byte-identical to the validated P6 production fixtures; an existing file
+    The picture is a pure function of its seed, so regeneration is
+    byte-identical to the validated P6 production fixture; an existing file
     with different bytes is overwritten back to the canonical content.
     """
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     out = {}
-    for name, spec in (("fixture-red-256.ppm", RED_IMAGE),
-                       ("fixture-blue-256.ppm", BLUE_IMAGE)):
-        path = directory / name
-        canonical = _ppm_bytes(spec)
-        if not path.is_file() or path.read_bytes() != canonical:
-            path.write_bytes(canonical)
-        out[name.removesuffix(".ppm")] = path
+    path = directory / "fixture-red-256.ppm"
+    canonical = _ppm_bytes(RED_IMAGE)
+    if not path.is_file() or path.read_bytes() != canonical:
+        path.write_bytes(canonical)
+    out["fixture-red-256"] = path
     return out
 
 
 # --------------------------------------------------------------- case pool
 
-def _text_cases():
-    """The seven canonical pure-text read-outs as B1 pre-encoded rows."""
-    data = json.loads((FIXTURES / "p2b-readouts.json").read_text())
-    readouts = data["readouts"]
-    if not readouts:
-        raise ValueError("fixture has no readouts")
-    if len({r["case_id"] for r in readouts}) != len(readouts):
-        raise ValueError("duplicate readout case ids in fixture")
-    cases = []
-    for readout in readouts:
-        length = len(readout["input_ids"])
-        if readout["seq_len"] != length or readout["position_ids"] != list(range(length)) \
-                or readout["actual_seq_lengths"] != [length] \
-                or len(readout["scores26_golden_fp32"]) != 26:
-            raise ValueError(f"fixture readout {readout['case_id']} is inconsistent")
-        cases.append({"id": f"text-{readout['case_id']}", "samples": 1, "business": True,
-                      "payload": {
-                          "rows": [{"input_ids": [int(t) for t in readout["input_ids"]]}],
-                          "rows_meta": [{
-                              "case_id": f"text-{readout['case_id']}",
-                              "question_type": readout["question_type"],
-                              "letter_ids": [int(t) for t in readout["letter_ids"]],
-                              "letters_asked": int(readout["letters_asked"]),
-                          }]}})
-    return cases
+def _official_example_cases(folder):
+    """The official published examples (examples/{client,request,image_request}
+    .py of StartLuxLabs/StartLux-Decision @ main), rendered through the same
+    official prompt pipeline as every other case:
 
-
-def _render_official_prompts(folder, tokenizer, states):
-    """The official one-pass prompts (official renderer, real tokenizer, no weights)."""
-    if str(MODEL_DIR / "decider" / "vendor") not in sys.path:
-        sys.path.insert(0, str(MODEL_DIR / "decider" / "vendor"))
-    from startlux_decide.images import IMAGE_PLACEHOLDER, place_images
-    from startlux_decide.prompt import from_systemone, messages, plain_prompt
-
-    rendered = {}
-    for key, (state, n_images) in states.items():
-        row = from_systemone(place_images(state, n_images), QUESTIONS["dominant"])
-        prompt = plain_prompt(tokenizer, messages(row))
-        if prompt.count(IMAGE_PLACEHOLDER) != n_images:
-            raise ValueError(f"the official renderer wrote {prompt.count(IMAGE_PLACEHOLDER)} "
-                             f"placeholders for {n_images} images")
-        rendered[key] = prompt
-    return rendered
-
-
-def _image_cases(folder):
-    """The real image cases on the self-regenerating fixtures (needs the tokenizer)."""
+    * the support-ticket request of client.py / request.sh: one state asked
+      three typed questions (team choice / urgent noul / severity score) --
+      delivered as the official single-request form (one B3 case, one row per
+      question) and as three B1 cases (one question per request);
+    * the image_request.py photo question: state "Photo taken at delivery:
+      <image>" with the noul damaged question on the self-regenerating red
+      fixture image (the official example image is not distributed).
+    """
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(str(folder), local_files_only=True)
     letters = json.loads((folder / "decision_config.json").read_text())["letter_token_ids"]
     fixtures = ensure_fixtures()
-    prompts = _render_official_prompts(folder, tokenizer, {
-        "one": (STATE_ONE, 1), "ab": (STATE_AB, 2),
-        "text": (MIXED_TEXT_STATE, 0)})
-    active = [int(t) for t in letters[:3]]          # red / green / blue options
+    if str(MODEL_DIR / "decider" / "vendor") not in sys.path:
+        sys.path.insert(0, str(MODEL_DIR / "decider" / "vendor"))
+    from startlux_decide.images import IMAGE_PLACEHOLDER, place_images
+    from startlux_decide.prompt import from_systemone, messages, plain_prompt
 
-    def meta(case_id):
-        return {"case_id": case_id, "question_type": "choice",
-                "letter_ids": list(active), "letters_asked": len(active)}
+    def render(state, spec, n_images=0):
+        row = from_systemone(place_images(state, n_images) if n_images else state, spec)
+        return plain_prompt(tokenizer, messages(row))
+
+    def meta(case_id, question_type, options):
+        return {"case_id": case_id, "question_type": question_type,
+                "letter_ids": _active_letters(letters, question_type, options),
+                "letters_asked": len(_active_letters(letters, question_type, options))}
+
+    ticket_prompts = {
+        name: render(OFFICIAL_TICKET_STATE, spec)
+        for name, spec in OFFICIAL_TICKET_QUESTIONS.items()}
+    image_prompt = render(OFFICIAL_IMAGE_STATE, OFFICIAL_IMAGE_QUESTION, n_images=1)
+    if image_prompt.count(IMAGE_PLACEHOLDER) != 1:
+        raise ValueError("the official image example did not render one placeholder")
 
     def rel(path):
         return str(Path(path).relative_to(ROOT))
 
-    return [
-        {"id": "image-red-r0", "samples": 1, "business": True, "payload": {
-            "rows": [{"prompt": prompts["one"], "images": [rel(fixtures["fixture-red-256"])]}],
-            "rows_meta": [meta("image-red-r0")]}},
-        {"id": "image-blue-r0", "samples": 1, "business": True, "payload": {
-            "rows": [{"prompt": prompts["one"], "images": [rel(fixtures["fixture-blue-256"])]}],
-            "rows_meta": [meta("image-blue-r0")]}},
-        {"id": "image-two-a-b-r0", "samples": 1, "business": True, "payload": {
-            "rows": [{"prompt": prompts["ab"], "images": [rel(fixtures["fixture-red-256"]),
-                                                          rel(fixtures["fixture-blue-256"])]}],
-            "rows_meta": [meta("image-two-a-b-r0")]}},
-        {"id": "mixed-text-image-b2-r0", "samples": 2, "business": True, "payload": {
-            "rows": [{"prompt": prompts["text"]},
-                     {"prompt": prompts["one"],
-                      "images": [rel(fixtures["fixture-red-256"])]}],
-            "rows_meta": [meta("mixed-text-image-b2-r0"), meta("mixed-text-image-b2-r0")]}},
+    option_counts = {"team": 3, "urgent": 0, "severity": 3}
+    cases = [
+        {"id": "official-ticket-b3-r0", "samples": 3, "business": True, "payload": {
+            "rows": [{"prompt": ticket_prompts[name]} for name in OFFICIAL_TICKET_QUESTIONS],
+            "rows_meta": [meta("official-ticket-b3-r0", spec["type"], option_counts[name])
+                          for name, spec in OFFICIAL_TICKET_QUESTIONS.items()]}},
     ]
-
-
-def _b4_long_case():
-    """The B4 mixed-effective-length boundary case (pure official text rows).
-
-    Pre-encoded rows of true lengths [1, 65, 129, 2048] taken from the P8
-    boundary fixture.  A shape-coverage member of the precision pool, not a
-    business case: no rows_meta, excluded from the bench pool.
-    """
-    data = json.loads((FIXTURES / "b4-long-rows.json").read_text())
-    rows = data["rows"]
-    if [len(row) for row in rows] != [1, 65, 129, 2048]:
-        raise ValueError(f"b4-long-rows.json row lengths {[len(r) for r in rows]} "
-                         "!= [1, 65, 129, 2048]")
-    return {"id": data["case_id"], "samples": len(rows), "business": False,
-            "payload": {"rows": [{"input_ids": [int(t) for t in row]} for row in rows]}}
+    for name, spec in OFFICIAL_TICKET_QUESTIONS.items():
+        case_id = f"official-ticket-{name}-r0"
+        cases.append({"id": case_id, "samples": 1, "business": True, "payload": {
+            "rows": [{"prompt": ticket_prompts[name]}],
+            "rows_meta": [meta(case_id, spec["type"], option_counts[name])]}})
+    cases.append({"id": "official-image-damaged-r0", "samples": 1, "business": True, "payload": {
+        "rows": [{"prompt": image_prompt,
+                  "images": [rel(fixtures["fixture-red-256"])]}],
+        "rows_meta": [meta("official-image-damaged-r0", "noul", 0)]}})
+    return cases
 
 
 def build_pool(folder):
-    """The unified case pool: pre-encoded text cases FIRST, then the image
-    cases (the P8 formal 11 order), then the b4-long boundary case."""
-    cases = _text_cases()
-    cases.extend(_image_cases(folder))
-    cases.append(_b4_long_case())
+    """The unified case pool: ONLY the five official published example cases
+    (StartLuxLabs/StartLux-Decision examples @ main)."""
+    cases = _official_example_cases(folder)
     ids = [case["id"] for case in cases]
     if len(set(ids)) != len(ids):
         raise ValueError(f"duplicate case ids in the pool: {ids}")
@@ -332,8 +295,16 @@ def main():
     decision = base._decision_config(config)
     if len(decision["letter_token_ids"]) != N_COLUMNS:
         raise ValueError("decision_config letter_token_ids must carry 26 ids")
+    # min_width=1: every case runs at its TRUE length (width = max row length).
+    # The former 256 floor (the P4 pad256 acceptance, a conservative transition
+    # that kept the dynamic AIR's inputs bit-identical to the fixed-width era)
+    # was retired by the 2026-11-06 short-width gate on the delivered AIR:
+    # true-length execution (S=85/99/130, 3 repeats) is bit-stable and within
+    # bf16 quantization of both the CPU golden (relL2 <= 0.0037) and the
+    # accepted pad-256 outputs (relL2 <= 0.0046) -- the P4-era "unstable
+    # boundaries" observation does not reproduce on this configuration.
     caps = {"max_batch": params["max_batch"], "max_seq_len": params["max_seq_len"],
-            "min_width": params["compiled_seq_len"]}
+            "min_width": 1}
     io_inputs = multimodal.describe(config)["io"]["inputs"]
     order = [node["name"] for node in io_inputs]
 

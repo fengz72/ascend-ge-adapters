@@ -257,3 +257,187 @@ MatMul patch-embed.
 - Evidence paths: `work/bench/`, `work/infer/`, `work/logs/` (bench of
   2026-11-06 03:29-03:31); profiling sessions `work/prof-fia/` (before,
   Conv3DV2 present) and `work/prof-matmul/` (after, Conv3DV2 gone).
+
+## Appendix: official-examples case pool measurement (2026-11-06)
+
+The bench pool was extended from the P8 formal 11 to 16 business cases by the
+five official published example cases (StartLuxLabs/StartLux-Decision
+examples @ main: the client.py / request.sh support ticket as a B3
+one-request-three-questions case and as three B1 single-question cases, and
+the image_request.py photo noul question on the red fixture; see
+generate_inputs.py `_official_example_cases`).  Same delivered AIR (MatMul
+patch-embed + fp32-Conv2D conv + eager-math attention), idle card Chip 3.
+
+| item | value | 11-case pool (same AIR, 2026-11-06) |
+|---|---|---|
+| requests / rows | 2,048 / **2,432** (0 errors) | 2,048 / 2,234 |
+| graph executions/s | 34.576967 | 35.989044 |
+| readout rows/s | **41.060149** | 39.257580 |
+| e2e P50/P99 (n=2048) | 27.661/38.439 ms (avg 28.918) | 27.130/33.897 |
+| per-case e2e P50 (ms) | B1 cases 27.64-27.66; mixed B2 34.396; official-ticket-b3 38.386 | B1 27.10-27.13; mixed 33.82 |
+
+- Precision / business gates on the 17-case precision pool: 17/17 numeric
+  (worst cosine 0.999995, relL2 0.005749) and 16/16 business (worst
+  active-probability max abs 0.007576) -- the official example cases
+  themselves land at relL2 0.0012-0.0048 and prob max abs 0.0001-0.0063 with
+  large margins and consistent top-1 (the B3 rows and the three split B1
+  cases agree deterministically).
+- Throughput moves -3.9% in executions/s because the B3 official case (3
+  rows, e2e P50 38.4 ms) enters the equal-weight closed loop, while rows/s
+  rises +4.6% (2,432 vs 2,234 weighted rows).  The per-request latency of
+  every B1 case is unchanged.
+- Evidence paths: `work/bench/`, `work/infer/`, `work/logs/` (bench of
+  2026-11-06 06:4x).
+
+## Appendix: official-only case pool measurement (2026-11-06)
+
+The case pool was reduced to ONLY the five official published example cases
+(user decision; the P8 formal 11 and the b4-long boundary case were removed,
+together with their fixtures).  Same delivered AIR.  Idle card Chip 3.
+
+| item | value |
+|---|---|
+| requests / rows | 2,048 / 2,916 (0 errors) |
+| graph executions/s | 33.823975 |
+| readout rows/s | **48.159527** |
+| e2e P50/P99 (n=2048) | 27.138/38.335 ms (avg 29.562) |
+| per-case e2e P50 (ms) | B1 cases 27.117-27.121; official-ticket-b3 38.214 |
+| precision | 5 cases / 7 rows all pass, worst cosine 0.999998, worst relL2 0.004753 |
+| business gate | 5/5, worst active-probability max abs 0.006282 |
+
+- rows/s is the pool's own record (+17% vs the 16-case pool): the official
+  distribution carries 1.42 rows per request on average (B3 ticket at 21.2%
+  of the closed-loop draws); executions/s settles at 33.82 for the same
+  reason.  Per-request latencies are unchanged from previous pools.
+- Evidence paths: `work/bench/`, `work/infer/`, `work/logs/` (bench of
+  2026-11-06 07:0x).
+
+## Appendix: true-length execution (min_width=1) measurement (2026-11-06)
+
+The P4-era minimum physical width 256 was retired: every case now runs at its
+TRUE length (width = max row length; the official pool executes at S=85/99,
+B3 at 99, the image case at 130).  Driver: the official case pool is entirely
+short prompts (33-51% width utilization at the 256 floor).  The short-width
+gate on the delivered AIR first re-tested the P4-era "unpadded short-width
+execution had measurably unstable boundaries" observation: true-length
+execution (S=85/99/130, 3 repeats per case) is BIT-STABLE and within bf16
+quantization of both the CPU golden (relL2 <= 0.0037) and the accepted
+pad-256 outputs (relL2 <= 0.0046) -- the observation does not reproduce on
+this configuration (fp32-Conv2D conv + eager-math attention + MatMul
+patch-embed).  Then the full standalone flow was re-gated at min_width=1.
+
+| item | value | pad-256 (same AIR, same day) |
+|---|---|---|
+| precision | 5/5, worst cosine 0.999998, worst relL2 0.004320 | 0.999998 / 0.004753 |
+| business gate | 5/5, worst active-probability max abs 0.005887 | 5/5, 0.006282 |
+| requests / rows | 2,048 / 2,916 (0 errors) | same |
+| graph executions/s | **36.125397** | 33.823975 |
+| readout rows/s | **51.436356** | 48.159527 |
+| e2e P50/P99 (n=2048) | 25.532/36.349 ms (avg 27.679) | 27.138/38.335 |
+| per-case e2e P50 (ms) | ticket B1 25.109-25.516; image 26.477; B3 33.559 | 27.117-27.121; 27.118; 38.214 |
+
+- Net effect: **+6.8% executions/s and -1.6 ms e2e P50** (B3 case -4.6 ms:
+  three rows share the narrowed width).  Both precision and business metrics
+  move slightly BETTER than the pad-256 run (the padded region's numerical
+  noise is gone).
+- Width explains only the S-proportional part of each request; the fixed
+  per-request cost (the vision tower always runs in the single AIR, host
+  dispatch) bounds the gain at ~2x width reduction -> ~7% latency.
+- Evidence paths: `work/bench/`, `work/infer/`, `work/logs/` (bench of
+  2026-11-06 07:3x); short-width gate script data under /tmp/opencode (bit
+  stability + golden/pad-256 comparisons recorded in validation.md).
+
+## Appendix: RMSNorm fusion + short-width profiling re-collection (2026-11-06)
+
+The eager RMSNorm chains of the text decoder (layer input/post-attention
+norms x48, body norm, full-attention q/k norms x12, and the GDR gated norm
+x18 per request) were fused into the GE RmsNorm node (`torch.ops.npu.
+npu_rms_norm`, model/startlux_npu_adapter.py `_rms_norm` / `_rms_norm_gated`)
+with the official compute domain kept exactly (fp32 mean and weight, output
+cast back; the gated variant keeps the official weight/silu order; gamma
+constant-folded from the frozen parameter; eager legs unchanged).  Same
+flow, idle card Chip 3.
+
+| item | value | pre-fusion (min_width=1, same day) |
+|---|---|---|
+| precision | 5/5, worst cosine 0.999999, worst relL2 **0.002233** | 0.999998 / 0.004320 |
+| business gate | 5/5, worst active-probability max abs 0.006454 | 5/5, 0.005887 |
+| graph executions/s | **39.801171** (2,048 requests, 0 errors) | 36.125397 |
+| readout rows/s | **56.670027** | 51.436356 |
+| e2e P50/P99 (n=2048) | 23.192/31.026 ms (avg 25.122) | 25.532/36.349 |
+| per-case e2e P50 (ms) | ticket B1 22.893-23.171; image 24.209; B3 30.789 | 25.109-25.516; 26.477; 33.559 |
+
+- Net effect: **+10.2% executions/s and -2.3 ms e2e P50**; precision moves
+  clearly BETTER (relL2 0.0043 -> 0.0022 -- the fused fp32 reduction is
+  more accurate than the eager chain), business stays inside the gate.
+- Profiling re-collection (work/prof-rms, 32 measured requests): the fused
+  RmsNorm node appears at 3160x / 4.96% replacing the former Square 115x +
+  ReduceMean 79x per request; Mul drops 15.8% -> 11.5%, Cast 12.4% -> 10.9%.
+  New top operators: MatMulV2 17.3% (vision fp32 included), GDR
+  ChunkGatedDeltaRule 13.0%, Mul 11.5%, Cast 10.9%.
+- Evidence paths: `work/bench/`, `work/infer/`, `work/prof-rms/`,
+  `work/logs/` (2026-11-06 07:4x-07:5x).
+
+## Appendix: fp16 vision linear compute measurement (2026-11-06)
+
+The vision tower's linear inner products (patch-embed matmul, attention
+qkv/proj, MLP fc1/fc2, merger fc1/fc2 -- all replayed op-for-op in
+VisionTowerWrapper) run in fp16 while the fp32 activation flow, constant
+buffers (pos/rotary tables), norms and softmax stay fp32 (`linear_dtype`
+switch, default fp16; bf16 was tested first and FAILS the vision gate at the
+real 12-block depth: relL2 0.055 vs fp16 0.0045 -- bf16's 7 mantissa bits do
+not survive depth accumulation; official production runs whole-model bf16
+under a business-level acceptance, our gate is a feature-level relL2 <= 0.02).
+
+| item | value | fp32-vision baseline (same day) |
+|---|---|---|
+| precision | 5/5, worst cosine 0.999999, worst relL2 0.006571 | 0.999999 / 0.002233 |
+| business gate | 5/5, worst active-probability max abs 0.006454 | 5/5, 0.006454 (identical) |
+| graph executions/s | **41.726731** (2,048 requests, 0 errors) | 39.801171 |
+| readout rows/s | **59.411693** | 56.670027 |
+| e2e P50/P99 (n=2048) | 22.218/29.953 ms (avg 23.963) | 23.192/31.026 |
+| per-case e2e P50 (ms) | ticket B1 21.921-22.224; image 23.175; B3 29.792 | 22.893-23.171; 24.209; 30.789 |
+
+- Net effect: **+4.8% executions/s and -1.0 ms e2e P50**; the numeric relL2
+  moves 0.0022 -> 0.0066 (fp16 vision propagation, still 3x inside the gate)
+  while the business metric is bit-identical to the fp32 baseline.
+- Profiling (work/prof-fp16): MatMulV2 17.25% -> 14.32% (171.3 -> 145.7 ms
+  total, the fp16 halving of the vision share); Cast rises 10.93% -> 14.35%
+  (the per-forward fp16 weight casts are not fully constant-folded -- a
+  further ~0.9 ms/request is recoverable by pre-materializing fp16 weight
+  copies, left on the backlog).
+- Text trunk stays bf16: the ChunkGatedDeltaRule prototype accepts bfloat16
+  only (ops-info contract), fp16 equals bf16 throughput, and the text
+  numerics have no pain point.
+- Evidence paths: `work/bench/`, `work/infer/`, `work/prof-fp16/`,
+  `work/logs/` (2026-11-06 08:2x-08:3x).
+
+## Appendix: fp16 full-tower follow-up experiments (2026-11-06, both rolled back)
+
+Two follow-ups to the fp16 vision delivery were built, gated and benched;
+both are NET LOSSES and were rolled back (the delivered structure stays:
+fp32 residual stream + fp16 linear inner products, 41.73 exec/s).
+
+1. **Pre-materialized fp16 weight copies** (constant-fold the per-forward
+   weight Casts): BLOCKED at export -- torchair's positional weight bake
+   (runtime input i replaces export_graph.op[i]) mis-aligns when the ~51 new
+   fp16 weight Const nodes enter the op list ("incomplete exported Data
+   binding"); tiny-model export succeeds, the full dynamic export does not.
+2. **fp16 residual stream** (validated numerics: real-tower relL2 0.0051,
+   bit-stable, full-model gates pass 5/5 + 5/5 with metrics identical to the
+   mixed baseline): benched **40.908 exec/s vs 41.727 (-2.0%)** -- the
+   per-layer fp16<->fp32 round-trip Casts cost more than the halved
+   activation traffic saves (the weight-copy fold that would have removed
+   the Casts is the blocked item above).
+
+| item | fp16 stream (rolled back) | delivered mixed (kept) |
+|---|---|---|
+| graph executions/s | 40.908414 | **41.726731** |
+| e2e P50/P99 (n=2048) | 22.684/30.486 ms | 22.218/29.953 |
+| precision / business | 5/5 (relL2 0.006571) / 5/5 (0.006454) | identical |
+
+Evidence: `work/bench/` of the rolled-back run (2026-11-06 11:0x);
+validation.md decision record.  Full-fp16 vision is closed at the current
+export mechanism: the remaining ~0.9 ms/request of weight Casts is only
+recoverable by changing the torchair bake contract or pre-quantizing the
+checkpoint itself.

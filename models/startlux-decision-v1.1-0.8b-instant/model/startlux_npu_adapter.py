@@ -76,10 +76,12 @@ VENDOR = MODEL_DIR / "decider" / "vendor"
 def _params(config):
     params = {"max_seq_len": 2048, "compiled_seq_len": 256, "chunk_size": 64,
               "max_batch": 4, "gdn_route": "native",
-              "fixtures_file": "decider/fixtures/p2b-readouts.json",
+              "vision_linear_dtype": "fp16",
               **config["model"]["params"]}
     allowed = {"max_seq_len", "compiled_seq_len", "chunk_size", "max_batch",
-               "fixtures_file", "gdn_route"}
+               "gdn_route", "vision_linear_dtype"}
+    if params.get("vision_linear_dtype") not in ("fp32", "fp16"):
+        raise ValueError("vision_linear_dtype must be 'fp32' or 'fp16'")
     if set(params) - allowed:
         raise ValueError(f"unknown StartLux model.params: {set(params) - allowed}")
     for key in ("max_seq_len", "compiled_seq_len", "chunk_size", "max_batch"):
@@ -90,17 +92,6 @@ def _params(config):
     if params["compiled_seq_len"] > params["max_seq_len"]:
         raise ValueError("compiled_seq_len cannot exceed max_seq_len")
     return params
-
-
-def _fixture(params):
-    path = Path(params["fixtures_file"])
-    if not path.is_absolute():
-        path = MODEL_DIR / path
-    data = json.loads(path.read_text())
-    letters = data["provenance"]["letter_token_ids"]
-    if len(letters) != 26 or len(set(letters)) != 26:
-        raise ValueError("fixture letter_token_ids must be 26 unique ids")
-    return data, letters, path.resolve()
 
 
 def _source_ref(config):
@@ -220,6 +211,9 @@ def describe(config):
                         "padded B*S flatten passes per-row physical width S as actual_seq_lengths; readout gathers true L-1",
                         "causal short conv as one fp32 depthwise Conv2D node (causal_conv4), replaces Conv1D",
                         "eager-math bidirectional full attention",
+                        "vision tower linear compute in fp16 (validated mixed precision: fp16 "
+                        "inner products, fp32 constants/norms/softmax; bf16 fails the vision "
+                        "gate at real depth, fp16 passes with 4.5x margin)",
                         "in-graph partial RoPE from position_ids (text [B,S] or official [3,B,S] MRoPE planes)",
                         "shared forward_embeddings decoder loop (unified multimodal injection entry)",
                         "26-row FP32 head copy",
@@ -306,6 +300,38 @@ def _mrope_interleave_index(mrope_section, half, device=None):
 
 def _softplus(x):
     return torch.where(x > 20.0, x, torch.log1p(torch.exp(torch.clamp(x, max=20.0))))
+
+
+def _rms_norm(norm, x):
+    """HF Qwen3_5RMSNorm.forward fused into the GE NpuRmsNorm node.
+
+    Graph leg: ``y = x.float() * rsqrt(mean(x_f32^2) + eps) * (1 + weight)``
+    cast back to the input dtype -- the exact official compute domain (float32
+    mean and weight), with the eager chain (Square/ReduceMean/Mul/Rsqrt/Mul)
+    collapsed into ONE fused node.  The (1 + weight) gamma is constant-folded
+    from the frozen parameter.  Eager leg keeps the official module itself.
+    """
+    if not torch.compiler.is_compiling():
+        return norm(x)
+    gamma = 1.0 + norm.weight.float()
+    y, _ = torch.ops.npu.npu_rms_norm(x.float(), gamma, float(norm.eps))
+    return y.to(x.dtype)
+
+
+def _rms_norm_gated(norm, x, gate):
+    """Qwen3_5RMSNormGated.forward with its RMS core fused into NpuRmsNorm.
+
+    Official order (transformers eager fallback, the pinned path):
+    ``x32 = x.float(); n = x32 * rsqrt(mean(x32^2) + eps);
+    out = (weight * n.to(x.dtype)) * silu(gate.float()); out.to(x.dtype)``.
+    The graph leg keeps that exact domain/order; only the
+    square/mean/rsqrt/mul core becomes one NpuRmsNorm (gamma = ones).
+    """
+    if not torch.compiler.is_compiling():
+        return norm(x, gate)
+    ones = torch.ones_like(norm.weight, dtype=torch.float32)
+    n, _ = torch.ops.npu.npu_rms_norm(x.float(), ones, float(norm.variance_epsilon))
+    return (norm.weight * n.to(x.dtype) * F.silu(gate.float())).to(x.dtype)
 
 
 def causal_conv4(x, weight):
@@ -427,16 +453,16 @@ class StartLuxTextDecoder(nn.Module):
         attn_mask = ((~valid).to(hidden.dtype) * self.min_score)[:, None, None, :]
         for layer, layer_type in zip(self.body.layers, self.layer_types):
             residual = hidden
-            mixed = layer.input_layernorm(hidden)
+            mixed = _rms_norm(layer.input_layernorm, hidden)
             if layer_type == "linear_attention":
                 mixed = self._gated_delta(layer.linear_attn, mixed * pad, lengths)
             else:
                 mixed = self._full_attention(layer.self_attn, mixed, cos, sin, attn_mask)
             hidden = residual + mixed
             residual = hidden
-            mixed = layer.post_attention_layernorm(hidden)
+            mixed = _rms_norm(layer.post_attention_layernorm, hidden)
             hidden = residual + layer.mlp(mixed)
-        hidden = self.body.norm(hidden)
+        hidden = _rms_norm(self.body.norm, hidden)
         last_index = (lengths.to(torch.int64) - 1).view(batch, 1, 1)
         last = hidden.gather(1, last_index.expand(batch, 1, hidden.shape[-1])).squeeze(1)
         return last.float() @ self.head_rows.float().transpose(0, 1)
@@ -534,7 +560,7 @@ class StartLuxTextDecoder(nn.Module):
             scale=float(attn.head_k_dim) ** -0.5, g=g)
         out = out.reshape(-1, attn.head_v_dim)
         z = z.reshape(-1, attn.head_v_dim)
-        out = attn.norm(out, z).reshape(batch, width, -1)
+        out = _rms_norm_gated(attn.norm, out, z).reshape(batch, width, -1)
         return attn.out_proj(out)
 
     def _full_attention(self, attn, hidden, cos, sin, mask):
@@ -542,8 +568,8 @@ class StartLuxTextDecoder(nn.Module):
         qkv = attn.q_proj(hidden).view(batch, width, -1, attn.head_dim * 2)
         q, gate = qkv[..., :attn.head_dim], qkv[..., attn.head_dim:]
         gate = gate.reshape(batch, width, -1)
-        q = attn.q_norm(q.reshape(batch, width, -1, attn.head_dim)).transpose(1, 2)
-        k = attn.k_norm(attn.k_proj(hidden).view(batch, width, -1, attn.head_dim)).transpose(1, 2)
+        q = _rms_norm(attn.q_norm, q.reshape(batch, width, -1, attn.head_dim)).transpose(1, 2)
+        k = _rms_norm(attn.k_norm, attn.k_proj(hidden).view(batch, width, -1, attn.head_dim)).transpose(1, 2)
         v = attn.v_proj(hidden).view(batch, width, -1, attn.head_dim).transpose(1, 2)
         cos = cos.unsqueeze(1)
         sin = sin.unsqueeze(1)

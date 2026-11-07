@@ -42,13 +42,13 @@ module is that CPU side, as a reusable component for the production seam:
   image slots per call, B<=4, S<=2048.  Every other grid or overlong row is
   REJECTED, never stretched, cropped or truncated.
 
-* ``pad_graph_inputs`` is the accepted minimum-physical-width strategy of the
-  final unified graph (work/startlux-cannbot/review-p4-pad256-independent.json,
-  main-agent-accepted: the dynamic text AIR at width = max(256, true lengths)
-  with right pad token 0 / position 0 / image_feature_index -1 produced
-  bit-identical GE input bins to the previously accepted fixed B1/S256 graph
-  and full-27 same-precision probabilities max 0.0033874, where unpadded
-  short-width execution had measurably unstable boundaries).  The official
+* ``pad_graph_inputs`` applies the CALLER'S minimum physical width (the
+  standalone flow passes min_width=1: every case runs at its true length;
+  the P4-era 256 floor -- review-p4-pad256-independent.json, a transition
+  that kept the dynamic AIR's inputs bit-identical to the fixed-width era --
+  was retired 2026-11-06 by the short-width gate on the delivered AIR:
+  true-length execution is bit-stable over repeats and within bf16
+  quantization of both the CPU golden and the accepted pad-256 outputs).  The official
   per-row encode and the official position planes are ALWAYS produced at the
   TRUE lengths first (the CPU oracle rows stay unpadded); the padding only
   extends the already-validated arrays to the minimum physical width, keeps

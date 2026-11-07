@@ -38,7 +38,7 @@ class TestP3Adapter(unittest.TestCase):
 
     def config(self, **override):
         params = {"max_seq_len": 2048, "compiled_seq_len": 256, "chunk_size": 64,
-                  "max_batch": 4, "fixtures_file": "decider/fixtures/p2b-readouts.json"}
+                  "max_batch": 4}
         params.update(override)
         return {"model": {"params": params},
                 "source": {"ref": str(self.decision_folder)}}
@@ -175,6 +175,71 @@ class TestP3Adapter(unittest.TestCase):
                 "input_ids": [long], "position_ids": [list(range(2049))],
                 "actual_seq_lengths": [2049]}}, params, 300)
 
+    def test_causal_conv4_matches_official_conv1d(self):
+        """The fp32 Conv2D node form keeps the official compute order
+        (fp32 conv -> cast to input dtype -> SiLU) on transposed views."""
+        import torch.nn.functional as F
+        channels, seq = 64, 37
+        generator = torch.Generator().manual_seed(2026)
+        x = torch.randn(2, seq, channels, generator=generator).transpose(1, 2)
+        weight = torch.randn(channels, 1, 4, generator=generator) * 0.2
+        reference32 = F.conv1d(x.float(), weight.float(), groups=channels,
+                               padding=3)[:, :, :seq]
+        for dtype, bound in ((torch.float32, 1e-6), (torch.bfloat16, 1e-2)):
+            out = self.adapter.causal_conv4(x.to(dtype), weight.to(dtype))
+            reference = F.silu(reference32.to(dtype))
+            rel = float((out.float() - reference.float()).norm()
+                        / reference.float().norm())
+            self.assertLess(rel, bound, f"{dtype}: rel {rel}")
+
+    def test_causal_conv4_is_causal(self):
+        """Positions only ever see tokens up to t (left zero padding)."""
+        generator = torch.Generator().manual_seed(2027)
+        channels, seq = 48, 40
+        x = torch.randn(2, seq, channels, generator=generator).transpose(1, 2)
+        weight = torch.randn(channels, 1, 4, generator=generator) * 0.2
+        perturbed = x.clone()
+        perturbed[:, :, 20:] += 5.0
+        out = self.adapter.causal_conv4(x, weight)
+        out_perturbed = self.adapter.causal_conv4(perturbed, weight)
+        self.assertTrue(torch.equal(out[:, :, :17], out_perturbed[:, :, :17]))
+        self.assertFalse(torch.equal(out[:, :, 17:], out_perturbed[:, :, 17:]))
+
+    def test_rms_norm_fused_formula_matches_official(self):
+        """The graph-leg formula of _rms_norm is the official compute domain."""
+        from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5RMSNorm
+
+        torch.manual_seed(2028)
+        norm = Qwen3_5RMSNorm(64).eval()
+        x = torch.randn(3, 7, 64).to(torch.bfloat16)
+        with torch.inference_mode():
+            official = norm(x)
+            x32 = x.float()
+            # NpuRmsNorm definition: x * rsqrt(mean(x^2) + eps) * gamma
+            mine = (x32 * torch.rsqrt(x32.pow(2).mean(-1, keepdim=True)
+                                      + float(norm.eps))
+                    * (1.0 + norm.weight.float())).to(x.dtype)
+        rel = float((mine.float() - official.float()).norm() / official.float().norm())
+        self.assertLess(rel, 1e-6, f"rms fused formula drift {rel}")
+
+    def test_rms_norm_gated_fused_formula_matches_official(self):
+        """The graph-leg formula of _rms_norm_gated keeps the official order."""
+        from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5RMSNormGated
+
+        torch.manual_seed(2029)
+        norm = Qwen3_5RMSNormGated(64).eval()
+        x = torch.randn(5, 64).to(torch.bfloat16)
+        gate = torch.randn(5, 64).to(torch.bfloat16)
+        with torch.inference_mode():
+            official = norm(x, gate)
+            import torch.nn.functional as F
+            x32 = x.float()
+            n = x32 * torch.rsqrt(x32.pow(2).mean(-1, keepdim=True)
+                                  + float(norm.variance_epsilon))
+            mine = (norm.weight * n.to(x.dtype) * F.silu(gate.float())).to(x.dtype)
+        rel = float((mine.float() - official.float()).norm() / official.float().norm())
+        self.assertLess(rel, 1e-6, f"rms gated fused formula drift {rel}")
+
     def test_runtime_decode_is_provenance_free(self):
         report = self.adapter.describe(self.config())
         handle = self.adapter.RuntimeHandle(self.config(), {
@@ -192,62 +257,6 @@ class TestP3Adapter(unittest.TestCase):
         with self.assertRaises(ValueError):
             handle.decode({"scores": np.zeros((3, 26), dtype=np.float32)}, case2)
 
-    def test_fixture_question_types_are_canonical(self):
-        import json
-        data, letters, _ = self.adapter._fixture(self.adapter._params(self.config()))
-        table = data["provenance"]["temperature_by_type"]
-        self.assertEqual(set(table), {"choice", "score", "noul"})
-        self.assertEqual(len(data["readouts"]), 7)
-        for readout in data["readouts"]:
-            self.assertIn(readout["question_type"], ("choice", "score", "noul"),
-                          f"{readout['case_id']}: question_type must be a canonical "
-                          f"temperature key, not the case file name")
-            self.assertIn(readout["question_type"], table)
-            self.assertIn("case", readout)
-            self.assertTrue(readout["golden_file"].endswith(".json"))
-            self.assertEqual(readout["case_id"], f"{readout['case']}-r"
-                             f"{int(readout['case_id'].rsplit('-r', 1)[1])}")
-        by_type = {r["case_id"]: r["question_type"] for r in data["readouts"]}
-        self.assertEqual(by_type["choice_short-r0"], "choice")
-        self.assertEqual(by_type["score_short-r0"], "score")
-        self.assertEqual(by_type["noul_short-r0"], "noul")
-        self.assertEqual(by_type["allow_none-r0"], "choice")
-        self.assertTrue(all(t == "choice" for c, t in by_type.items() if c.startswith("wide_27")))
-
-    def test_causal_conv4_matches_official_conv1d(self):
-        """The fp32 Conv2D node form keeps the official compute order
-        (fp32 conv -> cast to input dtype -> SiLU) on transposed views."""
-        import torch.nn.functional as F
-        channels, seq = 64, 37
-        generator = torch.Generator().manual_seed(2026)
-        x = torch.randn(2, seq, channels, generator=generator).transpose(1, 2)
-        weight = torch.randn(channels, 1, 4, generator=generator) * 0.2
-        reference32 = F.conv1d(x.float(), weight.float(), groups=channels,
-                               padding=3)[:, :, :seq]
-        for dtype, bound in ((torch.float32, 1e-6), (torch.bfloat16, 1e-2)):
-            out = self.adapter.causal_conv4(x.to(dtype), weight.to(dtype))
-            reference = F.silu(reference32.to(dtype))
-            rel = float((out.float() - reference.float()).norm()
-                        / reference.float().norm())
-            # fp32: same-math conv implementations; bf16: that difference
-            # crosses quantization boundaries around the SiLU, so allow the
-            # full bf16-quantization magnitude (CPU conv1d vs conv2d kernels
-            # are not bit-identical in fp32 accumulate).
-            self.assertLess(rel, bound, f"{dtype}: rel {rel}")
-
-    def test_causal_conv4_is_causal(self):
-        """Positions only ever see tokens up to t (left zero padding)."""
-        generator = torch.Generator().manual_seed(2027)
-        channels, seq = 48, 40
-        x = torch.randn(2, seq, channels, generator=generator).transpose(1, 2)
-        weight = torch.randn(channels, 1, 4, generator=generator) * 0.2
-        perturbed = x.clone()
-        perturbed[:, :, 20:] += 5.0
-        out = self.adapter.causal_conv4(x, weight)
-        out_perturbed = self.adapter.causal_conv4(perturbed, weight)
-        self.assertTrue(torch.equal(out[:, :, :17], out_perturbed[:, :, :17]))
-        self.assertFalse(torch.equal(out[:, :, 17:], out_perturbed[:, :, 17:]))
-
 
 class TestNativeGdrContract(unittest.TestCase):
     """Contract of the single native chunk-GDR route (merged from the former
@@ -261,7 +270,7 @@ class TestNativeGdrContract(unittest.TestCase):
 
     def config(self, **override):
         params = {"max_seq_len": 2048, "compiled_seq_len": 256, "chunk_size": 64,
-                  "max_batch": 4, "fixtures_file": "decider/fixtures/p2b-readouts.json"}
+                  "max_batch": 4}
         params.update(override)
         return {"model": {"params": params},
                 "source": {"ref": str(self.decision_folder)}}

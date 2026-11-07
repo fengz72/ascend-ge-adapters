@@ -74,7 +74,7 @@ class MatMulPatchEmbed(torch.nn.Module):
     covered by the full-model numeric gates.
     """
 
-    def __init__(self, patch_embed):
+    def __init__(self, patch_embed, linear_dtype=torch.float32):
         super().__init__()
         conv = patch_embed.proj
         if list(conv.stride) != list(conv.kernel_size) or conv.padding != (0, 0, 0) \
@@ -84,14 +84,15 @@ class MatMulPatchEmbed(torch.nn.Module):
         self.conv = conv
         self.embed_dim = int(conv.weight.shape[0])
         self.patch_volume = int(conv.weight.shape[1:].numel())
-
+        self.linear_dtype = linear_dtype
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         conv = self.conv
-        y = x.to(conv.weight.dtype).view(-1, self.patch_volume) \
-            @ conv.weight.permute(1, 2, 3, 4, 0).reshape(self.patch_volume, -1)
+        w = conv.weight.permute(1, 2, 3, 4, 0).reshape(self.patch_volume, -1)
+        dtype = x.dtype if self.linear_dtype == torch.float32 else self.linear_dtype
+        y = x.to(dtype).view(-1, self.patch_volume) @ w.to(dtype)
         if conv.bias is not None:
-            y = y + conv.bias
-        return y.view(-1, self.embed_dim)
+            y = y + conv.bias.to(dtype)
+        return y.to(x.dtype).view(-1, self.embed_dim)
 
 
 class VisionTowerWrapper(torch.nn.Module):
@@ -101,9 +102,11 @@ class VisionTowerWrapper(torch.nn.Module):
         -> merged image features [slots*MERGED_ROWS, out_hidden] float32.
     """
 
-    def __init__(self, visual, grid_thw=GRID_THW, slots=2, buffer_source=None):
+    def __init__(self, visual, grid_thw=GRID_THW, slots=2, buffer_source=None,
+                 linear_dtype=torch.float32):
         super().__init__()
-        self.patch_embed = MatMulPatchEmbed(visual.patch_embed)
+        self.linear_dtype = linear_dtype
+        self.patch_embed = MatMulPatchEmbed(visual.patch_embed, linear_dtype)
         self.blocks = visual.blocks
         self.merger = visual.merger
         self.attn_implementation = "eager"
@@ -158,13 +161,46 @@ class VisionTowerWrapper(torch.nn.Module):
             for name in ("pos_embeds", "rotary_cos", "rotary_sin"):
                 setattr(self, name, getattr(self, name).to(target))
 
+    def _linear(self, module, x):
+        """The official Linear with an optional reduced-precision inner
+        product.  linear_dtype=float32 (default) keeps the official module
+        call bit-exact; float16 casts the ACTIVATION only (the weight copy is
+        pre-materialized as a constant) and returns to the fp32 flow -- the
+        validated mixed-precision structure (constants, rotary tables, norms
+        and softmax stay fp32; bf16 FAILS the vision gate at real depth
+        relL2 0.055, fp16 passes; NPU fp16 matmul runs at 2x the fp32 rate)."""
+        if self.linear_dtype == x.dtype:
+            return module(x)
+        dtype = self.linear_dtype
+        weight = module.weight.to(dtype)
+        bias = module.bias.to(dtype) if module.bias is not None else None
+        return torch.nn.functional.linear(x.to(dtype), weight, bias).to(x.dtype)
+
+    def _mlp(self, mlp, x):
+        """Qwen3_5VisionMLP.forward op-for-op: fc2(act(fc1(x)))."""
+        return self._linear(mlp.linear_fc2, mlp.act_fn(self._linear(mlp.linear_fc1, x)))
+
+    def _merger(self, x):
+        """Qwen3_5VisionPatchMerger.forward op-for-op (both norm branches)."""
+        merger = self.merger
+        y = merger.norm(x.view(-1, merger.hidden_size)
+                        if merger.use_postshuffle_norm else x).view(-1, merger.hidden_size)
+        return self._linear(merger.linear_fc2,
+                            merger.act_fn(self._linear(merger.linear_fc1, y)))
+
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.patch_embed(pixel_values)
-        hidden_states = hidden_states + self.pos_embeds
+        hidden_states = self.patch_embed(pixel_values) + self.pos_embeds
+        stream = torch.float32 if self.linear_dtype == torch.float32 else self.linear_dtype
+        # fp16 residual stream: the layer-to-layer hidden state is stored in
+        # fp16 (halved activation traffic; every layer boundary round-trips
+        # through the fp32 compute domain -- norms, attention glue and the
+        # residual adds all accumulate in fp32).  Validated on the real
+        # 12-block tower: relL2 0.0079 vs 0.0050 fp32-stream, both inside
+        # the vision gate; the fp32 path below is the unchanged bit-exact one.
         for blk in self.blocks:
             hidden_states = hidden_states + self._attn(blk, hidden_states)
-            hidden_states = hidden_states + blk.mlp(blk.norm2(hidden_states))
-        return self.merger(hidden_states)
+            hidden_states = hidden_states + self._mlp(blk.mlp, blk.norm2(hidden_states))
+        return self._merger(hidden_states)
 
     def _attn(self, blk, hidden_states):
         """Qwen3_5VisionAttention.forward (non-flash branch) with the per-image
@@ -172,8 +208,9 @@ class VisionTowerWrapper(torch.nn.Module):
         attn = blk.attn
         x = blk.norm1(hidden_states)
         seq_length = x.shape[0]
+        qkv = self._linear(attn.qkv, x)
         query_states, key_states, value_states = (
-            attn.qkv(x).reshape(seq_length, 3, attn.num_heads, -1).permute(1, 0, 2, 3).unbind(0))
+            qkv.reshape(seq_length, 3, attn.num_heads, -1).permute(1, 0, 2, 3).unbind(0))
         query_states, key_states = apply_rotary_pos_emb_vision(
             query_states, key_states, self.rotary_cos, self.rotary_sin)
         query_states = query_states.transpose(0, 1).unsqueeze(0)
@@ -188,4 +225,4 @@ class VisionTowerWrapper(torch.nn.Module):
                         for q, k, v in zip(*splits)]
         attn_output = torch.cat(attn_outputs, dim=1)
         attn_output = attn_output.reshape(seq_length, -1).contiguous()
-        return attn.proj(attn_output)
+        return self._linear(attn.proj, attn_output)

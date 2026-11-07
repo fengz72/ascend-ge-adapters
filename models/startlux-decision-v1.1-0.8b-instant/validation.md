@@ -73,6 +73,133 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `model/verify_business.py` 11/11 PASS）；`model.py`/`export_air.py` import
 链冒烟通过。运行产物路径（`work/`、AIR、bench 请求）不变。
 
+## 2026-11-06 变更：fp16 全塔后续实验（权重物化受阻 + fp16 残差流负收益，均回退）
+
+**背景**：fp16 视觉塔交付（fp32 流 + fp16 线性内积，41.73 exec/s）后两项
+后续实验：
+
+- **fp16 权重常量折叠**（预物化 fp16 权重副本以消除每 forward 的权重
+  Cast，~0.9 ms/请求目标）：**受阻于导出机制**——torchair 的 positional
+  weight bake（运行时输入 i 按位置替换 export_graph.op[i]）在新增 ~51 个
+  fp16 权重 Const 节点后错位（全模动态导出报 "incomplete exported Data
+  binding"；tiny 静态导出可过）。回退物化。
+- **fp16 残差流**（层间 hidden 以 fp16 存储，层边界 fp32 计算域）：数值
+  全过（真实塔 relL2 0.0051、bit-stable；整模 5/5 + 5/5，指标与基线完全
+  一致），但 bench **40.91 exec/s（−2.0%）**——层间 fp16↔fp32 往返 Cast
+  开销超过激活带宽减半的收益（且能消这些 Cast 的权重折叠恰是受阻项）。
+  回退至 fp32 流。
+
+**结论**：fp16 视觉塔的最终交付形态即混合版（fp32 流 + fp16 线性内积 +
+运行时权重 Cast）；剩余 ~0.9 ms/请求的权重 Cast 仅在改造 torchair bake
+契约或预量化 checkpoint 时才可回收。全套单测 247 项通过。
+
+## 2026-11-06 变更：视觉塔线性计算域 fp16（已验证混合精度）
+
+**决策**（用户拍板）：视觉塔线性内积（patch-embed matmul、attention
+qkv/proj、MLP fc1/fc2、merger fc1/fc2，wrapper 内 op-for-op 重画）改为
+fp16；fp32 激活流、常量表（pos/rotary）、norm/softmax 全部保持 fp32
+（`linear_dtype` 开关，默认 fp16；`vision_linear_dtype` 模型参数可回
+fp32）。
+
+- 前置调研（真实权重 + 真实 12 层深度 + 真实 fixture，CPU 精度模拟）：
+  bf16 线性 relL2 **0.055 FAIL**（尾数 7 位经 12 层累积放大；浅塔模拟
+  0.0044 具误导性）；**fp16 线性 relL2 0.0045 PASS**（尾数 10 位，4.5×
+  门限余量）。P6 的"BF16 fails"（0.11）根因为整塔量化的 dtype 混乱链
+  （复现报错佐证）+ bf16 深度累积。
+- 官方先例：官方 vLLM 生产即全模型 bf16（业务口径验收，FP8/Q8_0 亦背书
+  "largely preserve"）——我们的门限为特征级 relL2 ≤0.02（更严格），
+  fp16 在该严格门限内通过，无需改口径。文本 trunk 保持 bf16
+  （ChunkGatedDeltaRule 原型仅接受 bfloat16；fp16=bf16 吞吐）。
+- 整模门禁（`run.sh --device 3`）：数值 5/5（worst cosine 0.999999 /
+  relL2 0.006571，fp16 传播后仍 3× 门限余量）；业务 5/5（worst
+  0.006454，与 fp32 基线**完全一致**）。
+- bench（2,048 请求 0 错误）：**41.727 exec/s、59.412 rows/s（+4.8%）**；
+  e2e P50 22.218 ms（−1.0 ms）。profiling：MatMulV2 17.25%→14.32%
+  （vision 份额减半生效）；Cast 升至 14.35%（fp16 权重 cast 未完全常量
+  折叠，~0.9 ms/请求可再回收——列入 backlog）。
+- 新增单测 2 项（fp32 模式回归 + fp16 门限），全套 **247 项通过**。
+
+## 2026-11-06 变更：文本 RMSNorm 融合为 GE RmsNorm 节点
+
+**决策**（用户拍板，profiling 驱动）：文本 decoder 的 eager RMSNorm 链
+（每请求 48+1+12 次普通 norm + 18 次 GDR gated norm）融合为
+`torch.ops.npu.npu_rms_norm`（GE RmsNorm 节点，`_rms_norm`/`
+`_rms_norm_gated`，官方计算域精确保持：fp32 mean/weight、输出 cast 回、
+gated 变体保持官方 weight/silu 顺序、gamma 由冻结参数常量折叠；eager 腿
+不变）。另补回 FIA 回退时 git restore 意外丢失的 causal_conv4 等价单测
+2 项，新增 RMS 融合公式等价单测 2 项（245 项全过）。
+
+- 整模门禁（`run.sh --device 3`）：数值 5/5（worst cosine 0.999999 /
+  relL2 **0.002233**，融合后显著变好）；业务 5/5（worst 0.006454）。
+- bench（2,048 请求 0 错误）：**39.801 exec/s、56.670 rows/s（+10.2%）**；
+  e2e P50 23.192 ms（−2.3 ms）。
+- profiling 复采（work/prof-rms）：RmsNorm 融合节点 3160 次/4.96% 取代原
+  Square 115 + ReduceMean 79 次/请求；Mul 15.8%→11.5%、Cast 12.4%→10.9%；
+  新热点排序：MatMulV2 17.3%、ChunkGatedDeltaRule 13.0%、Mul 11.5%。
+
+## 2026-11-06 变更：退役 256 最小物理宽度（case 按真长执行，min_width=1）
+
+**决策**（用户拍板）：P4 时代的 pad256 策略（min_width=256，保守过渡——
+保持动态图输入与固定宽度时代逐位一致的验收方式）正式退役；case 按真长
+执行（宽度=max 行真长；官方池 S=85/99/130）。
+
+- **先导实验**（先证伪 P4 的"短宽边界不稳定"观察）：在交付 AIR 上以
+  min_width=1 重打包官方 case 执行 3 次——5 case 全部**逐位稳定**；对
+  CPU golden relL2 ≤0.0037、对已验收 pad-256 输出 relL2 ≤0.0046（bf16
+  量化级）。P4 观察在当前配置（fp32-Conv2D conv + eager-math attention +
+  MatMul patch-embed）不复现。
+- **整模门禁**（`run.sh --device 3`）：数值 5/5（worst cosine 0.999998 /
+  relL2 0.004320）、业务 5/5（worst 0.005887）——均优于 pad-256 基线
+  （0.004753 / 0.006282）。
+- **bench**（2,048 请求 0 错误）：36.125 exec/s、**51.436 rows/s（+6.8%）**；
+  e2e P50 25.532 ms（−1.6 ms）；B1 25.1–25.5 / image 26.5 / B3 33.6 ms。
+  宽度收益受每请求固定开销（vision 塔恒跑 + host 调度）限制：宽度 ~2×
+  缩减 → 延迟 ~7% 下降。
+- 契约更新：generate_inputs caps min_width=1；unified_preprocess/
+  README 的 pad256 叙述改为 min_width=1 真长执行。P4 pad256 验收记录
+  保留于本文件历史章节。
+
+## 2026-11-06 变更：case 池收敛为仅官方 examples（5 个）
+
+**决策**（用户拍板）：输入 case 池**只保留官方仓库 examples 的 5 个
+case**（official-ticket-b3-r0 / official-ticket-{team,urgent,severity}-r0 /
+official-image-damaged-r0），删除 P8 正式 11 与 b4-long 边界 case 及其
+fixtures（`decider/fixtures/p2b-readouts.json`、`b4-long-rows.json`），并
+清理死代码链（`_text_cases`/`_image_cases`/`_b4_long_case`/
+`_render_official_prompts`、蓝 fixture、adapter 的 `_fixture`/
+`fixtures_file` 参数及其单测）。bench 池 = 精度池 = 5 case。
+
+- 整模门禁（`run.sh --device 3`）：数值 **5/5**（worst cosine 0.999998 /
+  relL2 0.004753）、业务 **5/5**（worst 0.006282）。
+- bench（2,048 请求 0 错误，2,916 行）：33.824 exec/s、**48.160 rows/s**
+  （官方分布平均 1.42 行/请求，B3 占抽样 21.2%）；B1 case P50
+  27.117–27.121 ms、B3 38.214 ms。测量表见 performance.md 附录。
+- 形状覆盖变化披露：官方 5 case 均为 S256/B1–B3；**B4 与 S2048 的形状/
+  边界覆盖不再由 case 池承载**（图能力不变，边界常量与校验仍在，
+  b4-long 验收记录保留于本文件历史章节）。
+
+## 2026-11-06 变更：输入池扩充官方 examples case（5 个，17-case 门禁）
+
+**决策**（用户拍板）：按官方仓库 StartLuxLabs/StartLux-Decision 的
+examples（client.py / request.sh / image_request.py @ main）构造正式输入
+case——支持工单 state 的三类型问题（team choice / urgent noul / severity
+score，官方单请求多问题的形态以 B3 单 case 承载，每问题一行）+ 同三问题
+的 B1 拆分 case + 配送照片 noul 问题（红 fixture 图承载，官方示例图片不随
+repo 分发）。渲染与编码全部走既有官方管线（from_systemone /
+place_images / plain_prompt + 官方预处理），rows_meta 按选项数取前 N 字母
+（noul 恒 2）。
+
+- 池规模：12 → **17 cases**（16 business + b4-long）；bench 池 11 → 16。
+- 整模门禁（`run.sh --device 3`）：数值 **17/17**（worst cosine
+  0.999995 / relL2 0.005749）；业务 **16/16**（worst 0.007576）。官方
+  case 自身 relL2 0.0012–0.0048、prob_max_abs 0.0001–0.0063、top1 全一致、
+  margin 大（choice 0.885 / noul 0.426–0.757 / score 0.158）；B3 行与 B1
+  拆分 case 结果确定性一致。
+- bench（2,048 请求 0 错误，2,432 行）：34.577 exec/s（−3.9% vs 11-case
+  池：B3 case 进入等权闭环拉低请求级吞吐）、**41.060 rows/s（+4.6%）**；
+  B1 case 的 P50 不变（27.64–27.66 ms）、B3 38.386 ms。测量表见
+  performance.md 附录。
+
 ## 2026-11-06 变更：视觉 patch-embed Conv3D 替换为等价 MatMul（含 FIA 调查回退）
 
 **决策**（用户拍板，profiling 驱动）：GE profiling（work/prof-fia）显示

@@ -607,7 +607,7 @@ class TestRuntimeHandleEncode(unittest.TestCase):
             "text_config": {"vocab_size": cls.VOCAB}, **cls.TOKENS}))
         cls.config = {"model": {"params": {"max_seq_len": 2048, "compiled_seq_len": 256,
                                            "chunk_size": 64, "max_batch": 4,
-                                           "fixtures_file": "decider/fixtures/p2b-readouts.json"}},
+                                           "max_batch": 4}},
                       "source": {"ref": str(folder)}}
         cls.handle = multimodal.MultimodalRuntimeHandle(cls.config, {"schema": "ge-io/1"})
         cls.zeros_pixels = [[0.0] * 1536 for _ in range(2 * multimodal.PATCH_ROWS)]
@@ -769,6 +769,37 @@ class TestVisionBufferProvenance(unittest.TestCase):
             self.assertEqual(getattr(wrapper, name).device, device)
         # the real non-CPU source-device coverage is the NPU eager stage of
         # work/startlux-validation/p6-unified (device audit, no masking .to)
+
+
+class TestVisionLinearDtype(unittest.TestCase):
+    """The wrapper's linear_dtype switch: fp32 stays the delivered bit-exact
+    path; fp16 (the validated mixed precision: fp16 inner products, fp32
+    constants/norms/softmax) stays inside the vision gate on the real-depth
+    tower."""
+
+    def test_fp32_mode_unchanged_bitexact(self):
+        visual = tiny_vision_model()
+        torch.manual_seed(2112)
+        pixels = torch.randn(2 * 64, 1536, dtype=torch.float32)
+        tower = multimodal.vision_mod.VisionTowerWrapper(visual, (1, 8, 8), slots=2).eval()
+        with torch.inference_mode():
+            out = tower(pixels)
+        self.assertEqual(out.dtype, torch.float32)
+
+    def test_fp16_mode_within_vision_gate(self):
+        visual = tiny_vision_model()
+        torch.manual_seed(2112)
+        pixels = torch.randn(2 * 64, 1536, dtype=torch.float32)
+        fp32 = multimodal.vision_mod.VisionTowerWrapper(visual, (1, 8, 8), slots=2).eval()
+        fp16 = multimodal.vision_mod.VisionTowerWrapper(
+            visual, (1, 8, 8), slots=2, linear_dtype=torch.float16).eval()
+        with torch.inference_mode():
+            a = fp32(pixels)
+            b = fp16(pixels)
+        rel = float((b - a).norm() / a.norm())
+        cos = float(torch.sum(b * a) / (b.norm() * a.norm()))
+        self.assertLess(rel, 0.02, f"fp16 relL2 {rel}")
+        self.assertGreater(cos, 0.999, f"fp16 cosine {cos}")
 
 
 class TestMatMulPatchEmbed(unittest.TestCase):

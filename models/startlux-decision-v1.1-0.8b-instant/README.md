@@ -70,7 +70,9 @@ bash models/startlux-decision-v1.1-0.8b-instant/run.sh [--device <chip>]
 NPU 卡用 `--device` 指定（npu-smi 的 Chip Logic ID，默认 4）；其余固定参数在
 `run.sh` 顶部（精度门限 cosine 0.999 / relL2 0.02、单实例 / warmup 32 /
 总测量请求 2048 / seed 42），是唯一可调处。
-流程：检查环境及权重 → 生成输入（官方预处理一次完成）→ CPU golden →
+输入 case 池 = **仅官方仓库 examples 的 5 个业务 case**（工单三问题 B3/
+三个 B1 拆分 + 配送照片 noul；bench 池 = 精度池）。流程：检查环境及权重 →
+生成输入（官方预处理一次完成）→ CPU golden →
 构建/安装 pass 与自定义算子（`work/deps/`）→ 构建 C++ runtime（复用
 `runtime/build.sh`）→ 导出单 AIR 并自动生成 infer/bench 请求 → 精度推理 →
 数值比较（`tools/compare.py`）→ 业务概率校验 → **人工确认卡空闲** → 性能
@@ -104,8 +106,10 @@ python3 -m unittest tests.test_startlux_ge_readout tests.test_torchair_example_i
 ## 使用限制
 
 - 图边界：官方 processed grid [1,16,16]（256x256 输入）；每次调用全局最多 2
-  张图（pixel_values 静态 [512,1536] 双图位）；B≤4、S≤2048、最小物理宽度 256
-  （短行右 pad 至该下限，actual_seq_lengths 保真长）；超限拒绝、不截断。边界
+  张图（pixel_values 静态 [512,1536] 双图位）；B≤4、S≤2048；**case 按真长执行**
+  （min_width=1，宽度=max 行真长；原 P4 的 256 下限已由 2026-11-06 短宽门禁
+  退役——真长执行逐位稳定、与 pad-256 及 golden 差异均在 bf16 量化级）；
+  超限拒绝、不截断。边界
   常量单一来源为 `multimodal.py` / `vision.py` 顶层，生成输入时强制执行。
 - 混精度：视觉塔 FP32 + 文本 decoder BF16；A_log 自 checkpoint 逐层恢复 F32、
   head26 F32。
