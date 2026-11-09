@@ -103,6 +103,115 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
   torch.full 版**逐位一致**（0.003857 / 0.003283）；bench 48.26
   exec/s（方差带内，常量化收益 <0.5% 属预期）。
 
+## 2026-11-09 变更：FA 布局变体测试（BSND/BSH 均不可行，维持 BNSD）
+
+**测试**（用户提议）：P2-8 的 FA 若改用 BSND（q/k/v 保持天然 [B,S,N,D]
+域、省每层 4 个 transpose）或 BSH（纯 reshape）是否更快。
+
+- **BSND**：eager 数值与 BNSD 逐位一致、单算子 x1.00（同速）——但
+  **torchair converter 只支持 BSH/BNSD**（`input_layout != BSH & BNSD`
+  直接 NotImplementedError），图模式不可用。
+- **BSH**：[B,S,N*D] 纯 reshape 零转置、单算子 x1.12 略快——但 **GQA
+  推断失败**（relL2 0.99997）：BSH 的 H 拼接维无法区分 2 heads×256 与
+  8 heads×64，FA 按 head_num=8 错切 k/v。expand 到 8 heads 再传则引入
+  的开销回到原点。
+- **结论**：BNSD + transpose 维持现役。
+
+## 2026-11-09 变更：FIA 复测（P2-8 补充，不可行维持 FA）
+
+**复测**（用户提议）：在 P2-8 已上线 FA 的布局链上复测
+`npu_fused_infer_attention_score`（FIA/PromptFlashAttention）三变体
+（per-row lengths / bool mask / 无 mask，bf16 BNSD GQA 8/2，真实 B/S
+组合，纯数学参考）：
+
+- 数值：lengths 与 boolmask 变体 relL2 0.0023–0.0024（与 FA 同级）✓；
+  无 mask 在有 pad 时 0.36–0.50（无屏蔽，预期内）。
+- **性能（B1/S99）：FIA 0.182 ms vs FA 0.045 ms vs eager 0.084 ms——
+  FIA 比 FA 慢 4 倍、比 eager 慢 2.2 倍**。PromptFlashAttention kernel
+  在短序列（S≤130）上调度开销主导，与早期 FIA 整模调查（-3.5% 回退）
+  根因一致。**结论：FIA 不可行，FA（npu_fusion_attention）保持现役。**
+
+## 2026-11-09 变更：full-attention 融合为 npu_fusion_attention（P2-8）
+
+**决策**（用户提议"FA 那里是 host bound"）：6 层双向 full-attention 的
+eager 链（GQA expand、scores matmul + 加性 mask、fp32 softmax、probs
+matmul，每层 ~15 节点）融合为每层一次 `npu_fusion_attention`（bf16
+BNSD、bool [B,1,S,S] pad mask True=屏蔽=加性 mask 等价、FA 原生 GQA——
+k/v expand 消失）。
+
+- **前置 probe**（纯数学参考）：文本侧全 B/S 组合 relL2 0.0023、eager 链
+  x2.05（B1/S99）；**vision 侧先测先弃**——数值精确但 x0.99（fp32 短
+  chunk 是 device-bound，融合无收益）。
+- 整模门禁：数值 5/5（worst relL2 **0.007893**——FA 内部 probs@v 精度路
+  径，仍 2.5× 门限余量）、业务 5/5（0.004143）。
+- bench 两次：**49.809 / 50.942 exec/s**（+1.2–3.5%），e2e P50
+  18.300 / 17.885 ms；probe 级 x2.05 压缩到整模 ~1–3% 是因为 6 层
+  attention 仅占 e2e ~0.5ms。测量表见 performance.md 附录。
+
+## 2026-11-09 变更：融合 RoPE 实验回退（P2-7，GE 原生算子动态 batch bug）
+
+**实验**（用户提议）：6 层 full-attention 的 eager rotate-half RoPE 链
+（每侧每层 ~10 个小算子）替换为 `npu_apply_rotary_pos_emb`。
+
+定位过程（逐层 probe）：
+- **layout 约束**：本 CANN 构建的 GE 原生 ApplyRotaryPosEmb tiling 仅接受
+  BSH(1)/TND(4)，BNSD(3) 被拒（`Parameter layout ... should be 1 or 4`）
+  ——改为 TND（[B,N,S,rot] 切片 transpose reshape [T,N,64]，cos/sin
+  [T,1,64]）。
+- **eager aclnn 路径正确**：TND+half 对 eager 数学 relL2 0.003（量化级）。
+- **GE 图模式静态正确**：B2/S99 trace+执行 0.0000（逐位）。
+- **GE 图模式动态 B=1 全错**：trace B2/S65 动态导出后，执行 B1 的
+  任意 S 全部 relL2 ~0.89（语义级错误），B3/S99 却 0.0000——**GE 原生
+  算子对 B=1 的动态执行存在实现 bug**（B 维特化路径）。
+- 整模门禁 4/5 FAIL（relL2 0.019–0.074，S=99 最差、全体 B1 case 偏移），
+  与 probe 的 B1 bug 及 6 层累积传播相符。
+
+**复活与定案（2026-11-09 三轮，用户提供官方算子文档后）**：官方文档
+确认 layout=1 即 **BSND**（[b,s,n,d]），且用户指出 qwen2.5-0.5b 生产已用
+该算子。三轮 probe 用**纯数学参考**（而非 aclnn eager——后者的 layout=1
+按 BSH 解读，自身即错 0.88，是前两轮全部"图错"结论的根源）后定案：
+**GE 图 + BSND 对纯数学 relL2 0.0002，全部 B/S 组合正确**。
+
+**交付形态**：RoPE 在天然 [B,S,N,D] 域（transpose 前）以 BSND 调用融合
+算子（q/k [B,S,N,rot] 切片、cos/sin [B,S,1,rot]、零 reshape；eager 腿
+保留显式数学——aclnn eager 的 layout=1 非 BSND）。整模门禁 5/5 + 5/5
+（relL2 0.003930 / 业务 0.004551）；bench（chip 8 空闲卡，chip 3 被他人
+占用曾致导出反复被杀——非 watchdog）**49.231 exec/s、70.097 rows/s**，
+e2e P50 18.586 ms——吞吐持平略正（方差内），结构收益 ~120 节点/请求与
+AIR -10%。测量表见 performance.md 附录。
+
+**补充证据（2026-11-09 二轮 probe，含 qwen 先例的边界）**：用户指出
+qwen2.5-0.5b 生产上已用同一算子（TND+half）——但该先例为**真 varlen 单
+动态轴**（q 全程 TND，`reshape(-1)` 自投影输出，无 B 维概念），与本项目
+的 **B×S 双动态轴**不同。二轮 probe 补齐边界：
+
+- BSND 域（切片→`reshape(-1)`/`reshape(B*S)`，无转置链，qwen 同构）：
+  动态图下 **B1/B3/S85/99/130 全部 relL2 ~0.88**（全错，比 BNSD 源的
+  仅 B1 错更广）；
+- BNSD 源 + transpose→reshape：动态图 B3/S99 = 0.0000、B1 全错；
+- aclnn eager 两种布局全对；静态图（trace=执行形状）全对。
+
+**结论与回退（维持）**：GE 原生 ApplyRotaryPosEmb 在本构建的**双动态轴
+（B×S）图上不可靠**——行为随输入布局与 B 值不可预测地变化（BSND 源全错、
+BNSD 源 B1 错、eager/静态全对），qwen 先例的真 varlen 单轴场景未覆盖该组
+合。P2-7 回退，eager RoPE 链保留。若后续 CANN 版本修复动态双轴 bug，可
+凭 probe 的多形状执行模式复测。
+
+## 2026-11-09 变更：GDR/attention 投影合并实验（P2-6，净负回退）
+
+**实验**（用户提议）：GDR 四投影（qkv/z/b/a，同输入）与 full-attention
+三投影（q/k/v）构造时预拼接为单权重，单 matmul + 切片，消除 ~54 次/请求
+小 matmul 启动。实施含两处返工（GDR in_proj 无 bias 的健壮合并、
+buffer 注册目标错到子 Linear），全链通过后整模门禁 5/5 + 5/5（relL2
+0.003933）。
+
+**bench 45.78 exec/s（vs P2-5 的 49.00，−6.6%）——净负，回退**。profiling
+定位：合并后的 `[B,S,8224]` 切片成为 StridedSlice 新大头（~53 次/请求
+大切片 + `[B,S,6144]` 子切片链），且非连续视图向 conv4/transpose 下流传
+播使 TransData 翻倍（307→787µs/请求）、MatMulV2 时间上升——切片与非
+连续代价远超 matmul 启动节省。**结论：分开的 Linear 输出各自连续，是
+该图结构下的更优形态；投影合并在 torchair/GE 的切片实现下不成立**。
+
 ## 2026-11-09 变更：预量化视觉权重为 fp16 常量（P2-5）
 
 **决策**（用户拍板）：vision 塔 Linear/Conv 权重在 wrapper 构造时**原位

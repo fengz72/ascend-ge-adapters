@@ -527,3 +527,67 @@ q/k magnitudes nonlinearly, so the magnitude fold must live in gamma.
   Square/ReduceSum/Rsqrt/Mul chains of the explicit norm.
 - Evidence paths: `work/bench/`, `work/infer/`, `work/logs/`
   (2026-11-09 04:3x).
+
+## Appendix: fused RoPE via ApplyRotaryPosEmb measurement (2026-11-09)
+
+The 6 full-attention layers' eager rotate-half chains (~10 small ops per side
+per layer) were fused into `npu_apply_rotary_pos_emb` (native BSND layout=1:
+q/k [B,S,N,rot], cos/sin [B,S,1,rot], zero reshapes; rotary_mode half == the
+exact rotate-half math; the RoPE runs in the natural [B,S,N,D] domain before
+the single transpose to BNSD).  Three earlier attempts failed and were
+probed: BNSD layout is rejected by the tiler (only 1/4 legal), a TND variant
+and a wrongly-shaped BSND call broke the gates, and -- decisively -- the
+probe's "reference" was itself wrong (the aclnn EAGER leg's layout=1 reads
+[B,S,N,D] as BSH, relL2 0.88 vs pure math); against a PURE-MATH reference
+the GE-graph BSND call is exact (relL2 0.0002) for every B/S combination of
+the case pool.
+
+| item | value | pre-fusion (P2-5 chain, 2026-11-09) |
+|---|---|---|
+| precision | 5/5, worst cosine 0.999998, worst relL2 0.003930 | 0.999998 / 0.003857 |
+| business gate | 5/5, worst active-probability max abs 0.004551 | 0.003283 |
+| graph executions/s | **49.231163** (2,048 requests, 0 errors) | 49.003 (chip-3 window) |
+| readout rows/s | **70.096715** | 69.77 |
+| e2e P50/P99 (n=2048) | 18.586/26.201 ms | 18.594/26.518 |
+
+- Net effect: throughput at parity-to-slightly-better (+0.5%, within
+  run-to-run variance on a different idle chip); precision/business within
+  the usual export-nondeterminism band.  The win is structural: ~120 fewer
+  graph nodes per request (Mul/Cat/Neg chains) and a smaller AIR
+  (1,906 -> 1,708 MB, -10%).
+- Note: this run executed on idle chip 8 (chip 3 was occupied by another
+  tenant, which had been silently killing the earlier exports).
+- Evidence paths: `work/bench/`, `work/infer/`, `work/logs/`
+  (2026-11-09 08:5x-09:0x).
+
+## Appendix: fused full-attention via npu_fusion_attention measurement (2026-11-09)
+
+The 6 bidirectional full-attention layers' eager chain (GQA k/v expand,
+scores matmul + additive mask, fp32 softmax, probs matmul -- ~15 nodes per
+layer) was fused into ONE `npu_fusion_attention` (FA) call per layer: bf16
+BNSD, bool [B,1,S,S] pad mask (True = blocked, the exact additive
+min-score-mask equivalent; the mask is derived in-graph from the additive
+mask), FA consumes the GQA layout natively so the k/v
+unsqueeze-expand-reshape drops out.  Eager branch unchanged.
+
+Probes (pure-math reference, all B/S of the case pool): relL2 0.0023 per
+layer; eager-chain x2.05 at B1/S99.  A vision-tower FA variant was probed
+FIRST and rejected: numerically exact but x0.99 (fp32 short chunks are
+device-bound, not host-bound -- no fusion win there).
+
+| item | value | pre-fusion (P2-7, same day) |
+|---|---|---|
+| precision | 5/5, worst cosine 0.999999, worst relL2 0.007893 | 0.999998 / 0.003930 |
+| business gate | 5/5, worst active-probability max abs 0.004143 | 0.004551 |
+| graph executions/s | **49.809 / 50.942** (2 runs, 2,048 req, 0 errors) | 49.231 |
+| readout rows/s | 70.919 | 70.097 |
+| e2e P50/P99 (n=2048) | 18.300/25.948 (repeat 17.885) | 18.586/26.201 |
+| per-case e2e P50 (ms) | ticket B1 18.209-18.287; image 19.268; B3 25.674 | 18.454-18.575; 19.513; 25.930 |
+
+- Net effect: **+1.2-3.5% executions/s and -0.3-0.7 ms e2e P50** across
+  two runs; precision moves 0.0039 -> 0.0079 (FA's internal probs@v path,
+  still 2.5x inside the gate) while business improves slightly.
+- The probe-level x2.05 compresses to ~1-3% whole-model because the 6
+  attention layers are only ~0.5 ms/request of the e2e.
+- Evidence paths: `work/bench/`, `work/infer/`, `work/logs/`
+  (2026-11-09 09:2x-09:4x).

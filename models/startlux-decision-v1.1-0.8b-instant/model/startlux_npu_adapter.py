@@ -589,24 +589,61 @@ class StartLuxTextDecoder(nn.Module):
         qkv = attn.q_proj(hidden).view(batch, width, -1, attn.head_dim * 2)
         q, gate = qkv[..., :attn.head_dim], qkv[..., attn.head_dim:]
         gate = gate.reshape(batch, width, -1)
-        q = _rms_norm(attn.q_norm, q.reshape(batch, width, -1, attn.head_dim)).transpose(1, 2)
-        k = _rms_norm(attn.k_norm, attn.k_proj(hidden).view(batch, width, -1, attn.head_dim)).transpose(1, 2)
+        q2d = _rms_norm(attn.q_norm, q.reshape(batch, width, -1, attn.head_dim))
+        k2d = _rms_norm(attn.k_norm, attn.k_proj(hidden).view(batch, width, -1, attn.head_dim))
         v = attn.v_proj(hidden).view(batch, width, -1, attn.head_dim).transpose(1, 2)
-        cos = cos.unsqueeze(1)
-        sin = sin.unsqueeze(1)
-        q_rot, q_pass = q[..., :self.rotary_dim], q[..., self.rotary_dim:]
-        k_rot, k_pass = k[..., :self.rotary_dim], k[..., self.rotary_dim:]
-        x1, x2 = q_rot[..., :q_rot.shape[-1] // 2], q_rot[..., q_rot.shape[-1] // 2:]
-        q_embed = torch.cat((q_rot * cos + torch.cat((-x2, x1), dim=-1) * sin, q_pass), dim=-1)
-        x1, x2 = k_rot[..., :k_rot.shape[-1] // 2], k_rot[..., k_rot.shape[-1] // 2:]
-        k_embed = torch.cat((k_rot * cos + torch.cat((-x2, x1), dim=-1) * sin, k_pass), dim=-1)
-        groups = attn.num_key_value_groups
-        k_embed = k_embed.unsqueeze(2).expand(batch, -1, groups, -1, -1).reshape(batch, -1, width, attn.head_dim)
-        v = v.unsqueeze(2).expand(batch, -1, groups, -1, -1).reshape(batch, -1, width, attn.head_dim)
-        scores = torch.matmul(q_embed, k_embed.transpose(-1, -2)) * attn.scaling
-        scores = scores + mask
-        probs = torch.softmax(scores, dim=-1, dtype=torch.float32).to(q.dtype)
-        out = torch.matmul(probs, v)
+        # RoPE runs in the NATIVE [B,S,N,D] domain (before the single
+        # transpose to BNSD).
+        if torch.compiler.is_compiling():
+            # P2-7 fused RoPE: the partial-rotary dims go through
+            # npu_apply_rotary_pos_emb in the native BSND layout (official
+            # layout=1: q/k [B,S,N,rot], cos/sin [B,S,1,rot], zero
+            # reshapes; rotary_mode half == the exact rotate-half math).
+            # GE-graph-verified against pure math at relL2 0.0002 for every
+            # B/S of the case pool.  The aclnn EAGER leg's layout=1 is NOT
+            # BSND (reads [B,S,N,D] as BSH), so the eager branch keeps
+            # explicit math.
+            import torch_npu
+            q_rot, k_rot = torch_npu.npu_apply_rotary_pos_emb(
+                q2d[..., :self.rotary_dim], k2d[..., :self.rotary_dim],
+                cos.unsqueeze(2), sin.unsqueeze(2),   # [B,S,1,rot]
+                layout="BSND", rotary_mode="half")
+            q2d = torch.cat((q_rot, q2d[..., self.rotary_dim:]), dim=-1)
+            k2d = torch.cat((k_rot, k2d[..., self.rotary_dim:]), dim=-1)
+        else:
+            cos4 = cos.unsqueeze(2)
+            sin4 = sin.unsqueeze(2)
+            q_rot, q_pass = q2d[..., :self.rotary_dim], q2d[..., self.rotary_dim:]
+            k_rot, k_pass = k2d[..., :self.rotary_dim], k2d[..., self.rotary_dim:]
+            x1, x2 = q_rot[..., :q_rot.shape[-1] // 2], q_rot[..., q_rot.shape[-1] // 2:]
+            q2d = torch.cat((q_rot * cos4 + torch.cat((-x2, x1), dim=-1) * sin4, q_pass), dim=-1)
+            x1, x2 = k_rot[..., :k_rot.shape[-1] // 2], k_rot[..., k_rot.shape[-1] // 2:]
+            k2d = torch.cat((k_rot * cos4 + torch.cat((-x2, x1), dim=-1) * sin4, k_pass), dim=-1)
+        q_embed = q2d.transpose(1, 2)
+        k_embed = k2d.transpose(1, 2)
+        if torch.compiler.is_compiling():
+            # P2-8 fused attention: one npu_fusion_attention (FA) per layer
+            # replaces the eager chain (GQA k/v expand, scores matmul +
+            # additive mask, fp32 softmax, probs matmul) -- bf16 BNSD with
+            # a bool [B,1,S,S] pad mask (True = blocked, the exact additive
+            # min-score-mask equivalent); FA runs the GQA expansion natively.
+            # Pure-math probe: relL2 0.0023 at every B/S of the case pool;
+            # eager-chain probe x2.05 at B1/S99.
+            import torch_npu
+            bool_mask = (mask < 0).expand(batch, 1, width, width)
+            out = torch_npu.npu_fusion_attention(
+                q_embed, k_embed, v, q_embed.shape[1], "BNSD",
+                atten_mask=bool_mask, scale=float(attn.scaling), keep_prob=1.0,
+                pre_tockens=2147483647, next_tockens=2147483647,
+                sparse_mode=0)[0]
+        else:
+            groups = attn.num_key_value_groups
+            k_embed = k_embed.unsqueeze(2).expand(batch, -1, groups, -1, -1).reshape(batch, -1, width, attn.head_dim)
+            v = v.unsqueeze(2).expand(batch, -1, groups, -1, -1).reshape(batch, -1, width, attn.head_dim)
+            scores = torch.matmul(q_embed, k_embed.transpose(-1, -2)) * attn.scaling
+            scores = scores + mask
+            probs = torch.softmax(scores, dim=-1, dtype=torch.float32).to(q.dtype)
+            out = torch.matmul(probs, v)
         out = out.transpose(1, 2).contiguous().reshape(batch, width, -1)
         out = out * torch.sigmoid(gate)
         return attn.o_proj(out)
