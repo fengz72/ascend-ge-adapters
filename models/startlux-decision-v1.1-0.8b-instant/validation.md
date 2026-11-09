@@ -233,6 +233,26 @@ fp16 上限），数值应逐位等价。
 - 结转：vision 激活边界 cast（`[512,3,12,64]`/`[512,3072]` 约 36
   次/请求，~350µs）为混合精度结构固有，此前 fp16 残差流实验已证净负。
 
+## 2026-11-09 变更：安装 WeightNzAndMatMulV3Pass 自定义融合 Pass
+
+**决策**（用户提议）：构建并安装
+`third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass`
+到 CANN 自定义融合 Pass 目录（`${ASCEND_OPP_PATH}/vendors/custom_nz_pass/
+custom_fusion_passes/`），并在 `prepare.sh` 中固化构建+安装步骤。该 Pass
+在图编译期（kAfterOriginGraphOptimize）将 MatMul/MatMulV2 的常量权重
+重排为 FRACTAL_NZ 并重建为 MatMulV3——host 期转换、无运行时布局 cast、
+激活与输出保持 ND。
+
+- **门禁**：数值 5/5（worst cosine 0.999999 / relL2 0.004496）、业务
+  5/5，与基线同级（导出抖动内）。
+- **性能**：混合闭环 50.606 exec/s（方差带）；**ticket-team 单 case AI
+  时间 17,642 → 15,092 µs/执行（−14.4%）**——MatMulV2 3,115µs 整体替换
+  为 MatMulV3 626µs（−80%），文本投影链是最大受益者。测量表见
+  performance.md 附录。
+- **注意**：安装后首次图编译按 matmul 形状逐一 TBE 编译 MatMulV3
+  kernel（首跑需较长超时，kernel_meta 缓存后续免）；系统级安装（CANN
+  vendors 目录），prepare.sh 每次重建重装。
+
 ## 2026-11-09 变更：删除 GDR 路径冗余 pad 掩码乘法（P0-1）
 
 **决策**（用户拍板）：删除 GDR 路径的全部 pad 掩码乘法——

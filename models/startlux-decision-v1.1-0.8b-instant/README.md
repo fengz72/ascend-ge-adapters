@@ -40,6 +40,11 @@ handle；固定参数集中在 `run.sh` 顶部。
 - `native_proto/` 与 `scripts/`：ChunkGatedDeltaRule GE 兼容原型源码、
   构建/显式局部加载脚本、P8 监控存档（`monitor_idle_benchmark.py`，历史证据，
   不在新流程内自动调用）。
+- `prepare.sh` 同时构建安装 **WeightNzAndMatMulV3Pass** 自定义融合 Pass
+  （`third_party/custom_development_code/fusion_pass/`）：图编译期将
+  MatMul/MatMulV2 常量权重转 FRACTAL_NZ 重建为 MatMulV3（系统级安装至
+  CANN vendors 目录；安装后首次图编译按形状逐一 TBE 编译、kernel_meta
+  缓存）。2026-11-09 实测：ticket-team 单 case AI 时间 −14.4%。
 - `work/`：全部生成产物（inputs / golden / build / infer / bench / deps /
   logs），不提交 Git。
 

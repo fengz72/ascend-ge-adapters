@@ -591,3 +591,34 @@ device-bound, not host-bound -- no fusion win there).
   attention layers are only ~0.5 ms/request of the e2e.
 - Evidence paths: `work/bench/`, `work/infer/`, `work/logs/`
   (2026-11-09 09:2x-09:4x).
+
+## Appendix: WeightNzAndMatMulV3Pass measurement (2026-11-09)
+
+The WeightNzAndMatMulV3Pass custom GE fusion pass
+(third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass)
+was built and installed into the CANN custom_fusion_passes directory: it
+rebuilds MatMul/MatMulV2 constant weights into FRACTAL_NZ as MatMulV3 at
+graph-compile time (host-side, no runtime layout casts; activations and
+outputs stay ND).  Installation and build wired into prepare.sh.
+
+| item | value | baseline (af9e05a + mega cleanup) |
+|---|---|---|
+| precision | 5/5, worst cosine 0.999999, worst relL2 0.004496 | 0.999997 / 0.003933 |
+| business gate | 5/5 PASS | 5/5 |
+| graph executions/s (mixed closed loop) | 50.606 (2,048 requests, 0 errors) | 50.481 |
+| ticket-team single-case AI time | **15,092 us/exec** | 17,642 us/exec (**-14.4%**) |
+| MatMulV2 (text projections/MLP) | 0 (replaced) | 3,115 us/exec |
+| MatMulV3 (NZ weights) | 626 us/exec | -- |
+| ChunkGatedDeltaRule / Cast / Transpose / rest | ~level | ~level |
+
+- The MatMulV2 -> MatMulV3+NZ replacement alone cuts ~2.5 ms of AI time per
+  ticket-team execution; the mixed-pool executions/s shows +0.3% (variance
+  band) because the closed loop is host-bound at these latencies while the
+  single-case AI-time drop is the kernel-level truth.
+- First graph compile after install pays a one-shot TBE cost per matmul
+  shape (the first infer run may need a generous timeout; kernel_meta
+  caches it).
+- System-level install by design (CANN vendors dir); prepare.sh rebuilds
+  and reinstalls it alongside the chunk prototype.
+- Evidence paths: `work/prof-nz/` (ticket-team single-case profile),
+  `work/bench/`, `work/infer/` (2026-11-09 12:0x).
