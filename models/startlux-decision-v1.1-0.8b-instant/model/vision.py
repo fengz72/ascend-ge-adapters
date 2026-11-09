@@ -109,6 +109,30 @@ class VisionTowerWrapper(torch.nn.Module):
         self.patch_embed = MatMulPatchEmbed(visual.patch_embed, linear_dtype)
         self.blocks = visual.blocks
         self.merger = visual.merger
+        # PRE-QUANTIZE the linear weights to linear_dtype (P2-5): replacing
+        # the parameter data in place keeps the exported graph's Const COUNT
+        # unchanged (same ~51 weight constants, now fp16) so torchair's
+        # positional weight bake stays aligned -- the buffer-copy approach
+        # failed exactly there.  bf16-stored vision weights convert to fp16
+        # LOSSLESSLY (8-bit mantissa subset of fp16's 10, weights far below
+        # fp16 range), so the values are bit-identical to the per-forward
+        # .to(fp16) casts this removes.  Norms and the constant buffers stay
+        # fp32; every consumer goes through the wrapper's replayed paths
+        # (_linear / _attn / _mlp / _merger / MatMulPatchEmbed), so no
+        # official forward ever sees a mixed-dtype Linear.
+        if linear_dtype != torch.float32:
+            ceiling = torch.finfo(linear_dtype).max
+            for module in self.modules():
+                if isinstance(module, (torch.nn.Linear, torch.nn.Conv3d)):
+                    with torch.no_grad():
+                        for param_name in ("weight", "bias"):
+                            param = getattr(module, param_name, None)
+                            if param is None or param.dtype == linear_dtype:
+                                continue
+                            if param is not None and float(param.abs().max()) > ceiling:
+                                raise ValueError(
+                                    f"{module}.{param_name} exceeds {linear_dtype} range")
+                            param.data = param.data.to(linear_dtype)
         self.attn_implementation = "eager"
         self.grid_thw = tuple(int(v) for v in grid_thw)
         self.slots = int(slots)

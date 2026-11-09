@@ -791,10 +791,14 @@ class TestVisionLinearDtype(unittest.TestCase):
         torch.manual_seed(2112)
         pixels = torch.randn(2 * 64, 1536, dtype=torch.float32)
         fp32 = multimodal.vision_mod.VisionTowerWrapper(visual, (1, 8, 8), slots=2).eval()
+        # The fp16 constructor PRE-QUANTIZES the SHARED visual's Linear/Conv
+        # weights in place (bit-identical values), so the fp32 reference is
+        # computed BEFORE the fp16 wrapper exists.
+        with torch.inference_mode():
+            a = fp32(pixels)
         fp16 = multimodal.vision_mod.VisionTowerWrapper(
             visual, (1, 8, 8), slots=2, linear_dtype=torch.float16).eval()
         with torch.inference_mode():
-            a = fp32(pixels)
             b = fp16(pixels)
         rel = float((b - a).norm() / a.norm())
         cos = float(torch.sum(b * a) / (b.norm() * a.norm()))

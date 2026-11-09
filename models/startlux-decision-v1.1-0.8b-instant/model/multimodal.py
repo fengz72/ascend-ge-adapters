@@ -581,9 +581,13 @@ def build_unified_model(model, config):
     on_cpu_f32 = all(p.device.type == "cpu" and p.dtype == torch.float32
                      for p in visual.parameters())
     buffer_source = visual if on_cpu_f32 else copy.deepcopy(visual).to("cpu", torch.float32)
+    # Upcast FIRST (exact bf16->fp32): the wrapper constructor then
+    # PRE-QUANTIZES the Linear/Conv weights to linear_dtype in place
+    # (fp32->fp16 lossless for bf16-stored values), so a later float() would
+    # silently undo it.
+    visual.float()                                # exact upcast; no-op when already f32
     vision_tower = VisionTowerWrapper(visual, GRID_THW, SLOTS, buffer_source=buffer_source,
                                       linear_dtype=vision_dtype)
-    visual.float()                                # exact upcast; no-op when already f32
     body = base._model_body(model)
     body.to(torch.bfloat16)
     decoder = base.StartLuxTextDecoder(body, letters, params["chunk_size"],

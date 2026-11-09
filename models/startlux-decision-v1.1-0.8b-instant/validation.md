@@ -73,6 +73,126 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `model/verify_business.py` 11/11 PASS）；`model.py`/`export_air.py` import
 链冒烟通过。运行产物路径（`work/`、AIR、bench 请求）不变。
 
+## 2026-11-09 变更：GDR q/k L2norm 融合为 RmsNorm（P0-2）
+
+**决策**（用户拍板）：GDR 的 q/k L2 归一链（18 层 × 2 侧的
+`x.float()→mul/rsqrt(sum+1e-6)→.to(bf16)`）各融合为一个 RmsNorm 节点：
+`rms_norm(x, gamma=1/sqrt(D), eps=1e-6/D)` 与 `x·rsqrt(sum(x²)+1e-6)`
+**精确等价**（mean 域折叠的 sqrt(D) 在 gamma 中抵消；kernel 内部 fp32
+归约、bf16 输出；bf16 gamma 带 ~1e-4 相对舍入）。
+
+- **scale 折叠方案被实测否决**：ones gamma + kernel scale D**-1.5 的变体
+  在真实单层 NPU 探针 relL2 0.85（delta 更新对 q/k 模长非线性耦合，
+  模长折叠必须放在 gamma 而非 scale）；scale 网格 {D^-1.5, D^-1, D^-0.5,
+  1} 全不匹配；**gamma=1/sqrt(D) + scale 保持 D^-0.5 → relL2 0.0029**
+  （量化级）定案。首次整模门禁曾因 scale 折叠失败（全 case relL2
+  0.22–0.64），修正后通过。
+- 整模门禁（`run.sh --device 3`）：数值 5/5（worst cosine 0.999998 /
+  relL2 0.003857——bf16 gamma 的 1e-4/侧舍入经 18 层传播，仍 5× 门限
+  余量）；业务 5/5（worst 0.003283）。
+- bench（2,048 请求 0 错误）：**49.327 exec/s、70.233 rows/s（+9.0%）**；
+  e2e P50 **18.571 ms**（−1.7 ms）；B1 ticket 18.5 / image 19.5 / B3
+  25.9 ms。消除 ~72 次 [B,S,16,128] cast + 显式归约链。测量表见
+  performance.md 附录。
+- CPU 单测：新增 gamma 折叠等价 1 项（公式含 gamma=1/sqrt(D)），全套
+  通过。
+- **register_buffer 化**（后续微调）：`gdr_l2_gamma` 改为 decoder 的
+  非持久 buffer（`persistent=False`，随 `.to(device)` 迁移、图内一次
+  常量折叠，替代每层 `torch.full`）——导出无 bake 冲突（单个常量
+  buffer，与上次 51 个权重 buffer 的失败量级不同），整模门禁数值与
+  torch.full 版**逐位一致**（0.003857 / 0.003283）；bench 48.26
+  exec/s（方差带内，常量化收益 <0.5% 属预期）。
+
+## 2026-11-09 变更：预量化视觉权重为 fp16 常量（P2-5）
+
+**决策**（用户拍板）：vision 塔 Linear/Conv 权重在 wrapper 构造时**原位
+替换**为 fp16（`param.data.to(fp16)`，构造顺序 `visual.float()` 移到构造
+前避免被 upcast 撤销）——导出图的权重 Const **数量不变、dtype 变 fp16**，
+torchair positional bake 保持对齐（此前 51 个**额外** buffer Const 才是
+bake 冲突根源）；bf16 存储值 → fp16 无损（8 位尾数 ⊂ 10 位，量级远低于
+fp16 上限），数值应逐位等价。
+
+- 实施附带：model.py `_expected_param_dtype` 的 vision 规则拆分
+  （Linear/Conv → fp16、norm 等其余 → fp32）；fp16 wrapper 构造变异共享
+  visual 的顺序语义在单测中固化。
+- 整模门禁（`run.sh --device 3`）：数值 5/5（relL2 0.003857）、业务 5/5
+  （0.003283）——**与 P2-5 前逐位一致**（预量化与运行时 cast 同值）。
+- bench：49.00 exec/s（方差带内）；profiling 复采：总 Cast **501 → 362
+  /请求**（vision 的 `[512,768]` 权重 cast 36 次及关联激活 cast 已消），
+  残余 362 次主要为 `[1,99,1024]` 级的 norm 残差域与 GDR l2norm 域
+  （upcast 无损域内最小集）。
+- 结转：vision 激活边界 cast（`[512,3,12,64]`/`[512,3072]` 约 36
+  次/请求，~350µs）为混合精度结构固有，此前 fp16 残差流实验已证净负。
+
+## 2026-11-09 变更：删除 GDR 路径冗余 pad 掩码乘法（P0-1）
+
+**决策**（用户拍板）：删除 GDR 路径的全部 pad 掩码乘法——
+`forward_embeddings` 的 `mixed * pad`（GDR 层输入清零）与
+`_gated_delta_native` 的 `q/k/v * pad`、`beta * valid`（合计 ~90 次/请求
+Mul，~1.5–1.9 ms/请求 AI 时间）。依据：chunk 递推严格因果，pad token 只
+影响自身及之后位置与最终 state——readout gather 真长 L-1、state 丢弃，
+per-row padding 永不泄漏（与 mega 路线 docstring 同一论证；native 传真
+理宽度使 pad 区参与递推，但污染同样只落在无害区）。
+
+- **kernel 因果性实证**：删除后整模门禁数值/业务指标与删除前**六位有
+  效数字完全一致**（relL2 0.002798 / 业务 0.007095）——pad garbage 对有
+  效区输出零影响，掩码确为 no-op。
+- 门禁（`run.sh --device 3`，AIR 重导出 1,906,330,769 bytes）：数值 5/5
+  （worst cosine 0.999998 / relL2 0.002798）、业务 5/5（worst 0.007095）。
+- bench（2,048 请求 0 错误）：**45.265 exec/s、64.450 rows/s
+  （+6.4–8.2%）**；e2e P50 **20.232 ms**（−1.4 ms）；B1 ticket 20.2 /
+  image 21.2 / B3 27.9 ms。测量表见 performance.md 附录。
+- 保留：full-attention 的加性 attn_mask（softmax 双向、key 列必须屏蔽）。
+  docstring/describe 的 native 语义段同步为 no-pad-masking 表述。全套
+  CPU 单测 247 项通过。
+
+## 2026-11-09 变更：RmsNorm gamma 直喂 bf16（差分下钻定案）
+
+**背景**：RmsNorm 直喂 bf16 后，profiling 仍见 `[1024]` FLOAT→BF16 ×
+48 次/请求的 Cast，怀疑 gamma 被下转。差分下钻（pbtxt 保留 + 两版对照
+导出）定案：
+
+- **前端图无此 cast**：fp32 gamma 与 bf16 gamma 两版导出的 pbtxt 中
+  RmsNorm 均为 79 个、gamma 输入均直连 `Add`/`OnesLike` 节点、`[1024]`
+  Cast 节点均为 **0**——cast 是 **GE 图编译期（tiling 选路）插入的**，
+  不是 converter（converter 对 npu_rms_norm 直接透传，ops-info 也原生
+  声明 (bf16 x, fp32 gamma) 组合）。
+- 即：fp32 gamma 版的**交付 kernel 实际一直在用 bf16 gamma**（编译器把
+  fp32 gamma 编译期 cast 掉）——"fp32 gamma 精度"从未真正到达 kernel。
+- **修法**（用户提议）：gamma 直接以 bf16 计算（`1.0 + norm.weight`，
+  bf16 域加法与 fp32 计算→bf16 舍入数值相同）；gated 的 ones 同改 bf16
+  （全 1 无量化）。数值与现状**等价**（kernel 消费相同），前端更干净、
+  编译器少插 48 个 Cast。
+
+门禁与 bench（2026-11-09，`run.sh --device 3`）：
+
+- 数值 5/5（worst cosine 0.999998 / relL2 0.002798）、业务 5/5（worst
+  0.007095）——与 fp32 gamma 版（0.004039 / 0.002769）的差异在 AIR 导出
+  非确定性的抖动量级内，均远低于门限。
+- bench（2,048 请求 0 错误）：41.84 / 42.54（同 AIR 重跑）exec/s vs
+  fp32 版 43.16——**run-to-run 方差带重叠，无显著差异**（48 个
+  [1024] Cast 理论值仅 ~64µs/请求 = 0.3%，被方差淹没）。
+- 取舍：保持 bf16 gamma（前端图更干净、编译期少 48 个插入 Cast，数值
+  与性能不劣）。
+
+## 2026-11-07 变更：RmsNorm 直喂 bf16（混 dtype，省 ~120 Cast/请求）
+
+**决策**（用户拍板，Cast 实证分组驱动）：融合 RmsNorm 节点改为**直喂 bf16
+激活 + fp32 gamma**（混 dtype），消除原 `x.float()`/`.to(bf16)` 的显式
+往返 Cast（~120 次/请求，普通 norm 61 + GDR gated 18 组）。
+
+前置 NPU eager 验证（2026-11-07）：
+- kernel 内部归约为 **fp32**（gated 全 1 gamma：直喂 bf16 1.66e-3 ==
+  显式 fp32 域路径的输出量化水平；fp32 输入对照 4.8e-8）；
+- fp32 gamma 消除唯一残余误差源（bf16 gamma 量化 +0.0008）；
+- torchair converter 接受混 dtype。
+
+整模门禁（`run.sh --device 3`）：数值 5/5（worst cosine 0.999997 /
+relL2 **0.004039**）、业务 5/5（worst **0.002769**）——**均显著优于基线**
+（0.006571 / 0.006454，Cast 边界减少同时移除了传播路径上的量化边界）。
+bench（2,048 请求 0 错误）：**43.157 exec/s、61.448 rows/s（+3.4%）**；
+e2e P50 21.422 ms（−0.8 ms）。测量表见 performance.md 附录。
+
 ## 2026-11-06 变更：fp16 全塔后续实验（权重物化受阻 + fp16 残差流负收益，均回退）
 
 **背景**：fp16 视觉塔交付（fp32 流 + fp16 线性内积，41.73 exec/s）后两项

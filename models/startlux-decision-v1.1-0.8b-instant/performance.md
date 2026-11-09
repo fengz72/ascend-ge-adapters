@@ -441,3 +441,89 @@ validation.md decision record.  Full-fp16 vision is closed at the current
 export mechanism: the remaining ~0.9 ms/request of weight Casts is only
 recoverable by changing the torchair bake contract or pre-quantizing the
 checkpoint itself.
+
+## Appendix: RMSNorm direct-bf16 input measurement (2026-11-07)
+
+The fused RmsNorm nodes now take the bf16 activation DIRECTLY (mixed dtype:
+bf16 self + fp32 gamma) instead of the explicit `x.float()` -> norm ->
+`.to(bf16)` round-trip -- dropping ~120 Cast nodes per request.  Driver:
+the Cast census (op_summary grouping) showed the norm-domain upcast/downcast
+as the second-largest Cast group; the NPU eager probe first proved the
+kernel's reduction runs in fp32 internally (bf16 input + fp32 ones gamma ==
+the explicit fp32-domain path at the bf16 output-quantization level, and the
+fp32 gamma removes the only other error source), and the torchair converter
+accepts the mixed dtype.
+
+| item | value | explicit fp32-domain (2026-11-06) |
+|---|---|---|
+| precision | 5/5, worst cosine 0.999997, worst relL2 **0.004039** | 0.999999 / 0.006571 |
+| business gate | 5/5, worst active-probability max abs **0.002769** | 5/5, 0.006454 |
+| graph executions/s | **43.156994** (2,048 requests, 0 errors) | 41.726731 |
+| readout rows/s | **61.448142** | 59.411693 |
+| e2e P50/P99 (n=2048) | 21.422/29.198 ms (avg 23.168) | 22.218/29.953 |
+| per-case e2e P50 (ms) | ticket B1 21.149-21.425; image 22.376; B3 29.052 | 21.921-23.175; 23.175; 29.792 |
+
+- Net effect: **+3.4% executions/s and -0.8 ms e2e P50**, with BOTH precision
+  and business metrics moving clearly better (relL2 0.0066 -> 0.0040, business
+  worst 0.0065 -> 0.0028) -- fewer Cast hops also remove quantization
+  boundaries on the propagation path.
+- Evidence paths: `work/bench/`, `work/infer/`, `work/logs/`
+  (2026-11-07 02:1x).
+
+## Appendix: GDR pad-mask removal measurement (2026-11-09)
+
+The ~90 redundant pad-masking Muls per request were removed (the GDR input
+zeroing ``mixed * pad`` and the in-layer ``q/k/v * pad`` + ``beta * valid``):
+the chunk recurrence is strictly causal, so padded tokens only ever
+influence outputs at their own and later positions and the final state --
+the readout gathers the true L-1 and the state is discarded (the same
+argument the mega route has always relied on; the kernel was re-proven by
+the full-model gates below).
+
+| item | value | pre-removal (2026-11-09, same day) |
+|---|---|---|
+| precision | 5/5, worst cosine 0.999998, worst relL2 0.002798 | 0.999998 / 0.002798 (identical) |
+| business gate | 5/5, worst active-probability max abs 0.007095 | 0.007095 (identical) |
+| graph executions/s | **45.265265** (2,048 requests, 0 errors) | 41.840-42.536 |
+| readout rows/s | **64.449958** | 59.572 |
+| e2e P50/P99 (n=2048) | 20.232/28.033 ms (avg 22.089) | 22.117-21.673 / 29.6-29.98 |
+| per-case e2e P50 (ms) | ticket B1 20.202-20.208; image 21.217; B3 27.931 | 21.15-21.43; 22.38; 29.05 |
+
+- The precision/business metrics are IDENTICAL to six significant digits to
+  the pre-removal run -- direct empirical proof that the kernel's causality
+  holds exactly (padded garbage never touches the valid prefix), matching
+  the removed masks' no-op status.
+- Net effect: **+6.4-8.2% executions/s and -1.4 ms e2e P50**, in line with
+  the ~1.5-1.9 ms/estimate of the removed Mul work.
+- Evidence paths: `work/bench/`, `work/infer/`, `work/logs/`
+  (2026-11-09 03:3x-04:0x).
+
+## Appendix: GDR q/k L2-norm fused as RmsNorm measurement (2026-11-09)
+
+The GDR q/k L2-normalization chains (18 layers x 2 sides of
+``x.float() -> mul/rsqrt(sum(x^2)+1e-6) -> .to(bf16)``) were fused into ONE
+RmsNorm node per side: ``rms_norm(x, gamma=1/sqrt(D), eps=1e-6/D)`` ==
+``x * rsqrt(sum(x^2) + 1e-6)`` exactly (the sqrt(D) of the mean-domain
+folding cancels in gamma; kernel-internal fp32 reduction, bf16 output; the
+bf16 gamma carries ~1e-4 relative rounding).  The kernel scale stays
+``Dk**-0.5`` UNCHANGED: a scale-fold variant (ones gamma + scale D**-1.5)
+was NPU-probed WRONG at single-layer relL2 0.85 -- the delta update couples
+q/k magnitudes nonlinearly, so the magnitude fold must live in gamma.
+
+| item | value | pre-fusion (P0-1, same day) |
+|---|---|---|
+| precision | 5/5, worst cosine 0.999998, worst relL2 0.003857 | 0.999998 / 0.002798 |
+| business gate | 5/5, worst active-probability max abs 0.003283 | 0.007095 |
+| graph executions/s | **49.327130** (2,048 requests, 0 errors) | 45.265265 |
+| readout rows/s | **70.233355** | 64.449958 |
+| e2e P50/P99 (n=2048) | 18.571/26.016 ms (avg 20.270) | 20.232/28.033 |
+| per-case e2e P50 (ms) | ticket B1 18.454-18.575; image 19.513; B3 25.930 | 20.202-20.208; 21.217; 27.931 |
+
+- Net effect: **+9.0% executions/s and -1.7 ms e2e P50**; precision moves
+  0.0028 -> 0.0039 (the bf16 gamma's ~1e-4 per-side rounding propagating
+  through 18 layers, still 5x inside the gate) while the business metric
+  improves.
+- Removed per request: ~72 Cast nodes ([B,S,16,128] bf16<->fp32) plus the
+  Square/ReduceSum/Rsqrt/Mul chains of the explicit norm.
+- Evidence paths: `work/bench/`, `work/infer/`, `work/logs/`
+  (2026-11-09 04:3x).

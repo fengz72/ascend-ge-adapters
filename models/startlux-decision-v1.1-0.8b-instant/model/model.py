@@ -82,7 +82,12 @@ def source_folder():
 def _expected_param_dtype(name):
     """The per-name dtype contract of one unified-wrapper parameter.
 
-    vision.*                         -> float32   (the official FP32 vision route)
+    vision.* Linear/Conv params      -> float16   (the P2-5 pre-quantized fp16
+                                                   vision route; values are
+                                                   bit-identical to the removed
+                                                   per-forward casts)
+    other vision.* params (norms)    -> float32   (the official FP32 vision
+                                                   reduction domain)
     text.head_rows                   -> float32   (the independent F32 head26 clone)
     text.body.*.linear_attn.A_log    -> float32   (the deliberate bit-exact F32 restore
                                                    of the 18 GDR decay logs; the checkpoint
@@ -93,6 +98,11 @@ def _expected_param_dtype(name):
                                                    contract is exhaustive, not permissive)
     """
     if name.startswith("vision."):
+        for module_prefix in ("attn.qkv.", "attn.proj.", "mlp.linear_fc1.",
+                              "mlp.linear_fc2.", "merger.linear_fc1.",
+                              "merger.linear_fc2.", "patch_embed.conv."):
+            if f".{module_prefix}" in name:
+                return torch.float16
         return torch.float32
     if name == "text.head_rows":
         return torch.float32

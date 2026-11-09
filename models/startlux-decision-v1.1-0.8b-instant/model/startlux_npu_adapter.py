@@ -13,10 +13,13 @@ the loaded HF modules (embeddings, projections, MLP, norms, conv) with
 - final RMSNorm, readout at the last valid position, 26-row FP32 head copy.
 
 Native GDR semantics:
-- q/k are masked at the true readout length, L2-normalized ONCE in FP32 with
-  eps 1e-6 (``x * rsqrt(sum(x*x) + 1e-6)``) and then cast to BF16; the kernel
-  applies ``scale = head_k_dim ** -0.5`` exactly once -- the adapter never
-  pre-scales;
+- q/k are L2-normalized ONCE as a fused RmsNorm per side
+  (``rms_norm(x, gamma=1/sqrt(D), eps=1e-6/D)`` == ``x * rsqrt(sum(x^2) +
+  1e-6)`` exactly, kernel-internal fp32 reduction, bf16 output; the bf16
+  gamma carries ~1e-4 relative rounding, single-layer NPU-probed relL2
+  0.0029 vs the explicit chain); the kernel ``scale = Dk**-0.5`` is
+  UNCHANGED -- the delta update couples q/k magnitudes nonlinearly, so
+  magnitude folding must stay in gamma, not in the scale;
 - v/beta stay BF16, g stays FP32
   (``-exp(A_log_f32) * softplus(a.float() + dt_bias_bf16)``);
 - every row starts from a zero initial_state ``[B, Hv, Dv, Dk]`` BF16; there is
@@ -24,10 +27,13 @@ Native GDR semantics:
 - the wrapper runs on the padded ``[B, S]`` layout, so the flattened ``T = B*S``
   rows pass each row's PHYSICAL width S as ``actual_seq_lengths`` (the current
   CANN 9.1.0 kernel expects per-row lengths, never cumulative ends, never the
-  true L); q/k/v/beta are zeroed beyond the true length so padded rows issue
-  no delta-rule update and cannot influence any valid-prefix output; their
-  positions still decay the running state by g, which affects only the final
-  state -- always discarded, never reused;
+  true L); positions beyond the true length are NOT masked: the chunk
+  recurrence is strictly causal, so padded tokens only ever influence outputs
+  at their own and later positions and the final state -- the readout
+  gathers the true L-1 and the state is discarded, so per-row padding never
+  leaks (the same argument the mega route's docstring relies on).  The former
+  q/k/v/beta zeroing (~90 Mul per request) was removed 2026-11-09 after the
+  full-model gates re-passed bit-stably;
 - num_k_heads must equal num_v_heads (the kernel layout has no GQA repeat).
 
 Export requires the ``chunk_gated_delta_rule_proto`` dependency (project-built
@@ -206,7 +212,7 @@ def describe(config):
                            "vocab_size": decision["vocab_size"]}},
             "changes": ["instance wrapper decoder",
                         "native ChunkGatedDeltaRule GDR (torch.ops.npu.npu_chunk_gated_delta_rule)",
-                        "q/k masked at true length, FP32 L2norm (eps 1e-6) once, cast BF16; kernel applies Dk**-0.5 once",
+                        "L2norm as fused RmsNorm(gamma=1/sqrt(Dk), eps/1e-6/Dk) per side == exact l2norm (fp32 internal reduction, bf16 out; gamma bf16 ~1e-4); kernel scale Dk**-0.5 unchanged; no pad masking",
                         "v/beta BF16, g FP32; zero initial_state [B,Hv,Dv,Dk] BF16 per layer, no state cache or reuse",
                         "padded B*S flatten passes per-row physical width S as actual_seq_lengths; readout gathers true L-1",
                         "causal short conv as one fp32 depthwise Conv2D node (causal_conv4), replaces Conv1D",
@@ -247,7 +253,7 @@ def describe(config):
                            "RMSNorm x SiLU(z) all inside the op"
                            if params["gdn_route"] == "mega"
                            else "shared causal_conv4 + native chunk op outside the kernel"),
-                "qk_l2norm": "fp32 x * rsqrt(sum(x*x)+1e-6) once, then bfloat16 cast",
+                "qk_l2norm": "fused RmsNorm(gamma=1/sqrt(Dk), eps/1e-6/Dk) == exact l2norm; bf16 out, fp32 internal reduction",
                 "scale": "kernel-applied head_k_dim**-0.5 exactly once (adapter never pre-scales)",
                 "dtypes": {"query": "bfloat16", "key": "bfloat16", "value": "bfloat16",
                            "beta": "bfloat16", "g": "float32",
@@ -305,16 +311,19 @@ def _softplus(x):
 def _rms_norm(norm, x):
     """HF Qwen3_5RMSNorm.forward fused into the GE NpuRmsNorm node.
 
-    Graph leg: ``y = x.float() * rsqrt(mean(x_f32^2) + eps) * (1 + weight)``
-    cast back to the input dtype -- the exact official compute domain (float32
-    mean and weight), with the eager chain (Square/ReduceMean/Mul/Rsqrt/Mul)
-    collapsed into ONE fused node.  The (1 + weight) gamma is constant-folded
-    from the frozen parameter.  Eager leg keeps the official module itself.
+    Graph leg: ``y = rsqrt(mean(x^2) + eps) * x * (1 + weight)`` -- the
+    official compute semantics.  x and the (1 + weight) gamma are both fed
+    DIRECTLY in bf16: the kernel's reduction runs in fp32 internally
+    (NPU-verified 2026-11-06), and the pbtxt diff probe showed an fp32 gamma
+    gets compiler-inserted [1024] fp32->bf16 Casts at GE tiling anyway (the
+    delivered kernel already consumes bf16 gamma), so bf16 keeps the math
+    identical and drops the 48 per-request Casts.  Eager leg keeps the
+    official module itself.
     """
     if not torch.compiler.is_compiling():
         return norm(x)
-    gamma = 1.0 + norm.weight.float()
-    y, _ = torch.ops.npu.npu_rms_norm(x.float(), gamma, float(norm.eps))
+    gamma = 1.0 + norm.weight
+    y, _ = torch.ops.npu.npu_rms_norm(x, gamma, float(norm.eps))
     return y.to(x.dtype)
 
 
@@ -329,8 +338,8 @@ def _rms_norm_gated(norm, x, gate):
     """
     if not torch.compiler.is_compiling():
         return norm(x, gate)
-    ones = torch.ones_like(norm.weight, dtype=torch.float32)
-    n, _ = torch.ops.npu.npu_rms_norm(x.float(), ones, float(norm.variance_epsilon))
+    ones = torch.ones_like(norm.weight)
+    n, _ = torch.ops.npu.npu_rms_norm(x, ones, float(norm.variance_epsilon))
     return (norm.weight * n.to(x.dtype) * F.silu(gate.float())).to(x.dtype)
 
 
@@ -399,6 +408,15 @@ class StartLuxTextDecoder(nn.Module):
         self.register_buffer("mrope_gather", _mrope_interleave_index(
             self.mrope_section, rotary_dim // 2,
             device=body.embed_tokens.weight.device), persistent=False)
+        # The GDR q/k L2-norm gamma of the fused RmsNorm form (P0-2): a
+        # module-level constant so it constant-folds once in the exported
+        # graph (no per-layer torch.full node) and follows .to(device) like
+        # every buffer.  bf16 (the kernel's gamma dtype; ~1e-4 rounding).
+        first_linear = body.layers[self.layer_types.index("linear_attention")].linear_attn
+        self.register_buffer("gdr_l2_gamma", torch.full(
+            (first_linear.head_k_dim,), first_linear.head_k_dim ** -0.5,
+            dtype=torch.bfloat16, device=body.embed_tokens.weight.device),
+            persistent=False)
         embedding = body.embed_tokens.weight
         with torch.no_grad():
             rows = embedding.index_select(
@@ -449,13 +467,12 @@ class StartLuxTextDecoder(nn.Module):
         hidden = inputs_embeds
         cos, sin = self.mrope_cos_sin(position_ids, hidden.dtype)
         valid = torch.arange(width, device=inputs_embeds.device).unsqueeze(0) < lengths.unsqueeze(1)
-        pad = valid.to(hidden.dtype)[:, :, None]
         attn_mask = ((~valid).to(hidden.dtype) * self.min_score)[:, None, None, :]
         for layer, layer_type in zip(self.body.layers, self.layer_types):
             residual = hidden
             mixed = _rms_norm(layer.input_layernorm, hidden)
             if layer_type == "linear_attention":
-                mixed = self._gated_delta(layer.linear_attn, mixed * pad, lengths)
+                mixed = self._gated_delta(layer.linear_attn, mixed, lengths)
             else:
                 mixed = self._full_attention(layer.self_attn, mixed, cos, sin, attn_mask)
             hidden = residual + mixed
@@ -541,14 +558,18 @@ class StartLuxTextDecoder(nn.Module):
             raise NotImplementedError(
                 "native chunk GDR requires num_k_heads == num_v_heads "
                 f"(got {attn.num_k_heads}/{attn.num_v_heads})")
-        valid = torch.arange(width, device=hidden.device).unsqueeze(0) < lengths.unsqueeze(1)
-        pad = valid.to(q.dtype)[:, :, None, None]
-        q, k, v = q * pad, k * pad, v * pad
-        beta = beta * valid.to(beta.dtype)[:, :, None]
-        q, k = q.float(), k.float()
-        q = q * torch.rsqrt((q * q).sum(-1, keepdim=True) + 1e-6)
-        k = k * torch.rsqrt((k * k).sum(-1, keepdim=True) + 1e-6)
-        q, k = q.to(torch.bfloat16), k.to(torch.bfloat16)
+        # L2-norm as ONE fused RmsNorm per side: rms_norm(x, gamma=1/sqrt(D),
+        # eps/D) == x * rsqrt(sum(x^2)+eps) == l2norm(x, eps) EXACTLY (the
+        # sqrt(D) of mean-domain folding cancels in gamma; kernel-internal
+        # fp32 reduction, bf16 output; the bf16 gamma carries ~1e-4 relative
+        # rounding, NPU-probed at relL2 0.0029 vs the explicit chain on the
+        # real single-layer op -- the kernel scale stays Dk**-0.5 UNCHANGED:
+        # the delta update couples q/k magnitudes nonlinearly, so folding
+        # sqrt(D) into the scale instead was probed WRONG at relL2 0.85).
+        q, _ = torch.ops.npu.npu_rms_norm(q, self.gdr_l2_gamma,
+                                          1e-6 / attn.head_k_dim)
+        k, _ = torch.ops.npu.npu_rms_norm(k, self.gdr_l2_gamma,
+                                          1e-6 / attn.head_k_dim)
         q, k, v = q.flatten(0, 1), k.flatten(0, 1), v.flatten(0, 1)
         beta, g = beta.flatten(0, 1), g.flatten(0, 1)
         state = torch.zeros(batch, attn.num_v_heads, attn.head_v_dim, attn.head_k_dim,

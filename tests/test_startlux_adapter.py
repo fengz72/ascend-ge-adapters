@@ -215,7 +215,8 @@ class TestP3Adapter(unittest.TestCase):
         with torch.inference_mode():
             official = norm(x)
             x32 = x.float()
-            # NpuRmsNorm definition: x * rsqrt(mean(x^2) + eps) * gamma
+            # NpuRmsNorm with a direct bf16 input: fp32 reduction over the
+            # bf16 values, fp32 gamma, output in the input dtype
             mine = (x32 * torch.rsqrt(x32.pow(2).mean(-1, keepdim=True)
                                       + float(norm.eps))
                     * (1.0 + norm.weight.float())).to(x.dtype)
@@ -239,6 +240,34 @@ class TestP3Adapter(unittest.TestCase):
             mine = (norm.weight * n.to(x.dtype) * F.silu(gate.float())).to(x.dtype)
         rel = float((mine.float() - official.float()).norm() / official.float().norm())
         self.assertLess(rel, 1e-6, f"rms gated fused formula drift {rel}")
+
+    def test_gdr_l2norm_rms_equivalent_with_folded_scale(self):
+        """The GDR q/k L2-norm as fused RmsNorm(gamma=1/sqrt(D), eps/D)
+        reproduces the L2-normalized q/k exactly (the sqrt(D) of the
+        mean-domain cancels in gamma); zero rows stay zero."""
+        torch.manual_seed(41)
+        dim = 128
+        q = (torch.randn(2, 7, 4, dim) * 0.5).to(torch.bfloat16)
+        k = (torch.randn(2, 7, 4, dim) * 0.5).to(torch.bfloat16)
+
+        def l2_chain(x):
+            x32 = x.float()
+            return (x32 * torch.rsqrt((x32 * x32).sum(-1, keepdim=True) + 1e-6)).to(torch.bfloat16)
+
+        def rms_equiv(x):
+            x32 = x.float()
+            y = x32 * torch.rsqrt(x32.pow(2).mean(-1, keepdim=True) + 1e-6 / dim)
+            return y.to(torch.bfloat16)
+
+        q_l2, k_l2 = l2_chain(q).float(), l2_chain(k).float()
+        gamma = (dim ** -0.5)
+        q_r, k_r = rms_equiv(q).float() * gamma, rms_equiv(k).float() * gamma
+        scores_old = torch.einsum("bhnd,bhmd->bhnm", q_l2, k_l2) * (dim ** -0.5)
+        scores_new = torch.einsum("bhnd,bhmd->bhnm", q_r, k_r) * (dim ** -0.5)
+        rel = float((scores_new - scores_old).norm() / scores_old.norm())
+        self.assertLess(rel, 0.01, f"gamma-folded scores drift {rel}")
+        zero = torch.zeros(1, 1, 1, dim, dtype=torch.bfloat16)
+        self.assertEqual(float(rms_equiv(zero).abs().max()), 0.0)
 
     def test_runtime_decode_is_provenance_free(self):
         report = self.adapter.describe(self.config())
