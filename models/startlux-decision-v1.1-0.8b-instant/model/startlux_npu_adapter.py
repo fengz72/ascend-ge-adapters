@@ -31,7 +31,7 @@ Native GDR semantics:
   recurrence is strictly causal, so padded tokens only ever influence outputs
   at their own and later positions and the final state -- the readout
   gathers the true L-1 and the state is discarded, so per-row padding never
-  leaks (the same argument the mega route's docstring relies on).  The former
+  leaks.  The former
   q/k/v/beta zeroing (~90 Mul per request) was removed 2026-11-09 after the
   full-model gates re-passed bit-stably;
 - num_k_heads must equal num_v_heads (the kernel layout has no GQA repeat).
@@ -81,11 +81,10 @@ VENDOR = MODEL_DIR / "decider" / "vendor"
 
 def _params(config):
     params = {"max_seq_len": 2048, "compiled_seq_len": 256, "chunk_size": 64,
-              "max_batch": 4, "gdn_route": "native",
-              "vision_linear_dtype": "fp16",
+              "max_batch": 4, "vision_linear_dtype": "fp16",
               **config["model"]["params"]}
     allowed = {"max_seq_len", "compiled_seq_len", "chunk_size", "max_batch",
-               "gdn_route", "vision_linear_dtype"}
+               "vision_linear_dtype"}
     if params.get("vision_linear_dtype") not in ("fp32", "fp16"):
         raise ValueError("vision_linear_dtype must be 'fp32' or 'fp16'")
     if set(params) - allowed:
@@ -93,8 +92,6 @@ def _params(config):
     for key in ("max_seq_len", "compiled_seq_len", "chunk_size", "max_batch"):
         if type(params[key]) is not int or params[key] < 1:
             raise ValueError(f"{key} must be a positive integer")
-    if params["gdn_route"] not in ("native", "mega"):
-        raise ValueError("gdn_route must be 'native' or 'mega'")
     if params["compiled_seq_len"] > params["max_seq_len"]:
         raise ValueError("compiled_seq_len cannot exceed max_seq_len")
     return params
@@ -240,19 +237,10 @@ def describe(config):
                               "per-shape kernel specialization at first execution is a runtime cache "
                               "effect, not a new graph"),
             },
-            "required_dependencies": (["mega_gdn_prefill"] if params["gdn_route"] == "mega"
-                                      else ["chunk_gated_delta_rule_proto"]),
-            "gdn_route": params["gdn_route"],
+            "required_dependencies": ["chunk_gated_delta_rule_proto"],
             "native_gdr": {
-                "op": ("MegaGdnPrefillV2 (torch.ops.ascend_ops.mega_gdn_prefill -> ge custom-op-v2, "
-                       "vendored xllm mega_gdn_prefill_op)" if params["gdn_route"] == "mega"
-                       else "ChunkGatedDeltaRule (torch.ops.npu.npu_chunk_gated_delta_rule)"),
-                "fusion": ("conv+cache, QKV split, q/k L2norm (fp32, eps 1e-6), "
-                           "g=-exp(A_log_f32)*softplus(a+dt_bias, threshold=20), "
-                           "beta=sigmoid(b), chunk GDN (KKT/inverse/WY), gated "
-                           "RMSNorm x SiLU(z) all inside the op"
-                           if params["gdn_route"] == "mega"
-                           else "shared causal_conv4 + native chunk op outside the kernel"),
+                "op": "ChunkGatedDeltaRule (torch.ops.npu.npu_chunk_gated_delta_rule)",
+                "fusion": "shared causal_conv4 + native chunk op outside the kernel",
                 "qk_l2norm": "fused RmsNorm(gamma=1/sqrt(Dk), eps/1e-6/Dk) == exact l2norm; bf16 out, fp32 internal reduction",
                 "scale": "kernel-applied head_k_dim**-0.5 exactly once (adapter never pre-scales)",
                 "dtypes": {"query": "bfloat16", "key": "bfloat16", "value": "bfloat16",
@@ -261,26 +249,12 @@ def describe(config):
                 "length_semantics": ("per-row lengths; padded B*S layout passes the physical width S "
                                      "per row (not cumulative ends, not the true L)"),
                 "readout": "gather true L-1 (decoder forward unchanged)",
-                "num_matrices": ("derived from cu_seqlens values at the GE wrapper's runtime "
-                                 "Execute and in the eager bridge; B and S stay dynamic axes"
-                                 if params["gdn_route"] == "mega" else None),
-                "short_conv": ("inside MegaGdnPrefillV2 (width 4, cache rows discarded)"
-                               if params["gdn_route"] == "mega"
-                                else "causal_conv4 (one fp32 depthwise Conv2D node; SiLU after the bf16 cast)"),
-                "dependency_loading": ("core.dependencies.prepare (operator installed into "
-                                       "the CANN global opp by install.sh; torch binding "
-                                       "pip-installed editable -- the activator finds the "
-                                       ".so and mounts the vendor package itself)"
-                                       if params["gdn_route"] == "mega"
-                                       else "core.dependencies.prepare + source scripts/env_chunk_proto.sh "
-                                       "<work_dir> (explicit local dlopen/LD_PRELOAD; auto vendor "
-                                       "loading rejected)"),
-                "eager": ("self-contained JIT bridge into the vendored libcust_opapi.so "
-                          "(flat ABI, delivered with the dependency); z is overwritten in "
-                          "place (Tensor(a!)) and returned as the output; graph mode via "
-                          "the torchair converter"
-                          if params["gdn_route"] == "mega"
-                          else "CANN aclnn host implementation; no prototype library needed"),
+                "num_matrices": None,
+                "short_conv": "causal_conv4 (one fp32 depthwise Conv2D node; SiLU after the bf16 cast)",
+                "dependency_loading": "prepare.sh -> scripts/build_chunk_proto.sh + source "
+                                      "scripts/env_chunk_proto.sh <work_dir> (explicit local "
+                                      "dlopen/LD_PRELOAD; auto vendor loading rejected)",
+                "eager": "CANN aclnn host implementation; no prototype library needed",
             }}
 
 
@@ -382,12 +356,11 @@ def rope_cos_sin(position_ids, inv_freq, dtype):
 class StartLuxTextDecoder(nn.Module):
     """Bidirectional text forward of the StartLux decision decoder, one readout per row."""
 
-    def __init__(self, body, letters26, chunk_size=64, gdn_route="native"):
+    def __init__(self, body, letters26, chunk_size=64):
         super().__init__()
         self.body = body
         self.letters26 = list(letters26)
         self.chunk_size = chunk_size
-        self.gdn_route = gdn_route
         cfg = body.config
         self.layer_types = list(cfg.layer_types[:cfg.num_hidden_layers])
         if set(self.layer_types) - {"linear_attention", "full_attention"}:
@@ -424,26 +397,7 @@ class StartLuxTextDecoder(nn.Module):
         self.head_rows = nn.Parameter(rows, requires_grad=False)
         self.min_score = float(torch.finfo(torch.bfloat16).min)
         self.embedding_shape = list(embedding.shape)
-        if self.gdn_route == "mega":
-            attn = body.layers[self.layer_types.index("linear_attention")].linear_attn
-            if attn.num_k_heads != attn.num_v_heads or attn.head_k_dim != 128 \
-                    or attn.head_v_dim != 128 or attn.num_v_heads % attn.num_k_heads \
-                    or body.config.linear_conv_kernel_dim != 4:
-                raise NotImplementedError(
-                    "mega GDN route requires num_k_heads == num_v_heads, head dims 128 "
-                    "and conv width 4 "
-                    f"(got {attn.num_k_heads}/{attn.num_v_heads}, "
-                    f"{attn.head_k_dim}/{attn.head_v_dim}, "
-                    f"{body.config.linear_conv_kernel_dim})")
-            device = embedding.device
-            chunk = 128
-            mask_full = torch.ones(chunk, chunk, dtype=torch.float32, device=device).tril()
-            self.register_buffer("mega_mask_full", mask_full, persistent=False)
-            self.register_buffer("mega_mask_lower",
-                                 mask_full.tril(diagonal=-1).contiguous(), persistent=False)
-            minus_identity = torch.zeros(chunk, chunk, dtype=torch.bfloat16, device=device)
-            minus_identity.fill_diagonal_(-1.0)
-            self.register_buffer("mega_minus_identity", minus_identity, persistent=False)
+
 
     def forward(self, input_ids, position_ids, actual_seq_lengths):
         # B/length validation is encode-side (Python, array level): the traced
@@ -503,43 +457,7 @@ class StartLuxTextDecoder(nn.Module):
         return rope_cos_sin(position_ids, self.inv_freq, dtype)
 
     def _gated_delta(self, attn, hidden, lengths):
-        if self.gdn_route == "mega":
-            return self._gated_delta_mega(attn, hidden, lengths)
         return self._gated_delta_native(attn, hidden, lengths)
-
-    def _gated_delta_mega(self, attn, hidden, lengths):
-        """Whole-block GDN via the project-built MegaGdnPrefillV2 custom-op-v2
-        wrapper (vendored xllm mega_gdn_prefill_op: conv+cache, QKV split, L2
-        norm, softplus/sigmoid gates, chunk GDN, gated RMSNorm fused; softplus
-        lives INSIDE the op). Rows are packed back-to-back at the full
-        physical width; causal recurrence keeps valid positions correct and
-        the readout gathers the true last index, so per-row padding never
-        leaks. conv_state/ssm_cache are per-row scratch (read=-1, write=row),
-        discarded outside the call. num_matrices is derived at the wrapper's
-        runtime Execute from cu_seqlens, so B and S stay dynamic axes."""
-        batch, width, _ = hidden.shape
-        tokens = batch * width
-        mixed_qkv = attn.in_proj_qkv(hidden).reshape(tokens, -1)
-        b = attn.in_proj_b(hidden).reshape(tokens, -1)
-        a = attn.in_proj_a(hidden).reshape(tokens, -1)
-        z = attn.in_proj_z(hidden).reshape(tokens, attn.num_v_heads, attn.head_v_dim)
-        conv_weight = attn.conv1d.weight.permute(2, 0, 1).reshape(
-            attn.conv1d.weight.shape[-1], -1).contiguous()
-        conv_state = hidden.new_zeros(
-            batch, attn.conv1d.weight.shape[-1] - 1, attn.conv1d.weight.shape[0])
-        ssm_cache = torch.zeros(batch, attn.num_v_heads, attn.head_v_dim,
-                                attn.head_k_dim, dtype=torch.float32,
-                                device=hidden.device)
-        reads = torch.full((batch,), -1, dtype=torch.int32, device=hidden.device)
-        writes = torch.arange(batch, dtype=torch.int32, device=hidden.device)
-        cu_seqlens = torch.arange(batch + 1, dtype=torch.int32,
-                                  device=hidden.device) * width
-        out = torch.ops.ascend_ops.mega_gdn_prefill(
-            mixed_qkv, b, a, z, conv_weight, conv_state,
-            attn.A_log.float(), attn.dt_bias.float(), reads, writes, reads, writes,
-            ssm_cache, self.mega_mask_lower, self.mega_mask_full,
-            self.mega_minus_identity, cu_seqlens, attn.norm.weight.to(torch.bfloat16))
-        return attn.out_proj(out.reshape(batch, width, -1))
 
     def _gated_delta_native(self, attn, hidden, lengths):
         batch, width, _ = hidden.shape
@@ -680,8 +598,7 @@ def adapt(source, config):
     if letters != _letters_from_model(source):
         raise ValueError("decision_config letter_token_ids from source.ref and from the loaded "
                          "model folder disagree; refusing ambiguous head columns")
-    wrapper = StartLuxTextDecoder(body, letters, params["chunk_size"],
-                                  gdn_route=params["gdn_route"])
+    wrapper = StartLuxTextDecoder(body, letters, params["chunk_size"])
     wrapper.width = params["compiled_seq_len"]
     wrapper.requires_grad_(False).eval()
     report["restore"] = _restore_and_verify(body, wrapper, source, params)

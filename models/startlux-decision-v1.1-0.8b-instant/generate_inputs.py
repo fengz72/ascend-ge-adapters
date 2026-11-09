@@ -113,7 +113,7 @@ def _config(source_ref):
 
     Model params stay EMPTY on purpose: the single source of the accepted
     values (max_seq_len 2048 / compiled_seq_len 256 / chunk_size 64 /
-    max_batch 4 / gdn_route native) is the startlux_npu_adapter._params
+    max_batch 4) is the startlux_npu_adapter._params
     default table; no constants are copied here.
     """
     return {"model": {"name": "startlux-decision-v1.1-0.8b-instant", "params": {}},

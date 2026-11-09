@@ -28,7 +28,7 @@ composes:
 
 Model params come from startlux_npu_adapter._params defaults (the single
 source: max_seq_len 2048 / compiled_seq_len 256 / chunk_size 64 / max_batch 4 /
-gdn_route native); this file invents no copies.  Consumed by export_air.py.
+native GDR); this file invents no copies.  Consumed by export_air.py.
 """
 from __future__ import annotations
 
