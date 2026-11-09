@@ -233,6 +233,25 @@ fp16 上限），数值应逐位等价。
 - 结转：vision 激活边界 cast（`[512,3,12,64]`/`[512,3072]` 约 36
   次/请求，~350µs）为混合精度结构固有，此前 fp16 残差流实验已证净负。
 
+## 2026-11-09 变更：GDR conv Conv1D 化实验（净负，回退）
+
+**实验**（"深入" #1 布局优化）：causal_conv4 由 Conv2D+padding=(0,3)+输出
+切片改为 `F.pad(x32,(3,0)) + Conv1D(groups=C)`——目标消除输出切片
+（StridedSliceV3 [1,6144,1,102] 358µs/e）与 conv 的 NCHW TransData
+（377µs/e）。
+
+**结果**：门禁 5/5+5/5 过，但 ticket-team 单 case AI 时间 **15,092 →
+15,572 µs/e（+480µs，净负）**，bench 49.0 exec/s（−3%）。profiling 定位：
+- torchair 将 aten.conv1d 转换为同一 **Conv2D** 节点（P2-7 调查时已知），
+  unsqueeze→TransData 依旧（[1,6144,1,102] 376µs——pad 后宽度 102 使
+  TransData 反而更大）；
+- F.pad 引入新的 fp32 全宽拷贝（[1,6144,102]×18 层），Cast 组上升
+  209µs；
+- 输出切片确实消失（StridedSliceV3 1383→965µs），但被上述两项抵消
+  反超。
+**结论**：GE 的 conv1d/conv2d 共享实现 + F.pad 的拷贝代价使该方向不成立；
+Conv2D+padding=(0,3)+切片维持现役（在 NZ Pass 基线上已是最优形态）。
+
 ## 2026-11-09 变更：安装 WeightNzAndMatMulV3Pass 自定义融合 Pass
 
 **决策**（用户提议）：构建并安装
