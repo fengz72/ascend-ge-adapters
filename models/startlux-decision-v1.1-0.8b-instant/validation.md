@@ -53,6 +53,40 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
   28.531s，OK）。全仓套件另有 4 个预存 error（上游 onnx 缺包
  ModuleNotFoundError，非本模型引入），不据此宣称全 repo 通过。
 
+## 2026-11-10 变更：兼容原型加载收敛为单一 LD_PRELOAD 契约（删 python activator）
+
+**决策**（用户拍板）：将 ChunkGatedDeltaRule 兼容原型的加载由"python activator
+（import 时 ctypes dlopen RTLD_GLOBAL + arm 任务级 LD_PRELOAD）叠加 run.sh
+LD_PRELOAD"两套重叠机制，收敛为**单一 `LD_PRELOAD` 契约**。仅改加载机制，
+**不触碰** `.so` 的 `REG_OP`/infer、图内容、GESession 选项，数值行为不变。
+
+动机（冗余实证）：`run.sh` 已对 export/infer/bench 三阶段注入
+`LD_PRELOAD=$PROTO_LIB`；export 进程启动时动态链接器已全局加载 `.so` 并跑完
+`REG_OP` 静态注册，故 activator 的 `ctypes.CDLL(RTLD_GLOBAL)` 为重复加载、
+`_prepend_ld_preload` 因去重判断空转；`export_air.py` 的 `write_io` 子进程经
+`subprocess.run`（未传 `env=`）继承 `os.environ` 里 run.sh 设的 `LD_PRELOAD`，
+无需 activator 再 arm。即 activator 在 run.sh 与 README（均已 `LD_PRELOAD`）
+两条路径下都无独有能力。且 `LD_PRELOAD` 在解释器启动前完成注册，时序上早于
+并稳于"import 时 dlopen"（后者依赖 `_activate_proto()` 必须早于 torchair
+`get_registered_ir_def` 检查的手工时序）。native `ge_runtime`（infer/bench）
+本就是纯 `LD_PRELOAD`、无 python，已证明该机制自足。
+
+改动：删除 `native_proto/python/chunk_gated_delta_rule_proto.py`（activator）；
+`scripts/build_chunk_proto.sh` 不再安装 `install/python`（并 `rm -rf` 旧
+`opp/` 与 `python/`，安装布局收敛为 lib + dependency.info）；`export_air.py`
+以 `_require_proto_preloaded()`（启动即校验 `LD_PRELOAD` 含原型 `.so`，缺失则
+明确报错指向 `prepare.sh` / `LD_PRELOAD=<proto.so>`，不再静默失败在 torchair
+检查里）替代 `_activate_proto()`；`prepare.sh` / `startlux_npu_adapter.py` /
+模型 README / `native_proto/README.md` 注释同步。关闭条件不变（CANN 自带同名
+注册时移除 prepare.sh 依赖构建与 run.sh 的 LD_PRELOAD 注入；禁止双注册）。
+
+验证（CPU，hermetic）：`tests/test_startlux_native_proto.py` 重写为契约测试
+（guard 通过/失败 4 项 + activator 已退役 2 项）**6/6 通过**；`export_air.py`
+`py_compile` 通过；`build_chunk_proto.sh`/`prepare.sh`/`run.sh` `bash -n` 通过。
+**NPU 全链门禁（`run.sh` 精度 + 性能）待在空闲卡重跑**：因加载路径变更，需确认
+export 在 `LD_PRELOAD` 下 `REG_OP` 注册成功、`write_io` 子进程继承、infer/bench
+数值与性能不变；通过前不宣称交付态等价。
+
 ## 2026-11-10 变更：代码审查清理（删死代码 / 修错误 / 削冗余校验 / 注释去过程化）
 
 **决策**（用户拍板）：按代码审查结论清理模型目录，只保留独立脚本流程实际使用

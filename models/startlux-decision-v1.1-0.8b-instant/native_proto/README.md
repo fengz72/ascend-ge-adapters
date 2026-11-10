@@ -11,12 +11,13 @@
 - schema 依据：torch_npu 2.12.0 converter、CANN 9.1.0
   `aic-ascend910_93-ops-info-transformer.json`、`ops_proto_legacy.h` 同族
   REG_OP 风格、torch_npu meta 注册。详见源码头注释。
-- 加载：**显式项目局部加载**（本构建的验收交付方式，不再宣称默认自动加载）。
+- 加载：**单一 `LD_PRELOAD` 契约**（本构建的验收交付方式，不再宣称默认自动加载）。
   `ASCEND_CUSTOM_OPP_PATH` 自动 vendor 加载会复现 GE 初始化 SIGSEGV/SIGILL，
-  故依赖不安装/不暴露 `opp/` 目录；由
-  ① `python/chunk_gated_delta_rule_proto.py`（import 时 ctypes dlopen RTLD_GLOBAL，
-  并为本 worker 的 native 子进程设置任务级 `LD_PRELOAD`），或
-  ② `run.sh` 对 export/infer/bench 子进程注入 `LD_PRELOAD` 显式加载。
+  故依赖不安装/不暴露 `opp/` 目录，也不再装 python activator；任何触碰 GE 的
+  进程都以 `LD_PRELOAD=<install>/lib/libchunk_gated_delta_rule_compat_proto.so`
+  启动——`run.sh` 对 export/infer/bench 子进程注入，`export_air.py` 启动即用
+  `_require_proto_preloaded` 校验。动态链接器在解释器启动前完成 `REG_OP` 注册
+  （早于任何 torchair/GE import），native 子进程经 `os.environ` 继承同一 `LD_PRELOAD`。
 - 关闭条件：当所用 CANN 构建已自带同名原型注册时，移除 `prepare.sh` 中的本依赖
   构建与 `run.sh` 中的 `LD_PRELOAD` 注入；禁止双注册，禁止无证据地自动覆盖官方注册。
 

@@ -19,9 +19,10 @@ Node names, order and dtypes are taken from the ACTUAL export result
 (parse_bindings on the emitted pbtxt), never hand-written.  The graph IO is
 embedded into the AIR with the runtime's write_io mode and the echoed IO (the
 authoritative embedded contract) is what the requests carry.  The compat
-prototype (chunk_gated_delta_rule_proto) is loaded explicitly through its
-activator module -- dlopen RTLD_GLOBAL for this process's dynamo_export and
-LD_PRELOAD armed for the ge_runtime children spawned here (write_io).
+prototype (chunk_gated_delta_rule_proto) is loaded by LD_PRELOAD alone: the
+process must be started with the prototype .so preloaded (run.sh injects it),
+which registers the op before any torchair/GE import and is inherited by the
+ge_runtime children spawned here (write_io); _require_proto_preloaded asserts it.
 
 Both requests use the same AIR.  The GESession options are explicit
 (graph_run_mode 0, precision_mode must_keep_origin_dtype) -- the runtime's
@@ -34,6 +35,7 @@ infer_schema cannot resolve in this nested-scope export path.
 import argparse
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -49,6 +51,8 @@ INPUTS = WORK / "inputs"
 RUNTIME = ROOT / "runtime" / "build" / "ge_runtime"
 PROTO_ID = "chunk_gated_delta_rule_proto"
 PROTO_INSTALL = WORK / "deps" / PROTO_ID / "install"
+PROTO_LIB_NAME = "libchunk_gated_delta_rule_compat_proto.so"
+PROTO_LIB = PROTO_INSTALL / "lib" / PROTO_LIB_NAME
 
 
 def _load_module(name, filename):
@@ -65,21 +69,25 @@ def _load_module(name, filename):
     return module
 
 
-def _activate_proto():
-    """Explicit local loading of the compat prototype.
+def _require_proto_preloaded():
+    """Fail loudly unless the compat prototype .so is LD_PRELOADed into THIS process.
 
-    The activator dlopens the installed .so with RTLD_GLOBAL so this process's
-    dynamo_export registers the real REG_OP, and arms LD_PRELOAD for the
-    ge_runtime subprocesses spawned here.  Auto vendor loading via
-    ASCEND_CUSTOM_OPP_PATH is not used: it reproducibly crashes GE
-    initialization with SIGSEGV/SIGILL on this build.
+    LD_PRELOAD is the single loading contract: the dynamic linker maps the .so and
+    runs its REG_OP static registration before the interpreter starts, so the op is
+    registered ahead of any torchair/GE import, and the ge_runtime children spawned
+    here inherit it through os.environ.  Auto vendor loading via
+    ASCEND_CUSTOM_OPP_PATH is not used: it reproducibly crashes GE initialization
+    with SIGSEGV/SIGILL on this build.  run.sh injects LD_PRELOAD; a manual run must.
     """
-    python_dir = PROTO_INSTALL / "python"
-    if not python_dir.is_dir():
-        raise SystemExit(f"export_air: {PROTO_INSTALL} is not built; run prepare.sh first")
-    if str(python_dir) not in sys.path:
-        sys.path.insert(0, str(python_dir))
-    import chunk_gated_delta_rule_proto  # noqa: F401  (loads on import)
+    preloaded = any(Path(entry).name == PROTO_LIB_NAME
+                    for entry in os.environ.get("LD_PRELOAD", "").split(os.pathsep) if entry)
+    if preloaded:
+        return
+    if not PROTO_LIB.is_file():
+        raise SystemExit(f"export_air: {PROTO_LIB} is not built; run prepare.sh first, "
+                         f"then start this process with LD_PRELOAD={PROTO_LIB}")
+    raise SystemExit(f"export_air: the ChunkGatedDeltaRule GE prototype is not preloaded; "
+                     f"start with LD_PRELOAD={PROTO_LIB} (run.sh does this automatically)")
 
 
 def _ge_call(plan):
@@ -348,7 +356,7 @@ def main():
     parser.add_argument("--seed", type=int, required=True)
     args = parser.parse_args()
 
-    _activate_proto()
+    _require_proto_preloaded()
     model = _load_module("startlux_model_for_export", "model/model.py")
     unified, _placement = model.load(args.device)
     spec = model.export_example(unified, args.device)

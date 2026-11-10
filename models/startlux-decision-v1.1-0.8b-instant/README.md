@@ -36,8 +36,8 @@ handle；固定参数集中在 `run.sh` 顶部。
   13 个 Python 模块与固定上游 commit 一致；当前流程用到
   `images` / `prompt` / `backends.bidirectional` 及其传递依赖，其余模块按
   SOURCE.md 的固定 commit 子集原样保留）。
-- `native_proto/` 与 `scripts/`：ChunkGatedDeltaRule GE 兼容原型源码、
-  构建脚本与显式局部加载 activator。
+- `native_proto/` 与 `scripts/`：ChunkGatedDeltaRule GE 兼容原型源码与构建脚本
+  （加载靠单一 `LD_PRELOAD` 契约，无 python activator）。
 - `prepare.sh` 同时构建安装 **WeightNzAndMatMulV3Pass** 自定义融合 Pass
   （`third_party/custom_development_code/fusion_pass/`）：图编译期将
   MatMul/MatMulV2 常量权重转 FRACTAL_NZ 重建为 MatMulV3（系统级安装至
@@ -119,9 +119,9 @@ python3 -m unittest tests.test_torchair_example_inputs
 - processor 链：AutoProcessor 整体 factory 加载失败，官方组件分别构建成功；
   conv4 使用共享 `causal_conv4`。
 - GDR：唯一路线为原生 CANN kernel + 项目兼容原型（非官方文件，仅 IR 注册不
-  含计算内核），加载方式为显式局部加载（activator dlopen + run.sh 对
-  export/infer/bench 子进程注入 LD_PRELOAD；自动 vendor 加载已复现崩溃并弃
-  用），CANN 升级/换 SoC 需重跑其门禁且无标准路线兜底。MegaGdnPrefillV2
+  含计算内核），加载方式为单一 `LD_PRELOAD` 契约（run.sh 对 export/infer/bench
+  子进程注入，export_air.py 启动即校验；自动 vendor 加载已复现崩溃并弃用），
+  CANN 升级/换 SoC 需重跑其门禁且无标准路线兜底。MegaGdnPrefillV2
   融合算子路线实测净负（融合算子内部 128 对齐、本模型 shape 偏小：B1 −28% /
   B2 −51%，吞吐 −23%），代码已移除，测量证据见 validation.md /
   performance.md。

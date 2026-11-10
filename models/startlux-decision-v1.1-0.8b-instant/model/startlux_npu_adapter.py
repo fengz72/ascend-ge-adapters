@@ -30,12 +30,13 @@ Native GDR semantics:
 - num_k_heads must equal num_v_heads (the kernel layout has no GQA repeat).
 
 Export requires the ``chunk_gated_delta_rule_proto`` dependency (project-built
-GE AscendIR prototype registration), loaded explicitly by prepare.sh +
-export_air.py's activator and by run.sh's LD_PRELOAD for the native ge_runtime
-subprocesses; auto vendor loading is rejected.  Eager NPU execution dispatches
-to the CANN aclnn host implementation and needs no prototype library.  CANN
-upgrades or SoC changes require re-running the prototype gate: the native route
-is the only one, there is no standard-op fallback.
+GE AscendIR prototype registration), loaded by a single LD_PRELOAD contract:
+run.sh injects the .so into the export / infer / bench subprocesses and
+export_air.py asserts it at startup; auto vendor loading is rejected.  Eager NPU
+execution dispatches to the CANN aclnn host implementation and needs no
+prototype library.  CANN upgrades or SoC changes require re-running the
+prototype gate: the native route is the only one, there is no standard-op
+fallback.
 
 A_log is restored bit-exact F32 from the checkpoint after the BF16 load;
 dt_bias stays its original BF16.

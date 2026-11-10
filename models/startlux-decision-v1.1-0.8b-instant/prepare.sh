@@ -4,11 +4,10 @@
 # (the standalone replacement of the framework prepare step; the build script
 # itself is the validated one, unchanged).
 #
-# Everything lands inside GE_INSTALL_DIR (lib + python + dependency.info); no
-# system path is written and no opp/ tree is exposed for GE auto-discovery.
-# The loading contract stays the validated explicit local loading: export_air
-# imports the activator module (dlopen RTLD_GLOBAL) and run.sh sets LD_PRELOAD
-# for the export / infer / bench subprocesses only.
+# Everything lands inside GE_INSTALL_DIR (lib + dependency.info); no system path
+# is written and no opp/ tree is exposed for GE auto-discovery.  The loading
+# contract is a single LD_PRELOAD of the built .so: run.sh injects it into the
+# export / infer / bench subprocesses and export_air.py asserts it at startup.
 #
 # Also builds and installs the WeightNzAndMatMulV3Pass custom fusion pass
 # (third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass)
