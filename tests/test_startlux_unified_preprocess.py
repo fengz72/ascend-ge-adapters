@@ -10,7 +10,6 @@ per officially processed 256x256 image, a [256, 1536] pixel block per image,
 grid [1, 16, 16], the strict cap/grid rejections, using the pinned red/blue
 PPM fixtures.
 """
-import importlib.util
 import json
 import os
 import shutil
@@ -28,19 +27,9 @@ REAL_MODEL_DIR = ROOT / "work" / "startlux-materials" / \
 REAL_FIXTURES = ROOT / "work" / "startlux-validation" / "p6-image"
 DEPS = ROOT / "work" / "startlux-validation" / "p6-official" / "deps"
 
-
-def load(name, filename):
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(name, str(MODEL_DIR / filename))
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-multimodal = load("startlux_multimodal_for_unified_test", "model/multimodal.py")
-unified_preprocess = load("startlux_unified_preprocess_test", "model/unified_preprocess.py")
+if str(MODEL_DIR) not in sys.path:
+    sys.path.insert(0, str(MODEL_DIR))
+from model import modeling_multimodal as multimodal, unified_preprocess
 
 
 def fake_folder_config(image_token=100, vision_start=102, vision_end=103, vocab=128):

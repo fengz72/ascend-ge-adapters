@@ -1,7 +1,8 @@
 """Standalone AIR export and request generation for the StartLux unified route.
 
 The export stage of the standalone shell flow
-(docs/standalone-runtime-plan.md): loads model.py's composed wrapper, exports
+(docs/standalone-runtime-plan.md): loads modeling_multimodal.py's composed
+wrapper, exports
 the ONE dynamic AIR through TorchAir (the bind_input identity markers, the
 Data-node re-partition, the dynamic/static axis pinning, the frozen-parameter +
 specialize_float dynamo context -- no ``core`` imports), embeds the IO contract
@@ -33,7 +34,6 @@ keep the bind_input custom-op annotations as strings that torch's
 infer_schema cannot resolve in this nested-scope export path.
 """
 import argparse
-import importlib.util
 import json
 import os
 import re
@@ -54,19 +54,11 @@ PROTO_INSTALL = WORK / "deps" / PROTO_ID / "install"
 PROTO_LIB_NAME = "libchunk_gated_delta_rule_compat_proto.so"
 PROTO_LIB = PROTO_INSTALL / "lib" / PROTO_LIB_NAME
 
-
-def _load_module(name, filename):
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(name, str(MODEL_DIR / filename))
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    try:
-        spec.loader.exec_module(module)
-    except BaseException:
-        sys.modules.pop(name, None)
-        raise
-    return module
+# this file runs as a script from inside the model package; make the package
+# itself importable (the model root is the package's parent)
+if str(MODEL_DIR) not in sys.path:
+    sys.path.insert(0, str(MODEL_DIR))
+from model import modeling_multimodal
 
 
 def _require_proto_preloaded():
@@ -357,9 +349,8 @@ def main():
     args = parser.parse_args()
 
     _require_proto_preloaded()
-    model = _load_module("startlux_model_for_export", "model/model.py")
-    unified, _placement = model.load(args.device)
-    spec = model.export_example(unified, args.device)
+    unified, _placement = modeling_multimodal.load(args.device)
+    spec = modeling_multimodal.export_example(unified, args.device)
 
     BUILD.mkdir(parents=True, exist_ok=True)
     air = BUILD / "model.air"

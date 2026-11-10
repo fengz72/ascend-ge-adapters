@@ -6,7 +6,10 @@ Python 文件按职责归入 `model/` 与 `decider/` 子目录（见 validation.
 2026-11-05 目录重组条目），且 2026-11-10 的代码审查清理删除了不在 `run.sh`
 调用图内的模块（`decision.py`、`reference.py`、`ge_readout.py`、
 `unified_readout.py`、`fixtures/`、`scripts/monitor_idle_benchmark.py`、
-`scripts/env_chunk_proto.sh`）。当前实际结构以 README 的目录清单为准。
+`scripts/env_chunk_proto.sh`）。2026-11-10 的模块化重写进一步将
+`model/` 替换为自持权重 nn.Module 树（`modeling_text.py` /
+`modeling_vision.py` / `modeling_multimodal.py`，见 validation.md 当日
+条目）。当前实际结构以 README 的目录清单为准。
 
 ## 1. 目标与范围
 

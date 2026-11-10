@@ -10,7 +10,7 @@ GE 适配目录。
 交付形态为**独立脚本流程**（[docs/standalone-runtime-plan.md](docs/standalone-runtime-plan.md)
 定稿方案，2026-11-05 实施并通过全流程验收）：Shell 串行调度
 （`run.sh`），Python 直接完成数据（`generate_inputs.py`）、官方 CPU 参考
-（`decider/golden.py`）与 AIR 导出（`model/model.py` + `model/export_air.py`），现有 C++ runtime
+（`decider/golden.py`）与 AIR 导出（`model/modeling_multimodal.py` + `model/export_air.py`），现有 C++ runtime
 完成推理与性能，公共工具（`tools/compare.py`）完成精度比较，业务概率门禁由
 `decider/verify_business.py` 承担。**不依赖 `core` 流程框架**，无 YAML / adapter /
 handle；固定参数集中在 `run.sh` 顶部。
@@ -25,10 +25,12 @@ handle；固定参数集中在 `run.sh` 顶部。
 - **独立流程入口**：`run.sh`（完整流程）、`prepare.sh`（构建安装 pass 与自
   定义算子）、`generate_inputs.py`（输入池生成）、
   `scripts/env_python.sh`（A3 容器 Python 引导）。
-- **`model/`**（模型构建与导出）：`model.py`（单图组合入口）、
-  `startlux_npu_adapter.py`（native chunk GDR 文本 decoder）、`multimodal.py`
-  （统一图组合与组批校验，图边界常量与 IO 契约单一来源）、`vision.py`
-  （固定网格视觉塔：FP32 残差流 + FP16 Linear/Conv 内积）、
+- **`model/`**（模型构建与导出，Python 包 `model`）：`modeling_text.py`（自持权重文本
+  decoder：参数名镜像 checkpoint 零映射加载、A_log 显式 F32、单腿
+  NPU 融合算子、融合 RoPE（BSND，两腿已 probe 验证一致））、`modeling_vision.py`
+  （自持权重固定网格视觉塔：FP32 残差流 + FP16 Linear/Conv 内积）、
+  `modeling_multimodal.py`（统一图组合与组批校验，图边界常量与 IO
+  契约单一来源，`from_folder` 逐张量加载与对账）、
   `unified_preprocess.py`（官方 CPU 预处理）、
   `export_air.py`（AIR 导出与请求生成）。
 - **`decider/`**（官方 CPU 参考与业务门禁）：`golden.py`（官方 CPU golden）、
@@ -100,8 +102,7 @@ python3 models/startlux-decision-v1.1-0.8b-instant/decider/verify_business.py
 CPU 单测（pytest 未安装，用例基于 unittest）：
 
 ```bash
-python3 -m unittest tests.test_startlux_native_proto tests.test_startlux_adapter
-python3 -m unittest tests.test_startlux_multimodal tests.test_startlux_unified_preprocess
+python3 -m unittest tests.test_startlux_native_proto tests.test_startlux_unified_preprocess
 python3 -m unittest tests.test_torchair_example_inputs
 ```
 
@@ -110,9 +111,9 @@ python3 -m unittest tests.test_torchair_example_inputs
 - 图边界：官方 processed grid [1,16,16]（256x256 输入）；每次调用全局最多 2
   张图（pixel_values 静态 [512,1536] 双图位）；B≤4、S≤2048；**case 按真长执行**
   （宽度 = max 行真长，无补齐下限）；超限拒绝、不截断。边界常量单一来源为
-  `multimodal.py` / `vision.py` 顶层，生成输入时强制执行。
+  `modeling_multimodal.py` / `modeling_vision.py` 顶层，生成输入时强制执行。
 - 混精度：视觉塔 FP32 残差流 + FP16 Linear/Conv 内积，文本 decoder BF16；
-  A_log 自 checkpoint 逐层恢复 F32、head26 F32。
+  A_log 以模块声明 F32（vLLM 同款，加载即位精确）、head26 F32。
 - wide_27 跨 dtype 分支披露（保留）：FP32 末轮第 6 名入围者 cause_18，官方
   BF16 与 GE 均为 cause_23；业务判据为 GE vs 相同 dtype 官方 BF16 动态参考，
   详见 `validation.md`。

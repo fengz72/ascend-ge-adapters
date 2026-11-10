@@ -1,6 +1,6 @@
 """Official CPU preprocessing for the StartLux unified multimodal AIR.
 
-The unified single-AIR contract (multimodal.py) keeps the OFFICIAL image
+The unified single-AIR contract (modeling_multimodal.py) keeps the OFFICIAL image
 preprocessing and the OFFICIAL get_rope_index on the CPU side: the graph inputs
 pixel_values / image_feature_index / position_ids are produced from what the
 official processor and the official position method emit, nothing else.  This
@@ -42,9 +42,11 @@ Pillow / torchvision are TASK-LOCAL dependencies of the official image path
 from __future__ import annotations
 
 import base64
-import importlib.util
+import mimetypes
 import sys
 from pathlib import Path
+
+from model import modeling_multimodal as multimodal
 
 MODEL_DIR = Path(__file__).resolve().parents[1]   # the model root
 ROOT = MODEL_DIR.parents[1]
@@ -56,23 +58,6 @@ DEPS_HINT = ("the official image preprocessing needs Pillow (and torchvision for
              "work/startlux-validation/p6-official/deps/torchvision; run.sh prepends "
              "them to PYTHONPATH for its python stages only. Do not install them "
              "system-wide.")
-
-
-def _load_module(name, filename):
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(name, str(MODEL_DIR / filename))
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    try:
-        spec.loader.exec_module(module)
-    except BaseException:
-        sys.modules.pop(name, None)
-        raise
-    return module
-
-
-multimodal = _load_module("startlux_multimodal_for_unified", "model/multimodal.py")
 
 MAX_BATCH = multimodal.MAX_BATCH                  # 4
 MAX_SEQ_LEN = multimodal.MAX_SEQ_LEN              # 2048
@@ -86,9 +71,7 @@ def _vendor_path():
 def image_data_uri(path):
     """A local image file as the data URI the official load_media reads."""
     path = Path(path)
-    mime = {"ppm": "image/x-portable-pixmap", "png": "image/png", "jpg": "image/jpeg",
-            "jpeg": "image/jpeg", "webp": "image/webp"}.get(
-                path.suffix.lstrip(".").lower(), "image/png")
+    mime = mimetypes.guess_type(path.name)[0] or "image/png"
     return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("ascii")
 
 

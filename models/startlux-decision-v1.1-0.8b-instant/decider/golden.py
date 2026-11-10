@@ -1,7 +1,7 @@
 """Standalone official CPU FP32 golden for the StartLux unified ONE-AIR route.
 
 The reference stage of the standalone shell flow (docs/standalone-runtime-plan.md):
-no ``core``, no ``model.py`` adaptation code, no NPU, no LD_PRELOAD.  It loads
+no ``core``, no modeling code on the forward path, no NPU, no LD_PRELOAD.  It loads
 the SAME weights folder (STARTLUX_MODEL_DIR) as an independent CPU float32
 official model and consumes the SAVED official preprocessing results of the
 data stage (work/inputs/rows/<case>.npz, the per-row TRUE-length encodings), so
@@ -23,9 +23,7 @@ case -> [{instance: 0, tensors: [{name, dtype, shape, offset, bytes}]}].
 """
 from __future__ import annotations
 
-import importlib.util
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -37,43 +35,27 @@ WORK = MODEL_DIR / "work"
 INPUTS = WORK / "inputs"
 GOLDEN = WORK / "golden"
 
+if str(MODEL_DIR) not in sys.path:
+    sys.path.insert(0, str(MODEL_DIR))
+from model import modeling_multimodal as multimodal
+
 OUTPUT_NAME = "scores"
 
 
-def _load_module(name, filename):
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(name, str(MODEL_DIR / filename))
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    try:
-        spec.loader.exec_module(module)
-    except BaseException:
-        sys.modules.pop(name, None)
-        raise
-    return module
-
-
-base = _load_module("startlux_npu_adapter_for_native", "model/startlux_npu_adapter.py")
-
-
-def _source_ref():
-    value = os.environ.get("STARTLUX_MODEL_DIR")
-    if not value or not value.strip():
-        raise SystemExit("golden: STARTLUX_MODEL_DIR is not set or is empty")
-    path = Path(value).resolve()
-    if not path.is_dir():
-        raise SystemExit(f"golden: STARTLUX_MODEL_DIR {path} is not a directory")
-    return path
+def _model_body(source):
+    """The official text decoder inside an official model load (the module the
+    vendored bidirectional patch drives)."""
+    inner = getattr(source, "model", source)
+    return getattr(inner, "language_model", inner)
 
 
 class OfficialReference:
     """The independent official CPU FP32 oracle."""
 
     def __init__(self, source, folder):
-        self.letters26 = base._decision_config(folder)["letter_token_ids"]
+        self.letters26 = multimodal.decision_config(folder)["letter_token_ids"]
         self.inner = source.model
-        self.body = base._model_body(source)
+        self.body = _model_body(source)
         self.head = source.get_output_embeddings().weight
         if str(MODEL_DIR / "decider" / "vendor") not in sys.path:
             sys.path.insert(0, str(MODEL_DIR / "decider" / "vendor"))
@@ -128,7 +110,7 @@ def _load_saved_rows(case_id, samples):
 
 
 def main():
-    folder = _source_ref()
+    folder = multimodal.source_folder()
     index = json.loads((INPUTS / "cases.json").read_text())
     if index.get("schema") != "startlux-standalone-cases/1":
         raise SystemExit("golden: work/inputs/cases.json is not the standalone case index; "

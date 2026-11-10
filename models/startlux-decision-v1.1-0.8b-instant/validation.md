@@ -53,6 +53,198 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
   28.531s，OK）。全仓套件另有 4 个预存 error（上游 onnx 缺包
  ModuleNotFoundError，非本模型引入），不据此宣称全 repo 通过。
 
+2026-11-10 模块化重写后：`tests/test_startlux_adapter.py` 与
+`tests/test_startlux_multimodal.py` 按用户决策删除（单腿 NPU 算子使新模块
+无法在 CPU forward，相关断言由 NPU eager/graph 双路验证接管，见当日条目）；
+`tests/test_startlux_unified_preprocess.py`（23 项）与
+`tests/test_startlux_native_proto.py` 改路径后全部通过。
+
+## 2026-11-10 变更："未用语言/框架自带能力"审计（stdlib/去重复）
+
+**审计**（用户提问驱动）：逐文件排查"手写了语言或框架已提供的能力"的地方。
+
+**修整（4 处）**：
+
+- `golden.py` / `generate_inputs.py` 各自手写的 `STARTLUX_MODEL_DIR` 读取+
+  校验函数删除，改用包内单一来源 `modeling_multimodal.source_folder()`（连同
+  两个文件里仅为它存在的 `import os` 一起删除；`verify_business.py` 按设计
+  不 import 模型包、独立读 folder 侧——保持不动，见 2026-11-10 清理条目）；
+- `modeling_multimodal.build_multimodal_batch` 的 4 行 `_TokenIds` 类改用
+  `types.SimpleNamespace`（同文件既有惯用法）。**注意**：该函数内局部变量
+  `types`（mm_token_type_ids 张量）会遮蔽模块级 `import types`，故必须
+  `from types import SimpleNamespace` 按名导入——首轮改动因此触发
+  UnboundLocalError（UnboundLocalError 被 CPU 测试与 generate_inputs 立即
+  捕获，哨兵门禁证明了其有效性），修正后 23 项测试通过；
+- `unified_preprocess.image_data_uri` 的手写 mime 字典改用 stdlib
+  `mimetypes.guess_type(name) or "image/png"`（官方 examples/image_request.py
+  同款用法）。mime 在本流程中只流入 `media.data_uris` 属性（golden/
+  generate_inputs 均不读取），对编码产物零影响——inputs 哨兵位相同证明。
+
+**判定为"框架真缺能力、现行方案已是耦合最低"而不动的**：
+
+- `export_air.parse_bindings`（36 行 pbtxt 文本解析）：torchair
+  `dynamo_export` 无返回值，导出图是 backend 内部局部对象（导出即出
+  `_graph_stack` 栈），文本解析回填需未安装的 tensorflow proto——替代方案只有
+  monkey-patch torchair 私有函数 `make_export_graph` 捕获图对象，对私有签名
+  的耦合高于对 pbtxt 文本格式的耦合，维持现状；
+- `modeling_text` 的 `_softplus`（aten.softplus 无 GE converter）、
+  `causal_conv4`（bf16 conv 误编译）、MRoPE gather 索引（官方 in-place 切片
+  不可导出且 gather 形态已证位精确）、`modeling_vision.build_static_buffers`
+  的 SimpleNamespace 方法绑定（官方方法是实例方法，构造完整模型才能直接调，
+  而那会加载全部权重）——均为已记录的数值/导出性约束；
+- `verify_business.py` 的 N_COLUMNS=26 硬编码：它承担"folder 侧 26 ==
+  scores 侧 26"双侧契约的独立半边，若改为 `len(letters)` 派生则校验恒真，
+  保持硬编码；
+- 各入口脚本的 `Path(__file__)` 根锚点：sys.path 引导必须先于包 import
+  （鸡生蛋），无法从包内获取。
+
+**验证**：23 项 CPU 测试通过；golden 哨兵位相同 `bfc06e59`；inputs 哨兵位
+相同 `62122c8c`；被追踪进 AIR 的代码（modeling_text / modeling_vision）零
+改动，无需重导出。
+
+## 2026-11-10 变更：model/ 转为 Python 包（删 _load_module 按路径加载机制）
+
+**决策**（用户提议）：`model/` 加空 `__init__.py` 成为包，按路径 +
+合成名注册的 `_load_module` 机制整体删除（该机制存在的唯一原因就是目录
+不是包；其 "register before exec: dynamo resolves traced functions by
+__module__" 注释防护的问题，包导入天然满足——`model.modeling_text` 等真实
+模块名本就在 `sys.modules`）。
+
+- 删除 5 处 `_load_module`（modeling_multimodal / unified_preprocess /
+  export_air / generate_inputs / golden）+ 测试的 `load` helper 及全部合成
+  模块名；`MODEL_DIR` 从 modeling 文件中彻底消失，入口脚本保留的仅用于
+  定位 `work/` 数据目录；
+- 入口脚本各自把模型根目录 `sys.path.insert` 一次（export_air 与
+  unified_preprocess 位于包内、golden 位于 decider/、generate_inputs 位于
+  根、测试位于 tests/），`run.sh` **零改动**；
+- `modeling_multimodal` 对 `modeling_text` 保持函数级惰性导入（torch_npu
+  免导入属性不变，golden/generate_inputs 的 CPU 路径不变）。
+
+**验证**（chip 14）：golden 哨兵位相同 `bfc06e59`；generate_inputs 哨兵
+位相同 `62122c8c`；23 项 CPU 测试通过；eager 冒烟 relL2 0.00408（与包化前
+逐值一致）；导出 + 推理门禁 relL2 0.004496 / 业务 0.003431（与融合算子
+回切版完全一致）；AIR 字节数不变 1,708,269,731（sha 因图节点名内嵌模块名
+而异，语义等价由门禁证明）；bench 49.917 exec/s、P50 18.523 ms、0 error
+（带内）。
+
+## 2026-11-10 变更：model/ 模块化重写为自持权重 nn.Module 树（HF 风格）
+
+**决策**（用户逐项拍板）：(1) dtype 在模块声明处指定、照 vLLM；(2) 原地替换
+`model/`；(3) 参照 cann-recipes-infer `modeling_qwen.py`（纯 `nn.Module` +
+自写加载，不 subclass `PreTrainedModel`）；(4) 删除全部
+`torch.compiler.is_compiling()` 双腿分支，单腿直接调 NPU 算子；(5) vision 的
+`fast_pos_embed_interpolate` / `rot_pos_emb` 继续 import 官方方法；(6) 双向
+注意力硬编码，不读 `jev_prompt_attention`。
+
+**RoPE 定案（停止协议触发）**：`npu_apply_rotary_pos_emb` 的 `layout=1` 在
+GE 图腿解读为 BSND、在 aclnn eager 腿解读为 BSH（本文件 2026-11-09 条目与
+performance.md 附录各记录一次，relL2 0.88 级语义分歧）。按用户判据"算，停下
+来"，融合算子弃用，RoPE 恢复**显式 rotate-half 数学**（即原 eager 腿实现，
+其图内形态与 P2-5 已验收链相同）——单腿在 eager 与 graph 两腿均正确。代价与
+2026-11-09 实测一致：吞吐持平（方差内），AIR +107KB。
+
+**同日复测修正（probe，用户问"现在还是不对吗"后执行）**：以交付调用形态
+（`layout="BSND", rotary_mode="half"`、bf16、真实 GQA 形状 q[B,S,8,64]/
+k[B,S,2,64]、官方 theta 1e7）做三方对账——纯数学参考 vs eager 直调 vs
+torchair `dynamo_export`（复用 export_air 全套机制，trace B2/S65 动态双轴）
+经 `ge_runtime` 执行六种 B/S（含历史 bug 场景 B=1）：**两腿全部 relL2
+0.0013（bf16 量化级）且逐位一致，历史分歧在当前构建不复现**。根因定位：
+torchair GE converter（`ge_converter/custom/apply_rotary_pos_emb.py:30-37`）
+把字符串 "BSH" 与 "BSND" 混叠映射到同一枚举值 1（GE 侧 1=BSND），而当时的
+aclnn host 把 1 解读为 BSH——同一枚举两腿语义相反；当前构建该错位已消除。
+**融合算子回切（同日，用户在 probe 结果后拍板"换回融合算子"）**：
+`StartLuxAttention.forward` 恢复 `npu_apply_rotary_pos_emb`（BSND + half，
+旧交付验证过的图腿形态：q/k [B,S,N,rot] 切片、cos/sin [B,S,1,rot]；eager 侧
+切片传入后不再被读取，in-place 语义无害）。eager 侧**非连续切片输入**是
+probe（连续张量）之外唯一未测组合，由下方 eager 冒烟覆盖。接口风险点记录
+在案（converter 的 in-place 警告与 "BSH" 字符串混叠），当前构建两腿一致
+已实证。probe 脚本未入库（临时 `/tmp/opencode/rope_probe.py`），方法与
+判据如上可复现。
+
+**回切后全链复验**（chip 14，eager 冒烟 + 导出/推理/双门禁 + bench）：
+
+| 门禁 | 融合算子（回切后） | 显式数学（回切前） | 重写前基线 |
+|---|---|---|---|
+| eager 单腿 vs golden | cos 0.999999 / relL2 **0.00408** | 0.999998 / 0.00840 | — |
+| 图 vs golden | cos 0.999999 / **relL2 0.004496**（与基线全精度逐位一致） | 0.005362 | 0.004496 |
+| 业务门禁 | worst 0.003431（与基线记录值一致；逐 case prob_max_abs 全部更贴 golden） | 0.003790 | 0.003431 |
+| bench（2048 req） | exec/s 49.622、P50 18.684、P99 25.175、0 error | 49.686 / 18.651 | 49.489 / 18.785（post-cleanup） |
+| AIR | **1,708,269,731 bytes**（较基线 −10KB） | 1,708,386,627 | 1,708,279,731 |
+
+结论：融合算子回切后，新模块树的图输出在 worst relL2 上**全精度复现**重写
+前基线（0.00449550810581621），业务逐 case 概率误差全部优于基线；eager 单
+腿（含非连续切片输入）0.00408 亦达量化级。AIR 大小回到基线水平。
+
+**新结构**（`model/`，6 → 5 个文件）：
+
+- `modeling_text.py`：`StartLuxRMSNorm`(gamma=(1+w)，zeros-init) /
+  `StartLuxRMSNormGated`(gamma=w，ones-init——两者语义不同，类 docstring 各自
+  声明) / `StartLuxMLP` / `StartLuxGatedDeltaNet` / `StartLuxAttention` /
+  `StartLuxDecoderLayer` / `StartLuxTextModel`（含 MRoPE 表）；
+- `modeling_vision.py`：`MatMulPatchEmbed`(参数名 `proj` 保持 checkpoint 零映射) /
+  `StartLuxVisionAttention`(带 `num_key_value_groups=1`，官方 eager 接口所需) /
+  `StartLuxVisionMLP` / `StartLuxVisionBlock` / `StartLuxVisionPatchMerger`
+  (精确 `nn.GELU()`，与 MLP 的 gelu_pytorch_tanh 不同) / `StartLuxVisionTower`
+  (`build_static_buffers` 加载后经官方方法预算常量)；
+- `modeling_multimodal.py`：`StartLuxModel`/`StartLuxForDecision`（参数树镜像
+  checkpoint：`model.visual.*` + `model.language_model.*`，`load_state_dict` 零
+  映射）+ `from_folder`/`load`/`export_spec` + 原组批桥/`io_spec`/
+  `official_rope_index_provider` 原样迁移；`modeling_text` 惰性加载（golden/
+  generate_inputs 的 CPU-only 导入属性保持）。
+
+**加载契约**（`from_folder`）：safetensors → `load_state_dict(strict=False)`，
+断言 `missing == []` 且 unexpected 恰为 `mtp.*`（15 张量，MTP 头 Instant 不
+用；HF `Qwen3_5PreTrainedModel._keys_to_ignore_on_load_unexpected = [r"^mtp.*"]`
+官方声明可忽略）→ `derive_decision_head`（tied embedding 26 行 F32 克隆，
+`tie_word_embeddings=True` 有断言）→ A_log F32 计数/dtype 断言 → 官方方法预算
+vision 常量 buffer → device-only `.to`。**随之删除**：`_expected_param_dtype`
+逐名 dtype 契约表、`_verify_candidate_placement` 的 dtype 部分（保留 5 行
+device 断言）、`_restore_and_verify` 的 A_log 特例复原、vision `inv_freq` 重生成
+workaround（新路径逐张量 `copy_`，从不对整模型 cast dtype）。dtype 与 vLLM
+`qwen_gdn_linear_attn.py:804-831` 逐项对齐：A_log 显式 F32、`dt_bias`/
+`linear_attn.norm.weight` 跟随模型 dtype（bf16）、vision Linear/Conv weight+bias
+fp16、LayerNorm 与 `pos_embed` fp32。
+
+**验证**（chip 4，基线先行固化：HEAD 重跑 export+infer 与既有产物位相同
+`e7157ae1…`，证明 08:19 前基线有效）：
+
+| 门禁 | 结果 | 基线 |
+|---|---|---|
+| golden 哨兵（重写不改 oracle） | **位相同** `bfc06e59…` | `bfc06e59…` |
+| eager NPU 单腿 vs golden（5 case/7 行） | cos 0.999998 / relL2 0.00840 | —（旧实现无 eager 路径对照） |
+| 图（新 AIR）vs golden | cos 0.999998 / **relL2 0.005362** PASS | relL2 0.004496 |
+| 业务门禁 | max abs 0.003790 PASS | 0.003431 |
+| bench（2048 req，0 error） | exec/s **49.686**（14 号卡干净窗口）/**50.186**（4 号卡干净窗口）、P50 18.651/18.433 ms | 带内：49.231–50.942、post-cleanup 49.489/P50 18.785 |
+| 剩余 CPU 单测 | 23 项通过 | — |
+| AIR 算子指纹 | 与基线一致（MatMulV2=100、ChunkGatedDeltaRule=36） | 同 |
+| AIR 大小 | 1,708,386,627 bytes（+107KB，显式 RoPE 节点） | 1,708,279,731 |
+
+关键风险关闭：**frozen_parameter 位置式权重 bake 与新参数枚举对齐**——新
+AIR 经 ge_runtime 推理输出正确（上表图门禁），导出内 `parse_bindings` 双射校验
+通过。**WeightNzAndMatMulV3Pass**：系统安装未动、新图匹配面与基线一致（AIR
+内 100 个常量权重 MatMulV2，pass 在 ge_runtime 编译期生效），mixed exec/s 带
+内；单 case AI-time profiling 未复测（基线口径为 msprof AI 时间，与 bench
+exec wall 口径不可直接对账），如需闭环可按 2026-11-09 `work/prof-nz/` 方法
+复测。
+
+bench 窗口敏感性：闭环 host-bound，2026-11-10 09:0x-09:1x UTC 主机多租户
+（loadavg 峰值 54/100/181，npu-smi 全机 200–270W），同 AIR 同种子 5 次测量
+exec/s 随负载波动：50.186 → 37.385（run.sh 内，全机忙）→ 45.991 → 47.750
+（14 号卡，load 54+）→ **49.686**（14 号卡，load 回落，记录值）。精度与负载
+无关：worst relL2 0.005362 每次逐位复现。完整 run.sh（chip 4）exit=0 全门禁
+通过。详见 performance.md 当日附录。
+
+eager 证据另含：单腿 eager 前向 vs 旧图输出 cos 0.9999998 / relL2 0.00733
+——与基线图的差异是算子内部精度级（FA 图/eager 实现路径不同），非语义差。
+eager smoke 脚本：`/tmp/opencode/eager_smoke.py`（临时，未入库；复跑方法见
+本条目描述：`mm.load(0)` + `build_multimodal_batch` + 逐 case 前向对比）。
+
+同日修正本文件一处历史遗留矛盾：下文 2026-11-09"补充证据（二轮 probe）"段
+的"结论与回退（维持）：P2-7 回退，eager RoPE 链保留"系**被三轮 probe 推翻
+的过时结论**（二轮以 aclnn eager 为参考，而 aclnn eager 的 layout=1 自身即
+错 0.88）；实际交付一直是"图腿融合 RoPE + eager 腿显式数学"，直至本次重写
+统一为单腿显式数学。
+
 ## 2026-11-10 变更：兼容原型加载收敛为单一 LD_PRELOAD 契约（删 python activator）
 
 **决策**（用户拍板）：将 ChunkGatedDeltaRule 兼容原型的加载由"python activator
@@ -479,11 +671,13 @@ qwen2.5-0.5b 生产上已用同一算子（TND+half）——但该先例为**真
 - BNSD 源 + transpose→reshape：动态图 B3/S99 = 0.0000、B1 全错；
 - aclnn eager 两种布局全对；静态图（trace=执行形状）全对。
 
-**结论与回退（维持）**：GE 原生 ApplyRotaryPosEmb 在本构建的**双动态轴
-（B×S）图上不可靠**——行为随输入布局与 B 值不可预测地变化（BSND 源全错、
-BNSD 源 B1 错、eager/静态全对），qwen 先例的真 varlen 单轴场景未覆盖该组
-合。P2-7 回退，eager RoPE 链保留。若后续 CANN 版本修复动态双轴 bug，可
-凭 probe 的多形状执行模式复测。
+**结论（2026-11-10 修正）**：本段原判定"P2-7 回退，eager RoPE 链保留"**已被
+同日三轮 probe 推翻并废弃**——二轮 probe 以 aclnn eager 为参考，而 aclnn
+eager 的 layout=1 按 BSH 解读、自身即错 0.88，其全部"图错"结论均系参考错误
+（三轮以纯数学参考重测：GE 图 + BSND 对全 B/S 组合 relL2 0.0002）。实际交付
+自始为"图腿融合 RoPE（BSND）+ eager 腿显式数学"。2026-11-10 模块化重写后按
+用户停止协议（layout=1 的 eager/图语义分歧算错误）进一步统一为**单腿显式
+rotate-half 数学**，融合算子整体弃用，见当日条目。
 
 ## 2026-11-09 变更：GDR/attention 投影合并实验（P2-6，净负回退）
 

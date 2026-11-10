@@ -676,3 +676,68 @@ samples per request avg 1.423828125 (min 1, p50 1, p99 3, max 3), errors 0,
   `work/infer/` (comparison.json, business.json), `work/logs/`
   (2026-11-10 02:3x-02:5x UTC).
 
+
+## Appendix: self-owned nn.Module rewrite verification (2026-11-10)
+
+The `model/` tree was rewritten in place as self-owned `nn.Module` classes
+(checkpoint-mirroring parameter names, zero-mapping `load_state_dict`,
+per-site dtype declarations mirroring vLLM; see validation.md 2026-11-10).
+RoPE reverted to the explicit rotate-half chain per the user's stop rule on the
+recorded eager/graph layout divergence of `npu_apply_rotary_pos_emb`
+(fused-op throughput was measured neutral on 2026-11-09, so the reversion
+costs graph size only).  All gates re-run on chip 4 (ASCEND_RT_VISIBLE_DEVICES=4)
+after a pre-rewrite HEAD baseline re-export confirmed bit-identical infer
+outputs (`e7157ae1...`).
+
+| item | rewritten (single leg) | pre-rewrite baseline |
+|---|---|---|
+| precision (graph vs CPU FP32 golden) | 5/5, worst cosine 0.999998, worst relL2 0.005362 | 0.999998 / 0.004496 |
+| precision (EAGER single-leg NPU vs golden) | 5/5, worst relL2 0.00840 | n/a (no eager path) |
+| business gate | 5/5, worst active-probability max abs 0.003790 | 0.003431 |
+| golden sentinel (rewrite must not touch oracle) | bit-identical `bfc06e59...` | identical |
+| graph executions/s (mixed closed loop, 2,048 req) | 49.686 (quiet chip 14) / 50.186 (quiet chip 4) | 49.231-50.942 band; post-cleanup 49.489 |
+| readout rows/s | 70.745 / 71.456 | 70.464 / 70.919 |
+| e2e P50/P99 (n=2048, ms) | 18.651/25.120 / 18.433/24.913 | 18.785/25.251 (post-cleanup) |
+| errors | 0 | 0 |
+| AIR size (bytes) | 1,708,386,627 | 1,708,279,731 |
+| AIR op fingerprint | MatMulV2=100, ChunkGatedDeltaRule=36 | identical |
+
+- The +106,896-byte AIR delta is the explicit rotate-half RoPE chain replacing
+  the fused op (~120 small nodes back in the graph), the exact structural
+  inverse of the 2026-11-09 fused-RoPE appendix; throughput stays in the
+  run-to-run band as that appendix already measured ("持平略正（方差内）").
+- RoPE re-probe (same day, user question "现在还是不对吗"): the recorded
+  eager/graph layout divergence of `npu_apply_rotary_pos_emb` NO LONGER
+  reproduces on this build.  Probe: delivery call form (layout="BSND",
+  rotary_mode="half", bf16, real GQA geometry q[B,S,8,64]/k[B,S,2,64], theta
+  1e7), pure-math reference vs direct eager call vs torchair dynamo_export
+  (the delivered export machinery, dynamic dual-axis trace B2/S65) executed by
+  ge_runtime at six B/S combos including B=1: both legs relL2 0.0013 (bf16
+  quantization) and bit-identical to each other.  Root cause of the historical
+  flip: the torchair GE converter maps BOTH "BSH" and "BSND" strings to enum 1
+  (GE: 1 == BSND) while the then-current aclnn host read 1 as BSH.
+- FUSED RoPE re-landed after the probe (user decision, same day): the rewrite
+  appendix's explicit-rotate-half rows above are superseded by the fused-op
+  form.  Re-run gates on chip 14: graph worst relL2 0.004496 reproduces the
+  pre-rewrite baseline digit-for-digit, business worst 0.003431 matches the
+  baseline record with every per-case prob_max_abs better than baseline,
+  eager single-leg (incl. non-contiguous slice inputs) relL2 0.00408 vs
+  golden, bench 49.622 exec/s / P50 18.684 / P99 25.175 (band), AIR
+  1,708,269,731 bytes (baseline level, -10 KB).  See validation.md 2026-11-10.
+- Bench window sensitivity (same AIR, same seed, 5 measurements): the closed
+  loop is host-bound, and the host was multi-tenant during 2026-11-10
+  09:0x-09:1x UTC -- exec/s tracked host load: 50.186 (chip 4, quiet, 08:45),
+  37.385 (chip 4, all 8 sampled chips at 200-270 W, inside run.sh), 45.991
+  (chip 4, partial), 47.750 (chip 14, host loadavg 54+), **49.686 (chip 14,
+  loadavg receding -- the recorded in-band measurement)**.  Precision is
+  load-independent: worst relL2 0.005362 reproduced identically across every
+  run.  Same methodology caveat as the post-cleanup appendix (idle-chip bench
+  under residual host load).
+- WeightNzAndMatMulV3Pass: system install untouched; the new AIR carries the
+  same 100 constant-weight MatMulV2 nodes, so the compile-time pass's match
+  surface is unchanged.  Single-case AI-time profiling (msprof) was not
+  repeated; see validation.md 2026-11-10 for the reasoning and the method to
+  re-close it via `work/prof-nz/` if needed.
+- Evidence paths: `work/bench/` (result.json, requests.csv), `work/infer/`
+  (comparison.json, business.json), `work/baseline-pre-rewrite/` (pre-rewrite
+  artifacts + sha256), `work/logs/` (2026-11-10 08:0x-08:5x UTC).

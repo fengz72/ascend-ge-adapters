@@ -41,9 +41,7 @@ vision.GRID_THW); this file invents no copies.
 """
 from __future__ import annotations
 
-import importlib.util
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -54,6 +52,10 @@ ROOT = MODEL_DIR.parents[1]
 WORK = MODEL_DIR / "work"
 INPUTS = WORK / "inputs"
 WORK_FIXTURES = WORK / "fixtures"
+
+if str(MODEL_DIR) not in sys.path:
+    sys.path.insert(0, str(MODEL_DIR))
+from model import modeling_multimodal as multimodal, unified_preprocess
 
 SEED_RED = 20261031
 IMAGE_SIZE = (256, 256)                 # official processing -> grid [1, 16, 16]
@@ -83,37 +85,9 @@ def _active_letters(letters, question_type, count):
     return [int(t) for t in letters[:count]]
 
 
-def _load_module(name, filename):
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(name, str(MODEL_DIR / filename))
-    module = importlib.util.module_from_spec(spec)
-    # register before exec: dynamo resolves traced functions by __module__
-    sys.modules[name] = module
-    try:
-        spec.loader.exec_module(module)
-    except BaseException:
-        sys.modules.pop(name, None)
-        raise
-    return module
-
-
-base = _load_module("startlux_npu_adapter_for_native", "model/startlux_npu_adapter.py")
-unified_preprocess = _load_module("startlux_unified_preprocess", "model/unified_preprocess.py")
-multimodal = _load_module("startlux_multimodal_for_unified", "model/multimodal.py")
-
 OUTPUT_NAME = "scores"
 N_COLUMNS = 26
 
-
-def _source_ref():
-    value = os.environ.get("STARTLUX_MODEL_DIR")
-    if not value or not value.strip():
-        raise SystemExit("generate_inputs: STARTLUX_MODEL_DIR is not set or is empty")
-    path = Path(value).resolve()
-    if not path.is_dir():
-        raise SystemExit(f"generate_inputs: STARTLUX_MODEL_DIR {path} is not a directory")
-    return path
 
 
 # ------------------------------------------------------- self-regenerating PPMs
@@ -235,8 +209,8 @@ def _save_row_encodings(case_id, encoded):
 
 
 def main():
-    folder = _source_ref()
-    decision = base._decision_config(folder)
+    folder = multimodal.source_folder()
+    decision = multimodal.decision_config(folder)
     order = [node["name"] for node in multimodal.io_spec()["inputs"]]
 
     preprocessor = unified_preprocess.OfficialPreprocessor(folder)
