@@ -35,9 +35,10 @@ per-row comparison and business gate treat them like any request.  Graph
 bounds (B<=4, S<=2048, at most 2 global image slots, grid exactly [1, 16, 16])
 are enforced at encode time by multimodal.build_multimodal_batch -- over-limit
 requests are rejected, never truncated, and every case runs at its TRUE length
-(width = max row length, no padding floor).  The boundary constants come from
-their single source (multimodal.MAX_BATCH / MAX_SEQ_LEN / SLOTS and
-vision.GRID_THW); this file invents no copies.
+(width = max row length, no padding floor).  The S bound is the model's own
+config.text_config.max_position_embeddings; the image-slot and grid constants
+come from their single source (multimodal.SLOTS / vision.GRID_THW); this file
+invents no copies.
 """
 from __future__ import annotations
 
@@ -225,8 +226,7 @@ def main():
             encoded = preprocessor.encode_payload_rows(payload["rows"])
             _save_row_encodings(case["id"], encoded)
             arrays = preprocessor.build_graph_inputs(
-                encoded, vocab_size=decision["vocab_size"],
-                max_batch=multimodal.MAX_BATCH, max_seq_len=multimodal.MAX_SEQ_LEN)
+                encoded, vocab_size=decision["vocab_size"])
             tensors = []
             for name in order:
                 array = arrays[name]

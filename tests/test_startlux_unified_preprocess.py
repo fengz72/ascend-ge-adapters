@@ -36,7 +36,8 @@ def fake_folder_config(image_token=100, vision_start=102, vision_end=103, vocab=
     return types.SimpleNamespace(
         image_token_id=image_token, vision_start_token_id=vision_start,
         vision_end_token_id=vision_end,
-        text_config=types.SimpleNamespace(vocab_size=vocab),
+        text_config=types.SimpleNamespace(vocab_size=vocab,
+                                          max_position_embeddings=4096),
         vision_config=types.SimpleNamespace(spatial_merge_size=2))
 
 
@@ -347,7 +348,12 @@ class TestPayloadValidation(unittest.TestCase):
 
     def test_row_beyond_the_cap_rejected(self):
         with self.assertRaises(ValueError):
-            self.encode([{"input_ids": [1] * 2049}])
+            self.encode([{"input_ids": [1] * 9}], max_seq_len=8)
+
+    def test_row_beyond_the_model_native_cap_rejected(self):
+        # default cap derives from config.text_config.max_position_embeddings
+        with self.assertRaises(ValueError):
+            self.encode([{"input_ids": [1] * 4097}])
 
 
 class TestSharedRopeProvider(unittest.TestCase):

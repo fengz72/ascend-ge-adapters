@@ -22,8 +22,6 @@ from model.modeling_vision import (GRID_THW, MERGED_ROWS, PATCH_ROWS,
                                     StartLuxVisionTower)
 
 SLOTS = 2                                    # fixed GLOBAL image slots of the single AIR
-MAX_BATCH = 4
-MAX_SEQ_LEN = 2048
 
 
 def decision_config(folder):
@@ -158,8 +156,8 @@ def _check_row_structure(ids_row, cfg, n_images, merged_per_image):
 
 
 def build_multimodal_batch(rows, rope_index, config, *, vocab_size=None, slots=SLOTS,
-                           grid_thw=GRID_THW, max_batch=MAX_BATCH,
-                           max_seq_len=MAX_SEQ_LEN, pad_token_id=0):
+                           grid_thw=GRID_THW, max_batch=None,
+                           max_seq_len=None, pad_token_id=0):
     # rows: one dict per batch row carrying the OFFICIAL processor encoding of
     # one request (CPU torch tensors: input_ids int64 [1, S]; for image rows also
     # pixel_values float32 [256*n, 1536] and image_grid_thw int64 [n, 3]; optional
@@ -168,8 +166,14 @@ def build_multimodal_batch(rows, rope_index, config, *, vocab_size=None, slots=S
     # Returns the 5 numpy graph inputs; every bound / dtype / structure / marker
     # violation raises ValueError -- nothing is silently resized or truncated.
     batch = len(rows)
-    if not 1 <= batch <= max_batch:
-        raise ValueError(f"batch {batch} outside 1..{max_batch}")
+    if batch < 1:
+        raise ValueError("batch must be at least 1 row")
+    if max_batch is not None and batch > max_batch:
+        raise ValueError(f"batch {batch} exceeds max_batch {max_batch}")
+    if max_seq_len is None:
+        # the model's own positional limit is the only S bound (the graph is
+        # dynamic on S; nothing kernel- or graph-side caps it below this)
+        max_seq_len = config.text_config.max_position_embeddings
     merged_per_image = (grid_thw[1] // 2) * (grid_thw[2] // 2)
     image_token = config.image_token_id
     cfg = SimpleNamespace(image_token_id=image_token,

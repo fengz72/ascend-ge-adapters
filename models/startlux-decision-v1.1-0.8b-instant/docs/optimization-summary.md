@@ -118,7 +118,7 @@
 | #4/#6/#7/#9 RmsNorm 系列 | `model/modeling_text.py` `StartLuxRMSNorm.forward`（gamma=(1+w)）、`StartLuxRMSNormGated.forward`（gamma=w，ones）、`StartLuxGatedDeltaNet.forward`（GDR q/k L2norm，`l2_gamma` buffer） |
 | #5 fp16 视觉线性 | `model/modeling_vision.py` 各 Linear/Conv 声明处 `dtype=torch.float16` + `_fp16_linear`（fp32 残差流内积降精度） |
 | #11 RoPE | `model/modeling_text.py` `StartLuxAttention.forward`：**融合算子回切（2026-11-10）**——`npu_apply_rotary_pos_emb(..., layout="BSND", rotary_mode="half")`；当日 probe 证明本构建两腿（aclnn eager / torchair 图）逐位一致（relL2 0.0013 vs 纯数学，六种 B/S 含 B1），历史 layout=1 语义错位不复现；详见 validation.md 2026-11-10 条目 |
-| #12 融合 FA | `model/modeling_text.py` `StartLuxAttention.forward`：`npu_fusion_attention(..., "BNSD", atten_mask=pad_mask, sparse_mode=0)`，单腿无分支 |
+| #12 融合注意力 | `model/modeling_text.py` `StartLuxAttention.forward`：**FIA 按行长注意力（2026-11-10 切换）**——`npu_fused_infer_attention_score`（BSND 免转置、`actual_seq_lengths(+_kv)` 屏蔽 padding、无 S² 掩码）；图腿 `torchair.ops`（air 算子）/ eager 腿 `torch_npu`（host 实现），`is_compiling` 分派；S 上限由 131072（掩码物化约束）升至模型原生 262144，性能与 FA 持平；见 validation.md 2026-11-10 |
 | #13 NZ Pass | `prepare.sh:43-47` 构建 + `cmake --install` 至 `${ASCEND_OPP_PATH}/vendors/custom_nz_pass/custom_fusion_passes/` |
 | #11 + #12 的提交 | `af9e05a perf(startlux): fused RoPE and fused full-attention (P2-7, P2-8)`，正文明载 "a botched git-checkout during the BSND experiment had silently reverted both patches; **this commit re-lands them** (gates re-passed)"，并给出 "Official 5-case bench: 49.2 -> 50.5 exec/s, e2e P50 18.6 -> 18.0 ms" |
 | mega 路线已移除 | `76f29cf refactor(startlux): remove the mega GDR route code` |

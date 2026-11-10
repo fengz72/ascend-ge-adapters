@@ -1,13 +1,16 @@
 """StartLux text decoder: self-owned nn.Module tree whose parameter names mirror
-the checkpoint (model.language_model.*, zero-mapping load_state_dict), single-leg
-NPU fused ops.  dtype is declared per site like vLLM's qwen_gdn_linear_attn: A_log
-is explicitly float32, everything else follows the construction default (bf16
-under from_folder).  Numerical why-notes live in validation.md 2026-11-10.
+the checkpoint (model.language_model.*, zero-mapping load_state_dict), single-
+semantics NPU fused ops (graph leg via torchair's `air` ops, eager leg via the
+torch_npu host implementations).  dtype is declared per site like vLLM's
+qwen_gdn_linear_attn: A_log is explicitly float32, everything else follows the
+construction default (bf16 under from_folder).  Why-notes: validation.md
+2026-11-10 entries.
 """
 from __future__ import annotations
 
 import torch
 import torch_npu
+import torchair
 from torch import nn
 import torch.nn.functional as F
 
@@ -169,7 +172,7 @@ class StartLuxAttention(nn.Module):
         self.q_norm = StartLuxRMSNorm(self.head_dim, eps=config.rms_norm_eps)
         self.k_norm = StartLuxRMSNorm(self.head_dim, eps=config.rms_norm_eps)
 
-    def forward(self, hidden, cos, sin, pad_mask):
+    def forward(self, hidden, cos, sin, seq_lengths):
         batch, width, _ = hidden.shape
         qkv = self.q_proj(hidden).view(batch, width, -1, self.head_dim * 2)
         # explicit slices: aten.chunk / aten.split.sizes have no GE converter
@@ -177,7 +180,7 @@ class StartLuxAttention(nn.Module):
         gate = gate.reshape(batch, width, -1)
         q2d = self.q_norm(q.reshape(batch, width, -1, self.head_dim))
         k2d = self.k_norm(self.k_proj(hidden).view(batch, width, -1, self.head_dim))
-        v = self.v_proj(hidden).view(batch, width, -1, self.head_dim).transpose(1, 2)
+        v = self.v_proj(hidden).view(batch, width, -1, self.head_dim)
         # Partial RoPE via npu_apply_rotary_pos_emb (BSND, "half" == exact
         # rotate-half math); both legs verified bit-identical vs pure math
         # (2026-11-10 probe).
@@ -187,13 +190,22 @@ class StartLuxAttention(nn.Module):
             layout="BSND", rotary_mode="half")
         q2d = torch.cat((q_rot, q2d[..., self.rotary_dim:]), dim=-1)
         k2d = torch.cat((k_rot, k2d[..., self.rotary_dim:]), dim=-1)
-        # One fused attention: bf16 BNSD, bool [B, 1, S, S] pad mask (True =
-        # blocked); FA runs the GQA expansion natively.
-        out = torch_npu.npu_fusion_attention(
-            q2d.transpose(1, 2), k2d.transpose(1, 2), v, self.num_heads, "BNSD",
-            atten_mask=pad_mask, scale=float(self.scaling), keep_prob=1.0,
-            pre_tockens=2147483647, next_tockens=2147483647, sparse_mode=0)[0]
-        out = out.transpose(1, 2).contiguous().reshape(batch, width, -1)
+        # One fused infer attention per call in the natural BSND layout -- no
+        # transposes: the op rejects non-contiguous inputs.  The per-row true
+        # lengths on BOTH query and kv sides shield the padding keys, so there
+        # is no S^2 mask anywhere and S is bounded only by the model's native
+        # positions (verified through S=262144, relL2 0.0023 vs pure math,
+        # validation.md 2026-11-10).  Graph leg: torchair's `air` op; eager
+        # leg: the torch_npu host op -- same kernel, same call form.
+        fia = (torchair.ops.npu_fused_infer_attention_score
+               if torch.compiler.is_compiling()
+               else torch_npu.npu_fused_infer_attention_score)
+        out = fia(q2d, k2d, v, num_heads=self.num_heads, scale=float(self.scaling),
+                  pre_tokens=2147483647, next_tokens=2147483647,
+                  input_layout="BSND", num_key_value_heads=self.num_key_value_heads,
+                  sparse_mode=0, actual_seq_lengths=seq_lengths,
+                  actual_seq_lengths_kv=seq_lengths)[0]
+        out = out.reshape(batch, width, -1)
         return self.o_proj(out * torch.sigmoid(gate))
 
 
@@ -213,13 +225,13 @@ class StartLuxDecoderLayer(nn.Module):
         self.post_attention_layernorm = StartLuxRMSNorm(config.hidden_size,
                                                         eps=config.rms_norm_eps)
 
-    def forward(self, hidden, cos, sin, pad_mask):
+    def forward(self, hidden, cos, sin, seq_lengths):
         residual = hidden
         hidden = self.input_layernorm(hidden)
         if self.layer_type == "linear_attention":
             hidden = self.linear_attn(hidden)
         else:
-            hidden = self.self_attn(hidden, cos, sin, pad_mask)
+            hidden = self.self_attn(hidden, cos, sin, seq_lengths)
         hidden = residual + hidden
         residual = hidden
         hidden = self.post_attention_layernorm(hidden)
@@ -260,12 +272,10 @@ class StartLuxTextModel(nn.Module):
         return emb.cos().to(dtype), emb.sin().to(dtype)
 
     def forward(self, inputs_embeds, position_ids, actual_seq_lengths):
-        batch, width = inputs_embeds.shape[0], inputs_embeds.shape[1]
         cos, sin = self.mrope_cos_sin(position_ids, inputs_embeds.dtype)
-        valid = torch.arange(width, device=inputs_embeds.device).unsqueeze(0) \
-            < actual_seq_lengths.unsqueeze(1)
-        pad_mask = (~valid).view(batch, 1, 1, width).expand(batch, 1, width, width)
+        # the graph input is int32 [B]; the attention kernel takes int64 lengths
+        seq_lengths = actual_seq_lengths.to(torch.int64)
         hidden = inputs_embeds
         for layer in self.layers:
-            hidden = layer(hidden, cos, sin, pad_mask)
+            hidden = layer(hidden, cos, sin, seq_lengths)
         return self.norm(hidden)

@@ -26,8 +26,9 @@ handle；固定参数集中在 `run.sh` 顶部。
   定义算子）、`generate_inputs.py`（输入池生成）、
   `scripts/env_python.sh`（A3 容器 Python 引导）。
 - **`model/`**（模型构建与导出，Python 包 `model`）：`modeling_text.py`（自持权重文本
-  decoder：参数名镜像 checkpoint 零映射加载、A_log 显式 F32、单腿
-  NPU 融合算子、融合 RoPE（BSND，两腿已 probe 验证一致））、`modeling_vision.py`
+  decoder：参数名镜像 checkpoint 零映射加载、A_log 显式 F32、融合 RoPE（BSND）、
+  FIA 按行长注意力（图腿 torchair `air` 算子 / eager 腿 torch_npu host 实现，
+  无 S² 掩码））、`modeling_vision.py`
   （自持权重固定网格视觉塔：FP32 残差流 + FP16 Linear/Conv 内积）、
   `modeling_multimodal.py`（统一图组合与组批校验，图边界常量与 IO
   契约单一来源，`from_folder` 逐张量加载与对账）、
@@ -109,9 +110,13 @@ python3 -m unittest tests.test_torchair_example_inputs
 ## 使用限制
 
 - 图边界：官方 processed grid [1,16,16]（256x256 输入）；每次调用全局最多 2
-  张图（pixel_values 静态 [512,1536] 双图位）；B≤4、S≤2048；**case 按真长执行**
-  （宽度 = max 行真长，无补齐下限）；超限拒绝、不截断。边界常量单一来源为
-  `modeling_multimodal.py` / `modeling_vision.py` 顶层，生成输入时强制执行。
+  张图（pixel_values 静态 [512,1536] 双图位）；**S ≤ 模型原生
+  `max_position_embeddings`（当前 checkpoint 为 262144，编码期从 folder config
+  派生；S=262144 已实测可执行且数值正确）；B 无编码期上限**——真实约束是运行
+  期 HBM（激活 ~B·S），超内存组合以 GE 内部错误失败而非静默截断；**case 按真
+  长执行**（宽度 = max 行真长，无补齐下限）；超限拒绝、不截断。图槽位与网格
+  常量单一来源为 `modeling_multimodal.py` / `modeling_vision.py` 顶层，生成
+  输入时强制执行。
 - 混精度：视觉塔 FP32 残差流 + FP16 Linear/Conv 内积，文本 decoder BF16；
   A_log 以模块声明 F32（vLLM 同款，加载即位精确）、head26 F32。
 - wide_27 跨 dtype 分支披露（保留）：FP32 末轮第 6 名入围者 cause_18，官方

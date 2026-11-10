@@ -623,6 +623,35 @@ outputs stay ND).  Installation and build wired into prepare.sh.
 - Evidence paths: `work/prof-nz/` (ticket-team single-case profile),
   `work/bench/`, `work/infer/` (2026-11-09 12:0x).
 
+## Appendix: FA -> FIA per-row-lengths attention switch (2026-11-10)
+
+The 6 bidirectional full-attention layers moved from npu_fusion_attention
+(BNSD + [B,1,S,S] bool pad mask, B*S^2 materialized memory) to
+npu_fused_infer_attention_score with per-row true lengths on both query and kv
+sides (BSND natural layout, no transposes, NO S^2 mask): graph leg via
+torchair.ops (`air` namespace op), eager leg via the torch_npu host op behind
+torch.compiler.is_compiling().  S is now bounded by the model's native
+max_position_embeddings (262144, executed and numerically correct) instead of
+the B*S^2 mask HBM ceiling (FA failed at S=262144: ~68GB mask).
+
+| item | FIA per-row lengths | FA pad mask (pre-switch) |
+|---|---|---|
+| precision (graph vs CPU FP32 golden) | 5/5, worst cosine 0.999998, worst relL2 0.006006 | 0.999998 / 0.004496 |
+| eager smoke vs golden | relL2 0.00798 | 0.00408 |
+| business gate | 0.004028 | 0.003431 |
+| S=262144 at B=1 | executable, 63 s, sampled relL2 0.0023 | E19999 execution failure |
+| graph executions/s (mixed closed loop) | 49.680 | 49.686 |
+| e2e P50/P99 (n=2048, ms) | 18.548 / 25.161 | 18.651 / 25.120 |
+| ticket-team exec p50 (us) | 18,141 | 18,262 |
+| AIR bytes | 1,708,244,818 (-25 KB, dropped transposes) | 1,708,269,731 |
+
+- Throughput parity: the historical 4x single-op slowdown (2026-11-09, B1/S99,
+  BNSD + transpose form) is fully offset by the BSND no-transpose form and the
+  dropped S^2 mask materialization; the historical -3.5% whole-model revert was
+  measured on the BNSD+transpose form.
+- Evidence paths: `work/bench/`, `work/infer/`, `work/logs/`
+  (2026-11-10 13:0x-14:0x UTC), probes as described in validation.md 2026-11-10.
+
 ## Appendix: post-cleanup verification run (2026-11-10)
 
 Regression check after the 2026-11-10 code-review cleanup (dead-code removal,

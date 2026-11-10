@@ -59,6 +59,107 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `tests/test_startlux_unified_preprocess.py`（23 项）与
 `tests/test_startlux_native_proto.py` 改路径后全部通过。
 
+## 2026-11-10 变更：编码期上限改为模型自身边界（S 从 config 派生、B 取消上限）
+
+**决策**（用户提问"这些限制是不是可以去掉了"）：FIA 切换后 S 与 B 均无算子级
+约束，手选常数失去依据，改为：
+
+- `max_seq_len` 默认 None → **从 folder config 派生**
+  `config.text_config.max_position_embeddings`（当前 checkpoint 262144，模型
+  真实位置上限；S=262145 编码期拒绝、262144 接受，实测确认）；
+- `max_batch` 默认 None → **无编码期上限**（仅保留 batch>=1 检查；显式传参仍
+  可收紧，测试沿用）；B 的真实约束是运行期 HBM 的 B·S 交互，README 披露；
+- `MAX_BATCH`/`MAX_SEQ_LEN` 模块常数及 unified_preprocess 的 re-export 删除，
+  generate_inputs 不再显式传参。
+
+**验证**：24 项 CPU 测试通过（新增 test_row_beyond_the_model_native_cap_rejected
+覆盖派生路径；fake config fixture 补 max_position_embeddings=4096）；行为实测
+（真实 config）：S=262144 收/262145 拒、B=5000 收、显式 max_batch=2 拒 3 行、
+空批拒；generate_inputs 哨兵位相同（`62122c8c`）。**编码期纯 CPU 逻辑，图与
+AIR 零改动，无需重导出**（上一条目的全部图腿门禁继续有效）。
+
+## 2026-11-10 变更：full-attention 切换 FIA 按行长注意力（S 上限升至模型原生 262144）
+
+**决策**（用户拍板）：为解除 S² 掩码带来的长度限制，6 层双向 full-attention 由
+`npu_fusion_attention`（FA，BNSD + [B,1,S,S] 布尔掩码，B·S² 物化内存是硬约束：
+B1/S262144≈68GB>64GB HBM 执行失败）切换为 `npu_fused_infer_attention_score`
+（FIA/PromptFlashAttention）**按行长变体**：`actual_seq_lengths` +
+`actual_seq_lengths_kv` 双侧传每行真长（int64 张量、运行期进图），**无任何 S²
+掩码**；图腿调用 torchair 的 `air` 命名空间算子（`torchair.ops.`，图专用），
+eager 腿按用户决策以 `torch.compiler.is_compiling()` 分派到
+`torch_npu.npu_fused_infer_attention_score`（torch.ops.npu host 实现，同 kernel）。
+
+**语义实证**（probe，B3/S130 lengths [130,85,61] vs 纯数学双向参考）：
+lengths 变体 per-row relL2 0.0021-0.0024（eager 与图腿同值，BNSD/BSND 同
+kernel）；对照（无 lengths）padding 行 0.61/0.78——证明 per-row lengths 确实
+屏蔽 padding keys。用户贴出的 sparse_mode 文档描述的是 atten_mask **掩码矩阵**
+模式（0-4 全要 S1×S2 矩阵）；per-row lengths 是正交的 varlen 机制，实测支持
+"固定矩形 [B,S] 布局上的行内双向注意力"。
+
+**probe 踩坑记录**（全部已实证定位）：①FIA 拒绝非连续输入（文档"不支持非连
+续的Tensor"），`transpose` 后直传报 561002=ACLNN_ERR_INNER_TILING_ERROR——
+解法为 **BSND 布局免转置**（q/k/v 天然 [B,S,N,D] 连续，顺带省掉 FA 形态每层
+4 个 transpose）；②probe 参考实现两处 GQA 展开写错（`repeat` 应为
+`repeat_interleave`、`head % KV` 应为 `head // (HEADS//KV)`）曾致 relL2≈1 的
+假阴性——对照单头手算定位后修正；③torchair.ops 版 eager 抛
+NotImplementedError（图专用，Meta impl 齐全可被 dynamo 追踪）。
+
+**验证**（chip 14，全门禁）：
+
+| 门禁 | FIA | FA（切换前） |
+|---|---|---|
+| eager 冒烟 vs golden | relL2 0.00798 | 0.00408 |
+| 图 vs golden | cos 0.999998 / relL2 **0.006006** | 0.004496 |
+| 业务门禁 | 0.004028 | 0.003431 |
+| **S=262144（模型原生上限）** | **可执行，63s，数值正确** | **执行失败（68GB 掩码）** |
+| B8/S99、B1/S8192 vs golden | 0.00256 / 0.00281 | — |
+| bench（2048 req，0 error） | **exec/s 49.68、P50 18.548、ticket-team 18.1ms** | 49.686 / 18.651 / 18.3ms |
+| AIR | 1,708,244,818（−25KB，免转置） | 1,708,269,731 |
+
+**性能结论**：历史担心的 FIA 4× 单算子慢（2026-11-09，B1/S99，BNSD+转置形
+态）在整模上**完全被 BSND 免转置 + 免掩码物化抵消**——吞吐持平（49.68 vs
+49.686 exec/s），ticket-team 单 case 略快；历史 −3.5% 回退是 BNSD+转置形态
+所致。**S 上限**：MAX_SEQ_LEN 131072→**262144**（=模型原生
+max_position_embeddings；B·S² 约束解除，残余约束为 B·S 激活 HBM 与 B 阶梯
+1024 上限，README 披露不变）。golden/inputs 哨兵位相同（`bfc06e59`/
+`62122c8c`），23 项 CPU 测试通过，位置式权重 bake 重验（图输出正确即证）。
+
+## 2026-11-10 变更：放开 MAX_BATCH / MAX_SEQ_LEN（4→1024、2048→131072，实测包线定值）
+
+**决策**（用户拍板"先把这两个限制放开"）：旧值来自 P0 方案的首版交付范围
+（非模型原生上限，见 adaptation-plan.md:74；模型原生 max_position_embeddings
+=262144）。放开采用**实测包线定值**：图本就是 B/S 双动态轴（无需重导出），
+用现有 AIR 经 ge_runtime 逐形状探测，上限 = 已验证的最大形状。
+
+**探测**（chip 14，合成文本行经 build_multimodal_batch 打包，每形状独立
+请求隔离失败；脚本未入库：/tmp/opencode/boundary_probe*.py，方法如上可复现）：
+
+- S 阶梯（B=1）：4096/8192/16384/32768/65536/**131072 全过**；**262144 编译
+  通过但执行失败**（E19999 Inner Error，量级与 [B,1,S,S] 布尔掩码物化
+  ~68GB 超 64GB HBM 吻合）；
+- B 阶梯（S=99）：8/16/32/64/128/256/512/**1024 全过未触顶**（B 轴为软边界，
+  受 HBM 约束）；
+- 组合角点全过：B2/S131072、B4/S32768、B8/S16384、B16/S8192、B32/S4096、
+  B64/S2048、B128/S1024（掩码若物化 B2·S131072² ≈ 34GB 亦可通过）。
+
+**数值锚定**（超越旧包线的形状，图 vs 官方 CPU FP32 golden，同一合成输入）：
+
+| 形状 | worst cosine | worst relL2 | 判定 |
+|---|---|---|---|
+| B=8, S=99（新 B 包线内） | 1.000000 | 0.00297 | PASS |
+| B=1, S=8192（超旧 S 上限 4×） | 0.999996 | 0.00581 | PASS |
+
+**定值**：`MAX_BATCH = 1024`、`MAX_SEQ_LEN = 131072`（写入
+modeling_multimodal.py 顶部，注释含探测依据）。**披露**：两轴为独立上限，
+极端角点（如 B1024×S131072）超出 HBM（激活 ~B·S、pad 掩码 ~B·S²），在运行
+期以 GE 内部错误失败而非编码期拒绝——README 使用限制已如实记载。
+
+**回归**：23 项 CPU 测试通过（其中 test_row_beyond_the_cap_rejected 原以硬
+编码 2049 行测旧上限，已改为从单一来源取 `MAX_SEQ_LEN + 1`——测机制而非数
+字）；golden/inputs 哨兵位相同（`bfc06e59` / `62122c8c`，官方 case 池输入不
+变）；编码期超限拒绝随新默认值生效（S=131073、B=1025 拒绝，S=131072 接受，
+实测确认）。
+
 ## 2026-11-10 变更："未用语言/框架自带能力"审计（stdlib/去重复）
 
 **审计**（用户提问驱动）：逐文件排查"手写了语言或框架已提供的能力"的地方。

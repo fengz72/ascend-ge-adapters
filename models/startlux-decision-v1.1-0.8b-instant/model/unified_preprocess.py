@@ -59,8 +59,6 @@ DEPS_HINT = ("the official image preprocessing needs Pillow (and torchvision for
              "them to PYTHONPATH for its python stages only. Do not install them "
              "system-wide.")
 
-MAX_BATCH = multimodal.MAX_BATCH                  # 4
-MAX_SEQ_LEN = multimodal.MAX_SEQ_LEN              # 2048
 
 
 def _vendor_path():
@@ -244,14 +242,15 @@ class OfficialPreprocessor:
             encoded.append(self.encode_row(row["prompt"], images))
         return encoded
 
-    def build_graph_inputs(self, rows, *, vocab_size=None, max_batch=MAX_BATCH,
-                           max_seq_len=MAX_SEQ_LEN):
+    def build_graph_inputs(self, rows, *, vocab_size=None, max_batch=None,
+                           max_seq_len=None):
         """Official per-row encodings -> the 5 validated graph inputs.
 
-        The caps are ALWAYS the caller's (the model params; the multimodal
-        defaults are only fallbacks for direct tool use).  Every structural
-        bound (B<=max_batch, S<=max_seq_len, images per request, global image
-        slots per call, grid exactly [1, 16, 16]) is enforced by
+        The caps default to the model's own bounds: S is checked against
+        config.text_config.max_position_embeddings and B has no encode-time
+        cap (the runtime HBM envelope bounds B*S).  Explicit caps tighten.
+        Every structural bound (S<=max_seq_len, images per request, global
+        image slots per call, grid exactly [1, 16, 16]) is enforced by
         multimodal.build_multimodal_batch; violations raise, nothing is
         silently resized or truncated.  Rows run at their TRUE lengths, so
         width = max(true row lengths) and dynamic S stays dynamic.
