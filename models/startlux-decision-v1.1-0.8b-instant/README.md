@@ -12,7 +12,7 @@ GE 适配目录。
 （`run.sh`），Python 直接完成数据（`generate_inputs.py`）、官方 CPU 参考
 （`decider/golden.py`）与 AIR 导出（`model/model.py` + `model/export_air.py`），现有 C++ runtime
 完成推理与性能，公共工具（`tools/compare.py`）完成精度比较，业务概率门禁由
-`model/verify_business.py` 承担。**不依赖 `core` 流程框架**，无 YAML / adapter /
+`decider/verify_business.py` 承担。**不依赖 `core` 流程框架**，无 YAML / adapter /
 handle；固定参数集中在 `run.sh` 顶部。
 
 单图交付：视觉塔 + 图像特征注入 + 三轴 MRoPE + 文本 decoder + 26 列读出头整
@@ -27,26 +27,24 @@ handle；固定参数集中在 `run.sh` 顶部。
   `scripts/env_python.sh`（A3 容器 Python 引导）。
 - **`model/`**（模型构建与导出）：`model.py`（单图组合入口）、
   `startlux_npu_adapter.py`（native chunk GDR 文本 decoder）、`multimodal.py`
-  （统一图组合与组批校验，图边界常量单一来源）、`vision.py`（固定网格
-  FP32 视觉塔）、`unified_preprocess.py`（官方 CPU 预处理）、
+  （统一图组合与组批校验，图边界常量与 IO 契约单一来源）、`vision.py`
+  （固定网格视觉塔：FP32 残差流 + FP16 Linear/Conv 内积）、
+  `unified_preprocess.py`（官方 CPU 预处理）、
   `export_air.py`（AIR 导出与请求生成）。
-- **`decider/`**（decider 业务语义与官方管线）：`decision.py`（业务语义桥）、
-  `reference.py`（CPU FP32 HF 参考）、`golden.py`（官方 CPU golden）、
-  `ge_readout.py` / `unified_readout.py`（GESession 读出会话，前者为后者模块
-  依赖；ge_runtime 子进程协议与 IOSpec 校验为标注来源的内联实现，不依赖
-  `core`）、`verify_business.py`（业务概率门禁）、`fixtures/`（固定读出
-  fixtures 与 B4 边界用例）、`vendor/`（官方推理代码逐字节子集，13 个
-  Python 模块与固定上游 commit 一致）。
+- **`decider/`**（官方 CPU 参考与业务门禁）：`golden.py`（官方 CPU golden）、
+  `verify_business.py`（业务概率门禁）、`vendor/`（官方推理代码逐字节子集，
+  13 个 Python 模块与固定上游 commit 一致；当前流程用到
+  `images` / `prompt` / `backends.bidirectional` 及其传递依赖，其余模块按
+  SOURCE.md 的固定 commit 子集原样保留）。
 - `native_proto/` 与 `scripts/`：ChunkGatedDeltaRule GE 兼容原型源码、
-  构建/显式局部加载脚本、P8 监控存档（`monitor_idle_benchmark.py`，历史证据，
-  不在新流程内自动调用）。
+  构建脚本与显式局部加载 activator。
 - `prepare.sh` 同时构建安装 **WeightNzAndMatMulV3Pass** 自定义融合 Pass
   （`third_party/custom_development_code/fusion_pass/`）：图编译期将
   MatMul/MatMulV2 常量权重转 FRACTAL_NZ 重建为 MatMulV3（系统级安装至
   CANN vendors 目录；安装后首次图编译按形状逐一 TBE 编译、kernel_meta
   缓存）。2026-11-09 实测：ticket-team 单 case AI 时间 −14.4%。
 - `work/`：全部生成产物（inputs / golden / build / infer / bench / deps /
-  logs），不提交 Git。
+  logs / fixtures），不提交 Git。
 
 ## 怎么用
 
@@ -102,22 +100,19 @@ python3 models/startlux-decision-v1.1-0.8b-instant/decider/verify_business.py
 CPU 单测（pytest 未安装，用例基于 unittest）：
 
 ```bash
-python3 -m unittest tests.test_startlux_decision tests.test_startlux_native_proto
-python3 -m unittest tests.test_startlux_adapter tests.test_startlux_multimodal
-python3 -m unittest tests.test_startlux_unified_preprocess tests.test_startlux_unified_readout
-python3 -m unittest tests.test_startlux_ge_readout tests.test_torchair_example_inputs
+python3 -m unittest tests.test_startlux_native_proto tests.test_startlux_adapter
+python3 -m unittest tests.test_startlux_multimodal tests.test_startlux_unified_preprocess
+python3 -m unittest tests.test_torchair_example_inputs
 ```
 
 ## 使用限制
 
 - 图边界：官方 processed grid [1,16,16]（256x256 输入）；每次调用全局最多 2
   张图（pixel_values 静态 [512,1536] 双图位）；B≤4、S≤2048；**case 按真长执行**
-  （min_width=1，宽度=max 行真长；原 P4 的 256 下限已由 2026-11-06 短宽门禁
-  退役——真长执行逐位稳定、与 pad-256 及 golden 差异均在 bf16 量化级）；
-  超限拒绝、不截断。边界
-  常量单一来源为 `multimodal.py` / `vision.py` 顶层，生成输入时强制执行。
-- 混精度：视觉塔 FP32 + 文本 decoder BF16；A_log 自 checkpoint 逐层恢复 F32、
-  head26 F32。
+  （宽度 = max 行真长，无补齐下限）；超限拒绝、不截断。边界常量单一来源为
+  `multimodal.py` / `vision.py` 顶层，生成输入时强制执行。
+- 混精度：视觉塔 FP32 残差流 + FP16 Linear/Conv 内积，文本 decoder BF16；
+  A_log 自 checkpoint 逐层恢复 F32、head26 F32。
 - wide_27 跨 dtype 分支披露（保留）：FP32 末轮第 6 名入围者 cause_18，官方
   BF16 与 GE 均为 cause_23；业务判据为 GE vs 相同 dtype 官方 BF16 动态参考，
   详见 `validation.md`。
@@ -126,13 +121,13 @@ python3 -m unittest tests.test_startlux_ge_readout tests.test_torchair_example_i
 - GDR：唯一路线为原生 CANN kernel + 项目兼容原型（非官方文件，仅 IR 注册不
   含计算内核），加载方式为显式局部加载（activator dlopen + run.sh 对
   export/infer/bench 子进程注入 LD_PRELOAD；自动 vendor 加载已复现崩溃并弃
-  用），CANN 升级/换 SoC 需重跑其门禁且无标准路线兜底。2026-11-05 曾按用户
-  决策切换为 MegaGdnPrefillV2 融合算子并完成全量门禁，因融合算子内部 128
-  对齐、本模型 shape 偏小（B1 −28% / B2 −51%，吞吐 −23%）同日回退；mega 分
-  支保留为 `gdn_route="mega"` 休眠选项，证据见 validation.md /
+  用），CANN 升级/换 SoC 需重跑其门禁且无标准路线兜底。MegaGdnPrefillV2
+  融合算子路线实测净负（融合算子内部 128 对齐、本模型 shape 偏小：B1 −28% /
+  B2 −51%，吞吐 −23%），代码已移除，测量证据见 validation.md /
   performance.md。
 - 性能：口径与数值见 [performance.md](performance.md)；graph executions/s
   不是完整业务 QPS。bench 前需人工确认卡空闲。
 - AIR 导出非字节可复现（同源同参数多次导出 sha256 不同、字节数恒定
-  1,907,534,423，嵌入 IO 契约经 runtime read_io 验证一致）；正式证据以
-  数值验收为准。
+  1,708,279,731，嵌入 IO 契约经 runtime write_io/read_io 验证一致）；正式证据
+  以数值验收为准。字节数曾为 1,907,534,423，融合 RoPE 与融合 full-attention
+  后降至当前值（−10%，见 performance.md 附录）。

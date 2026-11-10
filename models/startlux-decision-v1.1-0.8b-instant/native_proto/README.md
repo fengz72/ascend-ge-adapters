@@ -12,16 +12,13 @@
   `aic-ascend910_93-ops-info-transformer.json`、`ops_proto_legacy.h` 同族
   REG_OP 风格、torch_npu meta 注册。详见源码头注释。
 - 加载：**显式项目局部加载**（本构建的验收交付方式，不再宣称默认自动加载）。
-  `ASCEND_CUSTOM_OPP_PATH` 自动 vendor 加载在正式 `core.dependencies.environment`
-  下复现 GE 初始化 SIGSEGV/SIGILL（见 `work/startlux-cannbot/review-native-env-failure.md`），
+  `ASCEND_CUSTOM_OPP_PATH` 自动 vendor 加载会复现 GE 初始化 SIGSEGV/SIGILL，
   故依赖不安装/不暴露 `opp/` 目录；由
-  ① `python/chunk_gated_delta_rule_proto.py`（activate 时 ctypes dlopen RTLD_GLOBAL，
+  ① `python/chunk_gated_delta_rule_proto.py`（import 时 ctypes dlopen RTLD_GLOBAL，
   并为本 worker 的 native 子进程设置任务级 `LD_PRELOAD`），或
-  ② `scripts/env_chunk_proto.sh <work_dir>`（prepare 后在父 shell source，
-  去重导出 `LD_PRELOAD`，标准 build/infer/bench 子进程全部继承）显式加载。
-- 关闭条件：当所用 CANN 构建已自带同名原型注册时，从模型 YAML 中移除本依赖条目，
-  并停止 source 上述 env 脚本（unset 其引入的 `LD_PRELOAD` 路径）；
-  禁止双注册，禁止无证据地自动覆盖官方注册。
+  ② `run.sh` 对 export/infer/bench 子进程注入 `LD_PRELOAD` 显式加载。
+- 关闭条件：当所用 CANN 构建已自带同名原型注册时，移除 `prepare.sh` 中的本依赖
+  构建与 `run.sh` 中的 `LD_PRELOAD` 注入；禁止双注册，禁止无证据地自动覆盖官方注册。
 
 构建入口：`models/startlux-decision-v1.1-0.8b-instant/scripts/build_chunk_proto.sh`
-（由 `core.dependencies.prepare` 以 `GE_SRC_DIR/GE_BUILD_DIR/GE_INSTALL_DIR` 调用）。
+（由 `prepare.sh` 以 `GE_SRC_DIR/GE_BUILD_DIR/GE_INSTALL_DIR` 调用）。

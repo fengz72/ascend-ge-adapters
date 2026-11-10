@@ -1,6 +1,12 @@
 # StartLux 独立脚本与 C++ runtime 执行方案
 
-日期：2026-11-04。状态：设计已与维护者逐项对齐（同日完成，决策已并入正文），尚未实施；本文不代表现有入口、AIR 或验收结果已经迁移。
+日期：2026-11-04。状态：**已实施**（2026-11-05 完成迁移并通过全流程验收）。
+本文保留原始设计与逐项对齐的决策记录；下方目录树为当时的目标结构，实施时
+Python 文件按职责归入 `model/` 与 `decider/` 子目录（见 validation.md 的
+2026-11-05 目录重组条目），且 2026-11-10 的代码审查清理删除了不在 `run.sh`
+调用图内的模块（`decision.py`、`reference.py`、`ge_readout.py`、
+`unified_readout.py`、`fixtures/`、`scripts/monitor_idle_benchmark.py`、
+`scripts/env_chunk_proto.sh`）。当前实际结构以 README 的目录清单为准。
 
 ## 1. 目标与范围
 
@@ -225,7 +231,7 @@ python3 "$ROOT/tools/compare.py" \
 
 计时范围继续是 warm graph 的 H2D＋描述符更新＋execute＋sync，不包含官方 CPU 预处理和 D2H，不称完整业务 QPS。HBM 阶段采样不称峰值。
 
-精度通过不代表卡已空闲。进入性能测试前 run.sh 打印提醒并等待人工确认卡空闲；不内置利用率轮询、不接入后台监控、不绕过确认启动第二份 benchmark。`scripts/monitor_idle_benchmark.py` 保留为 P8 历史证据与手动工具，不在本流程内自动调用。
+精度通过不代表卡已空闲。进入性能测试前 run.sh 打印提醒并等待人工确认卡空闲；不内置利用率轮询、不接入后台监控、不绕过确认启动第二份 benchmark。（原 `scripts/monitor_idle_benchmark.py` 曾保留为 P8 历史证据与手动工具，2026-11-10 清理时删除：它不在本流程调用图内，P8 监控数值已存档于 performance.md。）
 
 ## 8. 运行、重跑和失败行为
 
@@ -247,7 +253,7 @@ bash models/startlux-decision-v1.1-0.8b-instant/run.sh
 1. 保留现有源码、正式 AIR 和全部验收证据，先实现独立入口及模型内新 `work/`。
 2. 迁移现有已验证计算与导出逻辑，不同时修改第三方算子实现。
 3. 完成 CPU、单 AIR 精度和空闲条件下的性能验证。
-4. 全部通过后，再移除旧 pipeline 专用配置和包装代码：删除 `config/model.yaml`、`config/model-mega.yaml`、`unified_adapter.py`、`unified_verify.py`、`verify.py`、`generate_unified_cases.py`、`scripts/run_unified_performance.py`；保留被复用的 `multimodal.py`、`startlux_npu_adapter.py`、`vision.py`、`decision.py`、`reference.py`、`unified_preprocess.py`、`scripts/monitor_idle_benchmark.py` 及其既有 CPU 单测；业务门禁逻辑完成向 `verify_business.py` 的迁移后删除原文件。实施修正（2026-11-05）：`ge_readout.py` 与 `unified_readout.py` 一并保留——保留的 `unified_readout.py`（GESession 读出会话）在模块级依赖 `ge_readout.py`，二者及其单测不在删除范围。调整受影响的测试引用（删除被移除文件对应的 test_startlux_unified_adapter / test_startlux_unified_verify / test_startlux_verify / test_startlux_unified_cases），此前不提前删除当前正式入口。实施修正（2026-11-06）：为满足"独立入口不直接或间接依赖 `core`"的验收项，`core.backends.runtime.execute`（ge_runtime 子进程协议，未用的 abort 钩子已去除）与 `core.contracts.validate_io`（IOSpec 校验）自 `ebb6fbd` 内联进 `ge_readout.py` 并标注来源；`unified_readout.py` 改用 `ge_readout.validate_io`，二者不再 import `core`。
+4. 全部通过后，再移除旧 pipeline 专用配置和包装代码：删除 `config/model.yaml`、`config/model-mega.yaml`、`unified_adapter.py`、`unified_verify.py`、`verify.py`、`generate_unified_cases.py`、`scripts/run_unified_performance.py`；保留被复用的 `multimodal.py`、`startlux_npu_adapter.py`、`vision.py`、`decision.py`、`reference.py`、`unified_preprocess.py`、`scripts/monitor_idle_benchmark.py` 及其既有 CPU 单测；业务门禁逻辑完成向 `verify_business.py` 的迁移后删除原文件。实施修正（2026-11-05）：`ge_readout.py` 与 `unified_readout.py` 一并保留——保留的 `unified_readout.py`（GESession 读出会话）在模块级依赖 `ge_readout.py`，二者及其单测不在删除范围。调整受影响的测试引用（删除被移除文件对应的 test_startlux_unified_adapter / test_startlux_unified_verify / test_startlux_verify / test_startlux_unified_cases），此前不提前删除当前正式入口。实施修正（2026-11-06）：为满足"独立入口不直接或间接依赖 `core`"的验收项，`core.backends.runtime.execute`（ge_runtime 子进程协议，未用的 abort 钩子已去除）与 `core.contracts.validate_io`（IOSpec 校验）自 `ebb6fbd` 内联进 `ge_readout.py` 并标注来源；`unified_readout.py` 改用 `ge_readout.validate_io`，二者不再 import `core`。实施修正（2026-11-10）：代码审查确认 `decision.py`、`reference.py`、`ge_readout.py`、`unified_readout.py`、`scripts/monitor_idle_benchmark.py` 均不在 `run.sh` 的调用图内（按 `_load_module` 精确 import 图验证），仅被各自单测引用，已连同 `tests/test_startlux_{decision,ge_readout,unified_readout}.py` 一并删除；`scripts/env_chunk_proto.sh` 从未被 source 且路径与 `prepare.sh` 的实际安装位置不一致，同样删除。2026-11-05 与 11-06 两次"保留"修正随之失效。`decider/vendor/` 的 13 个官方模块按用户决策全部保留。详见 validation.md 的 2026-11-10 条目。
 
 验收项：
 

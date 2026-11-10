@@ -622,3 +622,57 @@ outputs stay ND).  Installation and build wired into prepare.sh.
   and reinstalls it alongside the chunk prototype.
 - Evidence paths: `work/prof-nz/` (ticket-team single-case profile),
   `work/bench/`, `work/infer/` (2026-11-09 12:0x).
+
+## Appendix: post-cleanup verification run (2026-11-10)
+
+Regression check after the 2026-11-10 code-review cleanup (dead-code removal,
+redundant-validation removal, comment/doc corrections; see validation.md).  The
+cleanup claims no numeric change, so this run re-measures the SAME delivered
+configuration on the SAME chip and seed as the fused-attention appendix.
+
+Full `run.sh --device 4` for stages 1-9 (precision chain), then stage 11 (bench)
+re-run standalone on idle chip 8 -- the physical chip is selected by
+`ASCEND_RT_VISIBLE_DEVICES` while `request.json` carries the in-process index 0,
+so the bench needs no re-export.  Chip 8 was verified idle (AICore 0%, HBM at
+the ~3.2 GB baseline) by two samples 15 s apart immediately before launch, and
+released back to 3,255 MB after the run.
+
+| item | value | WeightNzAndMatMulV3Pass appendix (2026-11-09) | fused-attention appendix, chip 8 (2026-11-09) |
+|---|---|---|---|
+| precision | 5/5, worst cosine 0.9999986085, worst relL2 **0.00449550810581621** | 0.999999 / **0.004496** | 0.999998 / 0.003930 |
+| business gate | 5/5 PASS, worst active-probability max abs 0.00343094 | 5/5 PASS | 5/5, worst 0.004551 |
+| graph executions/s | 49.489124 (2,048 requests, 0 errors) | 50.606 | 49.231163 |
+| readout rows/s | 70.464006 | -- | 70.096715 |
+| e2e P50/P99 (n=2048) | 18.785/25.251 ms | -- | 18.586/26.201 ms |
+| e2e avg/min/max | 20.204/18.41/28.92 ms | -- | -- |
+| exec avg/P99 | 19.998/24.958 ms | -- | -- |
+| AIR bytes | 1,708,279,731 (two independent exports, identical size) | -- | 1,708 MB |
+
+Bench detail: `arrival_model` closed_loop, pool_size 5, seed 42,
+replacement true, instances 1, warmup 32 runs / 890.374 ms, wall 41,382.83 ms,
+distinct_shapes 4, load 3,792.49 ms, specialize 318.972 ms, h2d avg 0.203 ms,
+desc avg 0.00095 ms, d2h 0.0, HBM base 504.570 MB / after_setup 4,061.832 MB,
+samples per request avg 1.423828125 (min 1, p50 1, p99 3, max 3), errors 0,
+`in_flight_at_end` 0.
+
+- **Precision is the strongest evidence of no regression**: worst relL2
+  0.00449550810581621 reproduces the recorded 0.004496 digit-for-digit at the
+  recorded precision, and worst cosine rounds to the recorded 0.999999.  The
+  cleanup touched no operator or numeric path.
+- Throughput 49.489 exec/s is -2.2% vs the NZ-pass appendix (50.606) and +0.5%
+  vs the chip-8 fused-attention appendix (49.231163); it sits inside the
+  historical spread of the delivered configuration (49.231-50.606, ~2.8%).
+  The closed loop is host-bound at these latencies, and at measurement time six
+  of the sixteen chips (4, 5, 12, 13, 14, 15) were held at ~65 GB HBM by other
+  tenants, so host-side contention is the likely cause of landing at the low
+  end.  Not attributed to the cleanup.
+- Latency shape is unchanged-to-better: P50 +0.199 ms (+1.1%, variance),
+  P99 -0.950 ms (-3.6%).
+- AIR size 1,708,279,731 bytes from two independent exports confirms the graph
+  structure is unchanged.  This is the value the README should have carried:
+  its "字节数恒定 1,907,534,423" claim predated the fused RoPE / fused
+  full-attention work (1,906 -> 1,708 MB, -10%) and was corrected by this run.
+- Evidence paths: `work/bench/` (result.json, requests.csv 2,048 rows),
+  `work/infer/` (comparison.json, business.json), `work/logs/`
+  (2026-11-10 02:3x-02:5x UTC).
+

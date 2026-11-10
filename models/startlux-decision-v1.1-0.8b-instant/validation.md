@@ -6,8 +6,11 @@ torch_npu 2.12.0，transformers 5.8.1，设备 Ascend910_9382，runtime 二进�
 `graph_run_mode=0`、`precision_mode=must_keep_origin_dtype`。
 
 最终交付（已验收）：视觉塔 + 图像特征注入 + 三轴 MRoPE + 文本 decoder + 26 列
-letter 读出头整合于**单一 AIR、单次 GESession**。正式 config 唯一：
-`config/model.yaml`（unified_adapter）。AIR/runtime 身份：
+letter 读出头整合于**单一 AIR、单次 GESession**。交付形态为独立脚本流程
+（`run.sh` 串行调度，无 YAML / adapter / handle，见
+[docs/standalone-runtime-plan.md](docs/standalone-runtime-plan.md)）；下文中
+`config/model.yaml` / `unified_adapter` 等框架路由条目为历史记录，对应文件已
+删除。AIR/runtime 身份：
 
 - AIR `work/startlux-decision/build/model.air`：1,907,534,423 bytes，sha256
   `c1f8816ee25e03119b2522e55adb49ebf42a88692791b179920f5f60221edba1`
@@ -47,8 +50,259 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `review-p7-unittest-final-state.log`（Ran 317 tests in 27.635s，OK）。清理
 （2026-11-02）后主 agent 再次复跑 317 项全部通过：
 `work/startlux-cannbot/cleanup-20261102/unittest.log`（Ran 317 tests in
- 28.531s，OK）。全仓套件另有 4 个预存 error（上游 onnx 缺包
+  28.531s，OK）。全仓套件另有 4 个预存 error（上游 onnx 缺包
  ModuleNotFoundError，非本模型引入），不据此宣称全 repo 通过。
+
+## 2026-11-10 变更：代码审查清理（删死代码 / 修错误 / 削冗余校验 / 注释去过程化）
+
+**决策**（用户拍板）：按代码审查结论清理模型目录，只保留独立脚本流程实际使用
+的功能；不改动任何数值行为，因此**不需要重跑 NPU 精度或性能门禁**。
+
+### 修正的错误
+
+- `run.sh`：`die()` 定义在参数解析循环之后，`bash run.sh --bogus` 实际输出
+  `die: command not found` 并以 127 退出，真正的错误信息丢失。已将
+  `step()`/`die()` 上移至 `set -euo pipefail` 之后；实测两种误用均打印正确
+  信息并以 1 退出。
+- `model/vision.py`：`forward()` 中 `stream` 变量赋值后从未使用，而其上方注释
+  宣称"fp16 residual stream … Validated on the real 12-block tower: relL2
+  0.0079"。实际循环全程 FP32（`patch_embed` 与 `_linear` 均 `.to(x.dtype)`
+  回到 fp32）。按用户决策**删变量 + 将注释改写为当前真实结构**（FP32 残差流 +
+  FP16 Linear/Conv 内积），不实现 fp16 残差流，故数值行为不变。
+- 视觉精度口径自相矛盾：`model.py` 的 placement 报告写 `"vision": "float32"`、
+  `multimodal.py` 的 `describe()["precision"]` 与 `weight_storage`、README
+  混精度条目均称视觉塔 FP32，但 `model.py:_expected_param_dtype` 强制 7 类
+  vision Linear/Conv 参数为 **float16**（P2-5 预量化）。已统一为
+  "FP32 残差流 + FP16 Linear/Conv 内积"，placement 报告拆为
+  `vision_linear` / `vision_residual_stream` 两字段。
+- README 称 mega 分支"保留为 `gdn_route="mega"` 休眠选项"，但该代码已由
+  提交 76f29cf 全部删除（grep 无 `gdn_route`）。已改为"代码已移除，测量证据
+  保留"。
+- README / 本文 / `docs/standalone-runtime-plan.md` 称 `decider/fixtures/`
+  （`p2b-readouts.json`、`b4-long-rows.json`）存在，实际目录不存在；
+  `generate_inputs.py` 的 `FIXTURES` 常量亦从未使用。已删常量并更正文档。
+- README 与本文写 `model/verify_business.py`，实际路径为
+  `decider/verify_business.py`。已更正。
+- `scripts/env_chunk_proto.sh` 从未被 source，且其拼接路径
+  `<work_dir>/dependencies/...` 与 `prepare.sh` 实际安装位置 `work/deps/...`
+  不一致（即使 source 也必然报 "does not exist"）。已删除，并清理
+  `native_proto/README.md`、`chunk_gated_delta_rule_proto.cpp`、
+  `scripts/build_chunk_proto.sh` 中的引用。
+- `model/export_air.py`：`build_request()` 的列表推导内部每条 record 重建一次
+  `set(case_ids)`。已提出为局部变量，并改用集合差直接算 missing。
+
+### 删除的死代码（均经 AST + 全仓 grep 双重确认 0 生产引用）
+
+按 `_load_module` 精确 import 图验证，以下文件不在 `run.sh` 的调用图内，仅被
+测试引用，已连同其测试删除：
+
+| 文件 | 行数 |
+|---|---|
+| `decider/ge_readout.py` | 701 |
+| `decider/unified_readout.py` | 461 |
+| `decider/reference.py` | 339 |
+| `decider/decision.py` | 164 |
+| `scripts/monitor_idle_benchmark.py` | 1243 |
+| `scripts/env_chunk_proto.sh` | 56 |
+| `tests/test_startlux_ge_readout.py` | 663 |
+| `tests/test_startlux_unified_readout.py` | 759 |
+| `tests/test_startlux_decision.py` | 927 |
+| `docs/production-integration.md` | 178 |
+
+框架路由残留（README 已声明交付形态"无 YAML / adapter / handle"）：
+`startlux_npu_adapter.py` 的 `RuntimeHandle` / `CandidateHandle` /
+`ReferenceHandle` / `prepare_reference`（全仓 0 调用）/ `prepare_candidate` /
+`prepare_runtime` / `_rows_of` / `_payload_rows` / `_pad_batch` /
+`_encode_dynamic` / `_alignment` / `_dynamic_axes` / `_dynamic_io` /
+`_example_geometry` / `adapt()`；`multimodal.py` 的 `MultimodalRuntimeHandle` /
+`MultimodalCandidateHandle` / `prepare_candidate` / `prepare_runtime`。
+
+单点死符号：`multimodal.model_rope_index_provider`、
+`example_inputs(device=)` 的 device 分支、`MultimodalDecoder.slots`、
+`IMAGE_TOKENS`（与 `vision.MERGED_ROWS` 重复）、三处未使用的 `ROOT`；
+`StartLuxTextDecoder.forward`（仅经已删的 `CandidateHandle.run` 可达）、
+`_rope`、模块级 `rope_cos_sin`、`mrope_cos_sin` 的 2D 分支、`_gated_delta`
+纯转发空壳、`self.chunk_size` 与整条 `chunk_size` 参数链、`self.embedding_shape`、
+`adapt()` 的 `wrapper.width` 与整条 `compiled_seq_len` 链、`_gated_delta` 中
+未用的 `value_dim` 解包；`unified_preprocess` 的 5 个死别名
+（`GRID_THW`/`PATCH_ROWS`/`MERGED_ROWS`/`SLOTS`/`IMAGE_TOKENS_PER_IMAGE`）、
+`encode_case_rows`、`encode_readout_row`、`pad_graph_inputs` 与整条
+`min_width` 管道（独立流程恒传 1 → `target == width` 早退，整个函数是
+no-op）、随之失效的 `numpy` 导入；`generate_inputs` 的 `FIXTURES`、
+`_validate_against_io`、`_save_row_encodings` 的死返回值；`golden` 的
+`self.source`、`self.vocab_size`、`ROOT`、`N_COLUMNS`；`vision` 的
+`rotary_inv_freq_restored`；activator 的 `INSTALL_RELPATH`、
+`library_path(work_dir)` 的 fallback 分支、`_FALLBACK_DONE` 去重（模块级只
+import 一次）。
+
+`multimodal.validate_batch_arrays`（105 行）一并删除：它原是已删的
+`MultimodalRuntimeHandle.encode`（外部 JSON payload 入口）的数组级门禁，移除
+`build_multimodal_batch` 末尾的二次调用后已无生产调用方；其检查项对
+`build_multimodal_batch` 自身构造出的数组恒真（feature index 的 0,1,2,… 顺序
+由 slot 计数器保证、padding 区保持 zero/-1 初始化）。对应的
+`TestBatchValidation` / `TestPaddingIndexStrictness` 两个测试类删除；活路径的
+拒绝行为由 `TestBridgeInputHygiene`（走 `build_multimodal_batch`）覆盖。
+
+### 收敛的间接层
+
+- `describe()` 的 ~60 键报告字典收敛为 `multimodal.io_spec()`（无参，纯静态
+  字面量）：独立流程只消费 `io.inputs` / `io.outputs`，其余
+  （`bounds.slot_scope`、`grid_policy`、`feature_order`、`cpu_side.*`、
+  `precision.*`、`changes`、`readout_contract`、`dynamic`、`native_gdr`、
+  `required_dependencies`、`referenced_files`）为与模块 docstring 重复的散文，
+  已删除。`startlux_npu_adapter.describe()` 整体删除。
+- `_params(config)` 删除：三个调用方全部传 `"params": {}`，全套校验
+  （allowed 集合、未知键拒绝、正整数、`compiled_seq_len <= max_seq_len`）
+  校验的是硬编码默认值。边界常量单一来源收敛为 `multimodal.MAX_BATCH` /
+  `MAX_SEQ_LEN` / `SLOTS` 与 `vision.GRID_THW`；`vision_linear_dtype` 配置项
+  删除，`build_unified_model` 直接传 `torch.float16`（`VisionTowerWrapper`
+  的 `linear_dtype` 参数保留，测试仍以 fp32 作为位精确对照）。
+- `_source_ref(config)` 的 `${VAR}` 正则替换与相对路径解析删除：两个调用方都
+  传已 resolve 的绝对路径。`_decision_config(config)` 改为
+  `_decision_config(folder)`，返回值收敛为 `{letter_token_ids, vocab_size}`
+  （`temperature_by_type` / `token_ids` / `folder` 仅被已删的 `describe()`
+  消费；温度校验在唯一使用方 `verify_business._row_report` 内做）。
+- `model.py` 的 `_config()` / `io_contract()`、`generate_inputs.py` 的
+  `_config()`、`golden.py` 的 config 字典删除；`build_unified_model(model)`
+  自行从 `model.name_or_path` 取 folder，`load()` 返回
+  `(unified, placement)`。
+- `build_graph_inputs` 的 `hasattr(row["input_ids"], "dim")` 双模式嗅探删除，
+  只接受已编码行（唯一生产调用方 `generate_inputs.py` 本就两步调用）。
+
+### 削除的冗余校验
+
+同进程内重复校验与对自造数据的校验：`build_multimodal_batch` 末尾对
+`validate_batch_arrays` 的二次调用；`_check_row_structure` 中两处恒假检查
+（`len(groups) != n_images` 与 pad 连续性——前者由 pads 总数 + 每组等长蕴含，
+后者由 pads 是升序全量位置、groups 是其等长切块蕴含）；`_row_groups` 的重复
+计算（改为接住 `_check_row_structure` 的返回值）；`pixel_blocks.append(None
+if pixels is None else pixels)` 的等价三元；`_require_cpu_tensor(types, ...,
+types.dtype)` 把自身 dtype 当期望值传入导致 dtype 检查恒真（改为直接查
+dtype，并把 `types_row` 比对移入"调用方提供了 types"的分支——原写法在
+`types is None` 时比对恒真）；`model.py` 的 `source.dtype != bfloat16` 自检
+（上一行刚 `.to(dtype=torch.bfloat16)`）；`vision.py` 预量化循环的
+`param is not None` 冗余与 fp16 上溢检查（对 bf16→fp16 视觉权重不可能触发，
+且权重在 NPU 上，**每个参数强制一次 D2H 同步**）、`slots < 1`（唯一调用方传
+常量 2）、手工搬 buffer 至 target device（唯一生产调用方 `model.py` 就是
+`unified.to(target)`，且 `_verify_candidate_placement` 会逐名检查 device）；
+`vision_linear_dtype` 的双重校验；letters 一致性与 tied head 的重复校验
+（`_restore_and_verify` 保留 tied 检查——head26 克隆自 `embed_tokens`，未
+tied 会静默投影错行，属数值契约）；`generate_inputs` 对自身 20 行前硬编码
+构造的数据的 5 处自检（26 列、case id 去重、`samples == len(rows)`、占位符
+计数、`_validate_against_io`）；`export_air` 的二次 `_validate_io`、被首个
+条件蕴含的 `len(bindings) != len(names)`、包 argparse `type=int` 结果的
+`int()`、与 `run.sh` 重复的删 AIR；`run.sh` 的 `[[ -f "$PROTO_LIB" ]]` /
+`[[ -x "$RUNTIME_BIN" ]]` / 两处导出产物存在性检查（`prepare.sh`、
+`runtime/build.sh`、`export_air.py` 均在 `set -e` 下自行失败）；图片数 ≤2 的
+三重复查（收敛到 `build_multimodal_batch` 单一权威门禁，并把硬编码 2 改为
+`slots`）；`min_width` 正整数的两处重复校验；`golden.py` 的 `samples` 正整数
+/ shape / finite 三项自检（数据来自同流程上游，`torch.stack` 形状由构造保证，
+非有限值会使 `tools/compare.py` 的 cosine 门限失败）。
+
+**保留**的校验：跨进程/跨阶段文件边界（AIR 嵌入 IO 的 `_validate_io(embedded)`、
+`outputs.bin` 字节范围、`records.json` / `cases.json` 的 schema 标记、
+`STARTLUX_MODEL_DIR`、`ge_runtime` 的 returncode 与"恰好一行 GE_RESULT"）与
+数值契约（A_log 位精确、head26 位精确、tied head、grid `[1,16,16]`、B/S/图数
+上限、feature index 值域、`_check_row_structure` 的 marker 结构）。
+`verify_business.py` 的 26 列检查保留——它直接读 `decision_config.json`
+（不经 `_decision_config`），是"folder 侧列数 == scores 侧列数"这一双侧契约的
+folder 半边。
+
+### 注释去过程化
+
+源码注释中的变更日志、验收数字与不可访问的 `work/*.json` 路径（`work/` 不提交
+Git）已移除或改写为"为什么"：`startlux_npu_adapter.py`（模块 docstring 的
+路线删除史、`_rms_norm` 的 "NPU-verified 2026-11-06 / pbtxt diff probe"、
+`causal_conv4` 的 "Route evidence (2026-11-05 …)" 段、L2-norm 的
+"NPU-probed relL2 0.0029 / probed WRONG at relL2 0.85"、P2-7 / P2-8 的探针
+数字）；`vision.py`（模块 docstring 的 P6 报告路径、`MatMulPatchEmbed` 的
+GE profiling 数字、`_linear` 的 "bf16 FAILS … relL2 0.055"、预量化循环的
+"the buffer-copy approach failed exactly there"、rotary 的
+`review-vision-rotary-buffer-cast.json` 引用）；`multimodal.py`（精度段的
+"validated in p6-official … rel_l2 ~0.11"、`build_unified_model` docstring 的
+`p4-dynamic, 27/27 GE` 与 `core.sources.load_source` 叙事）；
+`unified_preprocess.py`（17 行 P4 pad256 退役史、processor 组合的失败史与
+p6 runner 路径、`DEPS_HINT` 中不存在的 `p6-unified/env.sh`）；
+`generate_inputs.py`（8 行 min_width 退役叙事）；`export_air.py`（4 处
+"migrated from the validated framework exporter"、"the formal-11 bench pool"
+——实际池为 5 case、以及与 run.sh 顶部重复的固定参数数值）；`golden.py` /
+`verify_business.py`（"the migration of the validated …" 与 "the accepted
+policy"）。数值证据本身保留在本文与 `performance.md`。
+
+### 未改动项（明确记录）
+
+- `decider/vendor/` 的 13 个官方模块**全部保留**（用户决策：先保留，后续再
+  精简）。删除 `decision.py` / `reference.py` 后，活路径只需
+  `images` / `prompt` / `backends.bidirectional` 及其传递依赖
+  `backends.base`（经 `backends/__init__.py`）与 `__init__.py`；
+  `modelcfg` / `controls` / `pipeline` / `readout` / `loops` /
+  `backends.fake` / `backends.transformers` 变为不可达。SOURCE.md 的
+  集成点说明已更新，子集仍与固定上游 commit 逐字节一致。
+- `_load_module` 的 6 份逐字拷贝**未合并**：其模块命名（如
+  `startlux_multimodal_for_unified`）对 dynamo 的 `__module__` 解析与测试的
+  模块同一性是承重的，抽公共模块需改 `sys.path` 注入方式并重跑 NPU 导出验证，
+  超出本次"不改数值行为、不依赖 NPU"的清理范围。已确认 6 份中 3 份丢失了
+  "# register before exec" 说明注释（拷贝漂移的实证），留待后续统一。
+- `docs/adaptation-plan.md` 未改（文件头已自声明为历史设计记录，其中的
+  `config/model.yaml` 等引用属史实）。
+- `verify_business.py` 的 `business: false` 跳过分支保留：当前 5 个 case 全为
+  `business: True`，该分支在交付流程中不可达，但 `business` 标志同时是
+  `generate_inputs.py` 的 bench 池选择器，属有文档的既定行为而非防御性代码。
+- `fusion_result.json` 与 `kernel_meta/` 落在模型源码目录（均已 gitignore），
+  属 GE dump 落点配置问题，未在本次范围内调整。
+
+### 验证
+
+- startlux CPU 单测 **51 项全部通过**（`tests.test_startlux_native_proto` /
+  `test_startlux_adapter` / `test_startlux_multimodal` /
+  `test_startlux_unified_preprocess`），清理前基线为 236 项（含已删除的
+  3 个测试文件）。全部剩余用例覆盖活路径。
+- 全仓 `unittest discover`：204 项，4 个 error 全为预存 onnx 缺包
+  （`test_dtype_contracts` / `test_source_contracts` 导入期、
+  `test_review_contracts` 2 项用例内），与本次改动无关。
+- 9 个 Python 入口全部 import 冒烟通过，签名一致性核对：
+  `_decision_config(folder)`、`build_unified_model(model)`、
+  `StartLuxTextDecoder(body, letters26)`、`load(device)`、
+  `export_example(wrapper, device)`、`build_graph_inputs(rows, *, vocab_size,
+  max_batch, max_seq_len)`、`OfficialPreprocessor(model_dir)`、
+  `build_pool(folder, letters)`、`OfficialReference(source, folder)`。
+- `bash -n run.sh` 通过；`run.sh --bogus` 与 `run.sh --device`（缺值）实测
+  打印正确错误信息并以 1 退出（修复前为 `die: command not found` / 127）。
+- 净变化：**32 个文件，+775 / −8,041 行**。模型目录 Python 源码（不含
+  vendor）由 **6,715 行降至 2,616 行**；startlux 测试由 4,259 行降至
+  1,101 行。删除的 6,715 − 2,616 中，整文件删除占 3,068 行
+  （`monitor_idle_benchmark.py` 1,243、`ge_readout.py` 701、
+  `unified_readout.py` 461、`reference.py` 339、`decision.py` 164、activator
+  净减 156）。
+
+### NPU 真实流程验证（2026-11-10，`run.sh --device 4`，chip 4 空闲）
+
+清理后**已重跑真实 `run.sh`**，精度链路（阶段 1–9）全部通过；bench 阶段按
+本次验证范围（导出与推理链路）在第 10 步人工确认门喂 `n` 主动中止，未执行。
+
+| 阶段 | 结果 |
+|---|---|
+| 2 生成输入 | 5 cases / 7 rows，precision 池 5 / bench 池 5（重构后的 `build_pool(folder, letters)`、`io_spec()`、`_decision_config(folder)` 在真实材料上正常；已删的 `_validate_against_io` / `min_width` 无回归） |
+| 3 CPU golden | 官方 FP32 参考 7 行写出 |
+| 4 依赖构建 | proto 库 + WeightNzAndMatMulV3Pass 均安装成功 |
+| 5 runtime | 构建成功 |
+| **6 导出** | `model.air` **1,708,279,731 bytes**；`write_io` 经 ge_runtime 回读的嵌入 IO 与 `io_spec()` **逐项一致**（`input_ids [-1,-1]` dyn[0,1] / `position_ids [3,-1,-1]` dyn[1,2] / `actual_seq_lengths [-1]` dyn[0] / `pixel_values [512,1536]` 静态无 dynamic_dims / `image_feature_index [-1,-1]` dyn[0,1] → `scores [-1,26]` dyn[0]）；`parse_bindings` 取到真实节点名 `arg2_1/arg5_1/arg7_1/arg8_1/arg10_1`，双射绑定校验通过 |
+| **7 推理** | 5 cases `status: success`；`outputs.bin` 728 bytes 与 `result.json` 索引**完全自洽**（B3 case `[3,26]`@0、四个 B1 case `[1,26]`@312/416/520/624，max(offset+bytes) == 文件字节数，无空洞无越界） |
+| 8 数值比较 | **PASS**：5 cases，worst cosine **0.9999986085101928**（门限 ≥0.999）、worst relL2 **0.00449550810581621**（门限 ≤0.02） |
+| 9 业务门禁 | **PASS**：5/5，worst active-probability max abs **0.00343094**（门限 ≤0.01），全部 top1 一致，参考 margin 0.158–0.885 |
+| 10 空闲确认 | 喂 `n` → 修复后的 `die` 打印"已按'卡忙时不测试'中止"并以 1 退出（**A1 修复在真实流程中验证**） |
+
+与既有基线对比（performance.md 融合后附录，2026-11-09：worst cosine 0.999998
+/ relL2 0.003930、业务 worst 0.004551）：本次 cosine 同档、relL2 0.004496 与
+业务 0.00343 均落在文档自述的"export-nondeterminism band"内（历史 5-case 记录
+relL2 跨 0.002233–0.004753），且本次在不同卡（chip 4 vs chip 3/8）执行。
+
+**图结构未变的旁证**：本次两次独立导出（02:23 与 02:35）字节数均为
+1,708,279,731，与 performance.md 记录的融合后 1,708 MB 一致；清理未触碰任何
+算子/数值路径。据此发现并修正 README 的一处失实：其"字节数恒定
+1,907,534,423"是融合 RoPE / 融合 full-attention（提交 af9e05a，1,906 → 1,708
+MB，−10%）之前的旧值。
+
 
 ## 2026-11-05 变更：目录重组（model/ 与 decider/）
 
