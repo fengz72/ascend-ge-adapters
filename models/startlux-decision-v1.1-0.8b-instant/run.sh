@@ -13,6 +13,9 @@
 # stage that needs them.
 set -euo pipefail
 
+step() { printf '\n===== [%s] %s =====\n' "$(date +%H:%M:%S)" "$*"; }
+die() { echo "run.sh: $*" >&2; exit 1; }
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODEL_DIR="$SCRIPT_DIR"
 ROOT="$(cd "$MODEL_DIR/../.." && pwd)"
@@ -43,9 +46,6 @@ done
 # Task-local Pillow/torchvision of the validated install (environment
 # prerequisite; see README).  Prepend for the python stages only.
 TASK_LOCAL_DEPS="$ROOT/work/startlux-validation/p6-official/deps"
-
-step() { printf '\n===== [%s] %s =====\n' "$(date +%H:%M:%S)" "$*"; }
-die() { echo "run.sh: $*" >&2; exit 1; }
 
 # ---------------------------------------------------------------- 1. 环境
 step "检查环境及权重路径"
