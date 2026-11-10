@@ -19,7 +19,6 @@ import types
 import unittest
 from pathlib import Path
 
-import numpy as np
 import torch
 
 MODEL_DIR = Path(__file__).resolve().parents[1] / "models" / "startlux-decision-v1.1-0.8b-instant"
@@ -68,7 +67,6 @@ class FakePreprocessor(unified_preprocess.OfficialPreprocessor):
         self._tokenizer = None
         self._processor = None
         self._rope_index = None
-        self.min_width = unified_preprocess.DEFAULT_MIN_PHYSICAL_WIDTH
 
 
 def official_image_deps():
@@ -113,6 +111,9 @@ QUESTIONS = {"instructions": "Which color occupies the largest area of the image
 STATE_ONE = "A synthetic 256x256 RGB test pattern generated for pipeline validation.\n<image>"
 STATE_AB = ("Two synthetic 256x256 RGB test patterns: the first is red-dominant, "
             "the second is blue-dominant.\n<image>\n<image>")
+# no <image> marks: place_images prepends the 3 slots, so the prompt stays
+# well-formed and the per-request cap is what rejects it (not the token count)
+STATE_THREE = "Three synthetic 256x256 RGB test patterns for the per-request image cap."
 
 pre = up.OfficialPreprocessor(MATERIALS)
 
@@ -137,6 +138,7 @@ try:
         r["none_video_processor_rejected"] = True
 
     p_one, p_ab = render(STATE_ONE, 1), render(STATE_AB, 2)
+    p_three = render(STATE_THREE, 3)
     row = pre.encode_row(p_one, [RED])
     r["single_ids_shape"] = list(row["input_ids"].shape)
     r["single_image_tokens"] = int((row["input_ids"][0] == pre.image_token).sum())
@@ -146,8 +148,11 @@ try:
     r["double_image_tokens"] = int((row_ab["input_ids"][0] == pre.image_token).sum())
     r["double_pixel_shape"] = list(row_ab["pixel_values"].shape)
 
-    arrays = pre.build_graph_inputs([{"prompt": p_one, "images": [RED]},
-                                     {"prompt": "a plain text second row"}])
+    def build(rows, **caps):
+        return pre.build_graph_inputs(pre.encode_payload_rows(rows), **caps)
+
+    arrays = build([{"prompt": p_one, "images": [RED]},
+                    {"prompt": "a plain text second row"}])
     r["b2_shapes"] = {k: list(v.shape) for k, v in arrays.items()}
     r["b2_lengths"] = arrays["actual_seq_lengths"].tolist()
     r["b2_row1_index_all_minus1"] = bool((arrays["image_feature_index"][1] == -1).all())
@@ -159,16 +164,17 @@ try:
 
     caps = {}
     for name, fn in (
-            ("max_batch", lambda: pre.build_graph_inputs(
+            ("max_batch", lambda: build(
                 [{"prompt": p_one, "images": [RED]}] * 3, max_batch=2)),
-            ("max_seq_len", lambda: pre.build_graph_inputs(
+            ("max_seq_len", lambda: build(
                 [{"prompt": p_one, "images": [RED]}], max_seq_len=100)),
-            ("three_per_request", lambda: pre.encode_row(p_one, [RED, BLUE, RED])),
-            ("three_slots", lambda: pre.build_graph_inputs(
+            ("three_per_request", lambda: build(
+                [{"prompt": p_three, "images": [RED, BLUE, RED]}])),
+            ("three_slots", lambda: build(
                 [{"prompt": p_one, "images": [RED]},
                  {"prompt": p_one, "images": [BLUE]},
                  {"prompt": p_one, "images": [RED]}])),
-            ("four_slots_b2", lambda: pre.build_graph_inputs(
+            ("four_slots_b2", lambda: build(
                 [{"prompt": p_ab, "images": [RED, BLUE]},
                  {"prompt": p_one, "images": [BLUE]}]))):
         try:
@@ -184,8 +190,6 @@ except Exception as error:
     r["runner_error"] = f"{type(error).__name__}: {error}"
 print("RESULT " + json.dumps(r))
 """.replace("__root__", repr(str(ROOT)))
-
-import numpy as np  # noqa: E402  (the runner text above references np)
 
 
 @unittest.skipUnless(REAL_MODEL_DIR.is_dir(), "the pinned real model materials are not present")
@@ -319,37 +323,25 @@ class TestPayloadValidation(unittest.TestCase):
     def setUp(self):
         self.pre = FakePreprocessor()
 
-    _MISSING = object()
-
-    def case(self, rows, samples=_MISSING):
-        samples = len(rows) if samples is self._MISSING else samples
-        return {"id": "u-case", "samples": samples, "payload": {"rows": rows}}
+    def encode(self, rows, **caps):
+        return self.pre.build_graph_inputs(self.pre.encode_payload_rows(rows), **caps)
 
     def test_input_ids_rows_encode(self):
-        arrays = unified_preprocess.encode_case_rows(
-            self.pre, self.case([{"input_ids": [1, 2, 3]}, {"input_ids": [4, 5, 6, 7]}]))
+        arrays = self.encode([{"input_ids": [1, 2, 3]}, {"input_ids": [4, 5, 6, 7]}])
         self.assertEqual(arrays["input_ids"].shape, (2, 4))
         self.assertEqual(arrays["actual_seq_lengths"].tolist(), [3, 4])
         self.assertTrue((arrays["image_feature_index"] == -1).all())
 
-    def test_non_int_samples_rejected(self):
-        for bad in (2.0, True, "2", None):
-            with self.assertRaises(ValueError):
-                unified_preprocess.encode_case_rows(self.pre, self.case(
-                    [{"input_ids": [1]}, {"input_ids": [2]}], samples=bad))
-
-    def test_rows_samples_mismatch_rejected(self):
-        with self.assertRaises(ValueError):
-            unified_preprocess.encode_case_rows(self.pre, self.case(
-                [{"input_ids": [1, 2, 3]}], samples=2))
-        with self.assertRaises(ValueError):
-            unified_preprocess.encode_case_rows(self.pre, self.case([]))
+    def test_rows_run_at_their_true_length(self):
+        arrays = self.encode([{"input_ids": [1, 2, 3]},
+                              {"input_ids": [1 + (i % 90) for i in range(300)]}])
+        self.assertEqual(arrays["input_ids"].shape, (2, 300))
+        self.assertEqual(arrays["actual_seq_lengths"].tolist(), [3, 300])
 
     def test_float_and_bool_token_ids_rejected(self):
         for bad in ([1.0, 2], [True, 2], ["1", 2]):
             with self.assertRaises(ValueError):
-                unified_preprocess.encode_case_rows(
-                    self.pre, self.case([{"input_ids": bad}]))
+                self.pre.encode_payload_rows([{"input_ids": bad}])
 
     def test_mixed_and_missing_row_fields_rejected(self):
         for bad in ({"input_ids": [1], "prompt": "p"},
@@ -357,104 +349,16 @@ class TestPayloadValidation(unittest.TestCase):
                     {"prompt": None},
                     "not-a-dict"):
             with self.assertRaises(ValueError):
-                unified_preprocess.encode_case_rows(self.pre, self.case([bad]))
-
-    def test_more_than_two_images_per_row_rejected(self):
-        with self.assertRaises(ValueError):
-            unified_preprocess.encode_case_rows(
-                self.pre, self.case([{"prompt": "p", "images": ["a", "b", "c"]}]))
+                self.pre.encode_payload_rows([bad])
 
     def test_bad_images_field_rejected(self):
         for bad in ("a.ppm", [1, 2], [True]):
             with self.assertRaises(ValueError):
-                unified_preprocess.encode_case_rows(
-                    self.pre, self.case([{"prompt": "p", "images": bad}]))
+                self.pre.encode_payload_rows([{"prompt": "p", "images": bad}])
 
-
-class TestMinPhysicalWidthPolicy(unittest.TestCase):
-    """The accepted minimum-physical-width strategy (review-p4-pad256-independent).
-
-    The official encode and position planes are produced at the TRUE lengths
-    first; the padding only extends the validated arrays (token 0 / position 0
-    / index -1), keeps actual_seq_lengths and pixel_values untouched, and the
-    padded set passes the same shared strict validator.  The floor is one
-    deterministic policy per call -- width = max(min_width, true max) --
-    never a per-case pick.
-    """
-
-    def setUp(self):
-        self.pre = FakePreprocessor()
-        self.config = self.pre.config
-
-    def case(self, rows):
-        return {"id": "pad", "samples": len(rows), "payload": {"rows": rows}}
-
-    def test_short_row_pads_with_true_prefix_bit_identical(self):
-        rows = [{"input_ids": [1, 2, 3, 4, 5]}]
-        true = unified_preprocess.encode_case_rows(self.pre, self.case(rows),
-                                                  min_width=1)
-        padded = unified_preprocess.encode_case_rows(self.pre, self.case(rows),
-                                                    min_width=256)
-        self.assertEqual(padded["input_ids"].shape, (1, 256))
-        self.assertEqual(padded["position_ids"].shape, (3, 1, 256))
-        self.assertEqual(padded["image_feature_index"].shape, (1, 256))
-        # the true prefix is bit-identical, the pad region is 0 / 0 / -1
-        for name, prefix in (("input_ids", 5), ("position_ids", 5),
-                            ("image_feature_index", 5)):
-            self.assertTrue(np.array_equal(padded[name][..., :prefix], true[name]),
-                            name)
-        self.assertTrue((padded["input_ids"][0, 5:] == 0).all())
-        self.assertTrue((padded["position_ids"][:, 0, 5:] == 0).all())
-        self.assertTrue((padded["image_feature_index"][0, 5:] == -1).all())
-        # the true lengths and the pixels are carried over UNTOUCHED
-        self.assertEqual(padded["actual_seq_lengths"].tolist(), [5])
-        self.assertTrue(np.array_equal(padded["pixel_values"], true["pixel_values"]))
-        self.assertTrue(np.array_equal(padded["actual_seq_lengths"],
-                                       true["actual_seq_lengths"]))
-
-    def test_long_row_runs_at_its_true_length(self):
-        long_row = [1 + (i % 90) for i in range(300)]        # in-vocab ids
-        arrays = unified_preprocess.encode_case_rows(
-            self.pre, self.case([{"input_ids": long_row}]), min_width=256)
-        self.assertEqual(arrays["input_ids"].shape, (1, 300))       # NOT 256
-        self.assertEqual(arrays["actual_seq_lengths"].tolist(), [300])
-
-    def test_mixed_batch_width_is_the_deterministic_call_rule(self):
-        rows = [{"input_ids": [1, 2, 3]}, {"input_ids": [1 + (i % 90) for i in range(300)]}]
-        arrays = unified_preprocess.encode_case_rows(self.pre, self.case(rows),
-                                                     min_width=256)
-        self.assertEqual(arrays["input_ids"].shape, (2, 300))       # max(256, 300)
-        self.assertEqual(arrays["actual_seq_lengths"].tolist(), [3, 300])
-        short = unified_preprocess.encode_case_rows(self.pre, self.case(rows[:1]),
-                                                   min_width=256)
-        self.assertEqual(short["input_ids"].shape, (1, 256))
-
-    def test_preprocessor_min_width_is_the_constructor_default(self):
-        pre = unified_preprocess.OfficialPreprocessor.__new__(
-            unified_preprocess.OfficialPreprocessor)
-        pre.model_dir = MODEL_DIR
-        pre._config = self.config
-        pre._tokenizer = None
-        pre._processor = None
-        pre._rope_index = None
-        pre.min_width = 256
-        arrays = pre.build_graph_inputs([{"input_ids": [1, 2]}])
-        self.assertEqual(arrays["input_ids"].shape, (1, 256))
-
-    def test_floor_never_breaks_the_cap(self):
-        with self.assertRaises(ValueError):          # true row beyond the cap still rejected
-            unified_preprocess.encode_case_rows(
-                self.pre, self.case([{"input_ids": [1] * 2049}]), min_width=256)
-        arrays = unified_preprocess.encode_case_rows(         # floor capped by max_seq_len
-            self.pre, self.case([{"input_ids": [1, 2, 3]}]), min_width=256, max_seq_len=100)
-        self.assertEqual(arrays["input_ids"].shape, (1, 100))
-
-    def test_bad_floor_rejected(self):
-        for bad in (0, -1, 2.5, "256", True, None):
-            with self.assertRaises(ValueError):
-                unified_preprocess.pad_graph_inputs(
-                    {"input_ids": np.zeros((1, 3), dtype=np.int64)}, self.config,
-                    min_width=bad)
+    def test_row_beyond_the_cap_rejected(self):
+        with self.assertRaises(ValueError):
+            self.encode([{"input_ids": [1] * 2049}])
 
 
 class TestSharedRopeProvider(unittest.TestCase):

@@ -2,19 +2,18 @@
 
 The export stage of the standalone shell flow
 (docs/standalone-runtime-plan.md): loads model.py's composed wrapper, exports
-the ONE dynamic AIR through TorchAir exactly the way the validated framework
-exporter does (core.exporters.torchair.export -- the bind_input identity
-markers, the Data-node re-partition, the dynamic/static axis pinning, the
-frozen-parameter + specialize_float dynamo context -- migrated here with no
-``core`` imports), embeds the IO contract into the AIR through the runtime's
-``write_io`` mode, and generates both execution requests automatically:
+the ONE dynamic AIR through TorchAir (the bind_input identity markers, the
+Data-node re-partition, the dynamic/static axis pinning, the frozen-parameter +
+specialize_float dynamo context -- no ``core`` imports), embeds the IO contract
+into the AIR through the runtime's ``write_io`` mode, and generates both
+execution requests automatically:
 
 * ``work/infer/request.json``  -- mode infer, the full precision pool
   (all official example cases), one execution per case;
-* ``work/bench/request.json``  -- mode bench, the formal-11 bench pool,
-  single instance, warmup 32 (per-instance preheat requests, not consumed
-  from the measurement sequence), 2048 total measured requests, seed 42
-  (all passed in by run.sh's fixed top-of-file parameters).
+* ``work/bench/request.json``  -- mode bench, the bench pool, with the
+  instance / warmup / iterations / seed parameters run.sh passes in (warmup
+  requests are per-instance preheat, not consumed from the measurement
+  sequence).
 
 Node names, order and dtypes are taken from the ACTUAL export result
 (parse_bindings on the emitted pbtxt), never hand-written.  The graph IO is
@@ -30,8 +29,7 @@ default precision policy is never relied upon.
 
 NOTE: no `from __future__ import annotations` here on purpose -- PEP 563 would
 keep the bind_input custom-op annotations as strings that torch's
-infer_schema cannot resolve in this nested-scope export path (the validated
-framework exporter has none either).
+infer_schema cannot resolve in this nested-scope export path.
 """
 import argparse
 import importlib.util
@@ -68,13 +66,13 @@ def _load_module(name, filename):
 
 
 def _activate_proto():
-    """Explicit local loading of the compat prototype (the accepted contract).
+    """Explicit local loading of the compat prototype.
 
     The activator dlopens the installed .so with RTLD_GLOBAL so this process's
     dynamo_export registers the real REG_OP, and arms LD_PRELOAD for the
-    ge_runtime subprocesses spawned here.  Auto vendor loading was rejected
-    (SIGSEGV/SIGILL under the formal environment); double registration is
-    avoided because the activator deduplicates.
+    ge_runtime subprocesses spawned here.  Auto vendor loading via
+    ASCEND_CUSTOM_OPP_PATH is not used: it reproducibly crashes GE
+    initialization with SIGSEGV/SIGILL on this build.
     """
     python_dir = PROTO_INSTALL / "python"
     if not python_dir.is_dir():
@@ -148,7 +146,7 @@ def _reorder_data_nodes_first():
     ops and erases real input Data nodes. Root Data nodes have no inputs, so
     moving them to the front ordered by their index attribute is topologically
     equivalent and restores the position<->input alignment the bake assumes.
-    Static exports are a no-op.  (Migrated from the validated exporter.)
+    Static exports are a no-op.
     """
     from torchair.ge._ge_graph import get_default_ge_graph
     ops = get_default_ge_graph().op
@@ -199,8 +197,10 @@ def parse_bindings(pbtxt):
     return sorted(result)
 
 
-def _example_values(torch, io, examples):
+def _example_values(io, examples):
     """Strictly validated tracing examples, ordered like the IOSpec inputs."""
+    import torch
+
     if not isinstance(examples, dict):
         raise ValueError("example_inputs must map logical input names to tensors")
     expected = {node["name"]: node for node in io["inputs"]}
@@ -234,7 +234,8 @@ def _example_values(torch, io, examples):
 
 
 def export_torchair(spec, directory):
-    """The validated TorchAir export path, migrated from the framework exporter."""
+    """Export ``spec`` to a TorchAir AIR under ``directory``; returns
+    (graph, io) with io's inputs carrying the real exported node names."""
     import torch
     import torch_npu  # noqa: F401  (the NPU backend must be initialized)
     from torch_npu.dynamo.torchair import dynamo_export, CompilerConfig
@@ -272,7 +273,7 @@ def export_torchair(spec, directory):
             bound = [bind_input(x, name) for x, name in zip(args, names)]
             return self.model(*bound)
 
-    values = _example_values(torch, io, spec["example_inputs"])
+    values = _example_values(io, spec["example_inputs"])
     for node, value in zip(io["inputs"], values):
         # dynamic=True symbolizes every UNMARKED axis as well, so axes the
         # IOSpec declares static (position_ids leading 3, pixel_values
@@ -307,7 +308,7 @@ def export_torchair(spec, directory):
         raise RuntimeError("TorchAir did not generate AIR")
     bindings = parse_bindings(Path(directory) / "dynamo.pbtxt")
     if [x[0] for x in bindings] != list(range(len(names))) \
-            or {x[1] for x in bindings} != set(names) or len(bindings) != len(names):
+            or {x[1] for x in bindings} != set(names):
         raise ValueError(f"non-bijective graph input binding: {bindings}")
     by_name = {x["name"]: x for x in io["inputs"]}
     io["inputs"] = [dict(by_name[name], node=node) for _, name, node in bindings]
@@ -319,18 +320,18 @@ def export_torchair(spec, directory):
 
 def build_request(mode, graph, io, records, case_ids, inputs_file, output_dir, device,
                   instances, warmup, iterations, seed):
-    selected = [record for record in records if record["id"] in set(case_ids)]
-    if len(selected) != len(case_ids):
-        missing = [case_id for case_id in case_ids
-                   if case_id not in {record["id"] for record in selected}]
-        raise SystemExit(f"export_air: records.json misses pool cases {missing}")
+    wanted = set(case_ids)
+    selected = [record for record in records if record["id"] in wanted]
+    missing = wanted - {record["id"] for record in selected}
+    if missing:
+        raise SystemExit(f"export_air: records.json misses pool cases {sorted(missing)}")
     output_dir.mkdir(parents=True, exist_ok=True)
     return {"mode": mode, "backend": "ge_session",
             "graph": {"format": "air", "path": graph["path"], "om_path": None},
             "io": io,
             "inputs": {"file": inputs_file, "cases": selected},
-            "device": int(device), "instances": int(instances),
-            "warmup": int(warmup), "iterations": int(iterations), "seed": int(seed),
+            "device": device, "instances": instances,
+            "warmup": warmup, "iterations": iterations, "seed": seed,
             "options": {"graph_run_mode": 0, "precision_mode": "must_keep_origin_dtype"},
             "observability": {"profiling": False, "dump": False},
             "output_dir": str(output_dir.resolve())}
@@ -349,8 +350,8 @@ def main():
 
     _activate_proto()
     model = _load_module("startlux_model_for_export", "model/model.py")
-    unified, report = model.load(args.device)
-    spec = model.export_example(unified, report, args.device)
+    unified, _placement = model.load(args.device)
+    spec = model.export_example(unified, args.device)
 
     BUILD.mkdir(parents=True, exist_ok=True)
     air = BUILD / "model.air"
@@ -360,7 +361,7 @@ def main():
 
     embedded = _ge_call({"mode": "write_io",
                          "graph": {"format": "air", "path": graph["path"]},
-                         "io": _validate_io(io)})["io"]
+                         "io": io})["io"]
     _validate_io(embedded)
 
     records_doc = json.loads((INPUTS / "records.json").read_text())

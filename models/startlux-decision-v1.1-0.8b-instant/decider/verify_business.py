@@ -1,11 +1,9 @@
 """Standalone business probability gate for the StartLux unified route.
 
 The business stage of the standalone shell flow
-(docs/standalone-runtime-plan.md): the migration of the validated unified
-business verifier (unified_verify.py, the P7-accepted gate with the same
-thresholds as the text-route verifier).  Pure CPU NumPy: no weights, no HF
-forward, no NPU, no ``core``.  It runs AFTER the numeric comparison and reads
-exactly four independent sources:
+(docs/standalone-runtime-plan.md).  Pure CPU NumPy: no weights, no HF forward,
+no NPU, no ``core``.  It runs AFTER the numeric comparison and reads exactly
+four independent sources:
 
 * ``STARTLUX_MODEL_DIR/decision_config.json`` -- the REAL model folder's 26
   letter ids and per-type temperatures (never fixture provenance);
@@ -16,22 +14,20 @@ exactly four independent sources:
   outputs.bin);
 * ``work/infer`` -- the GE candidate result (result.json + outputs.bin).
 
-Gate per business row, with the accepted thresholds (softmax over the K ACTIVE
-columns only, selected by token id, at the question type's official
-temperature):
+Gate per business row (softmax over the K ACTIVE columns only, selected by
+token id, at the question type's official temperature):
 
-  * max |p_cand - p_golden| <= 0.01;
-  * when the reference top1-top2 probability margin > 0.02, the candidate
-    top1 must agree;
+  * max |p_cand - p_golden| <= PROB_MAX_ABS_MAX;
+  * when the reference top1-top2 probability margin > TOP1_MARGIN_TRIGGER, the
+    candidate top1 must agree;
   * all 26 scores finite.
 
-Cases flagged ``business: false`` in the case index (non-business boundary
-case: a shape-coverage row without business semantics) are listed explicitly
-in the report as numeric-gate-only -- never silently passed here; they are
-fully gated by the numeric comparison stage that must run first.  Failures
-are loud: unknown case ids, missing golden rows, missing or misaligned
-rows_meta, invalid temperatures, unknown letter token ids and nonfinite
-values FAIL with an explicit reason.
+Cases flagged ``business: false`` in the case index are listed explicitly in the
+report as numeric-gate-only -- never silently passed here; they are fully gated
+by the numeric comparison stage that must run first.  Failures are loud:
+unknown case ids, missing golden rows, missing or misaligned rows_meta, invalid
+temperatures, unknown letter token ids and nonfinite values FAIL with an
+explicit reason.
 
 Writes work/infer/business.json; exit code 0 only when every business row
 passes.  A failure blocks the performance stage (run.sh runs under set -e).
@@ -53,8 +49,8 @@ GOLDEN = WORK / "golden"
 
 OUTPUT_NAME = "scores"
 N_COLUMNS = 26
-PROB_MAX_ABS_MAX = 0.01                     # the accepted policy
-TOP1_MARGIN_TRIGGER = 0.02                   # the accepted policy
+PROB_MAX_ABS_MAX = 0.01                     # max |p_candidate - p_golden| per row
+TOP1_MARGIN_TRIGGER = 0.02                   # reference margin above which top1 must agree
 
 
 def _softmax(values):
@@ -130,10 +126,14 @@ def _row_report(case_id, row_index, candidate, reference, meta, letters, tempera
     candidate_probs = _softmax(candidate[active] / temperature)
     prob_max_abs = float(np.abs(candidate_probs - reference_probs).max())
     order = np.argsort(-reference_probs, kind="stable")
+    # a single active option has no top1-top2 gap to speak of; report margin 1.0
+    # so the trigger fires and the (trivially equal) argmax comparison still runs
     margin = 1.0 if len(active) == 1 else float(reference_probs[order[0]]
                                                 - reference_probs[order[1]])
-    top1_consistent = True if len(active) == 1 else None
-    if top1_consistent is None and margin > TOP1_MARGIN_TRIGGER:
+    # None in the report means "not evaluated": the reference margin was too
+    # small to make a top1 disagreement meaningful
+    top1_consistent = None
+    if margin > TOP1_MARGIN_TRIGGER:
         top1_consistent = bool(np.argmax(candidate_probs) == np.argmax(reference_probs))
     failures = []
     if prob_max_abs > PROB_MAX_ABS_MAX:

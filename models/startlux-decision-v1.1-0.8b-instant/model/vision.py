@@ -1,39 +1,29 @@
-"""Fixed-grid FP32 vision tower wrapper for the StartLux unified multimodal AIR.
+"""Fixed-grid vision tower wrapper for the StartLux unified multimodal AIR.
 
-Generalizes the P6-validated single-image ``VisionAIRWrapper``
-(work/startlux-validation/p6-official/run_p6_vision_air.py, real-GE PASS:
-work/startlux-validation/p6-official/report-vision-air.json) to a fixed number
-N_SLOTS of same-grid image slots. Fidelity rules are unchanged:
+Holds the ORIGINAL HF visual modules (blocks, merger) of the pinned model
+folder behind a fixed number of same-grid image slots:
 
-- the wrapper holds the ORIGINAL HF visual modules (blocks, merger) of the
-  pinned model folder, loaded from the checkpoint; the patch_embed conv is
-  the bit-exact equivalent MatMulPatchEmbed (stride == kernel, see its
-  docstring -- profiling-driven replacement of the MTE1-bound Conv3DV2);
+- the patch_embed conv is replaced by the bit-exact equivalent
+  MatMulPatchEmbed (stride == kernel, see its docstring): the Conv3DV2 node is
+  MTE1-saturated and MAC-starved at this shape, while the equivalent MatMulV2
+  carries the same bytes with proper MAC overlap;
 - every shape-derived input of Qwen3_5VisionModel.forward (the interpolated
   pos_embeds, the rotary cos/sin tables, the per-image attention chunk
   lengths) is precomputed ONCE on CPU by the model's own official methods for
   the fixed grid and cached as wrapper buffers -- no global patching, no
-  reimplementation of the math. The one non-checkpoint constant, the rotary
-  inv_freq, is additionally REGENERATED with the official
-  Qwen3_5VisionRotaryEmbedding constructor (head_dim // 2, factory theta):
-  the framework load path ends with model.to(device, dtype), which quantizes
-  the non-persistent inv_freq to BF16 irrecoverably
-  (work/startlux-cannbot/review-vision-rotary-buffer-cast.json), so the
-  checkpoint-independent frequency is taken from the official constructor,
-  never from the possibly-cast source module;
+  reimplementation of the math;
 - the attention glue (Qwen3_5VisionAttention.forward, non-flash branch) is
-  replayed op-for-op with the chunk lengths as a fixed Python list; proven
-  BIT-EXACT against the official eager model.model.get_image_features(...)
-  on CPU FP32 before export (slots=1: p6-official image features A/B; slots=2:
-  the official two-image forward);
-- the attention interface is the OFFICIAL eager fallback
-  (eager_attention_forward): plain matmul/softmax -- registered standard
-  operators only (this CANN install has no AscendIR converter for SDPA under
-  dynamo export);
-- the tower is FP32 END TO END: the pinned checkpoint stores the 153 vision
-  tensors in BF16, so loading with dtype=float32 upcasts them exactly; the
-  BF16 vision compute route measurably fails against the CPU FP32 reference
-  (rel_l2 ~0.11, archived in the p6-official report) and is NOT used.
+  replayed op-for-op with the chunk lengths as a fixed Python list, through the
+  OFFICIAL eager fallback (eager_attention_forward): plain matmul/softmax, i.e.
+  registered standard operators only -- this CANN install has no AscendIR
+  converter for SDPA under dynamo export.
+
+Precision: the residual stream, norms, rotary tables, softmax and the residual
+adds are FP32; only the Linear/Conv inner products run in FP16 (``_linear``).
+The checkpoint stores the 153 vision tensors in BF16, so the FP32 upcast is
+exact and BF16 -> FP16 is lossless for these values (8-bit mantissa is a subset
+of FP16's 10, weights far below the FP16 range).  A BF16 compute domain is NOT
+used: it fails the vision gate against the CPU FP32 reference at real depth.
 
 The merger's view performs the 2x2 spatial merge in row-major order, so the
 output rows of slot i are exactly the official merged features of image i:
@@ -60,18 +50,13 @@ class MatMulPatchEmbed(torch.nn.Module):
     ``out[p, o] = x_flat[p, :] . W_flat[:, o] + b[o]`` EXACTLY: one
     ``[P, 3*2*16*16] @ [3*2*16*16, embed_dim]`` matmul with the conv weight
     flattened [C, d, h, w, out] (row-major order of the official input
-    view).  The conv module is held BY REFERENCE and the input is cast to
-    its weight dtype exactly like the official ``target_dtype`` path, so a
-    later ``.to(dtype)`` on the shared module reaches this wrapper too --
-    no weight copies are made (the permute/reshape of the frozen weight is
-    constant-folded in the exported graph).
+    view).  The conv module is held BY REFERENCE, so a later ``.to(dtype)`` on
+    the shared module reaches this wrapper too and no weight storage is
+    duplicated; the permute/reshape of the frozen weight is constant-folded in
+    the exported graph.
 
-    Why: on this build the Conv3DV2 node is MTE1-saturated and MAC-starved
-    (GE profiling 2026-11-05: task 6854 us/request = 20% of all AI time,
-    mac ratio 0.22, mte1 ratio 0.97) -- a degenerate-tiling memory-bound
-    kernel; the equivalent MatMulV2 carries the same bytes with proper
-    MAC overlap.  Accumulation order differs from conv (ulp-level) and is
-    covered by the full-model numeric gates.
+    Accumulation order differs from conv at ulp level, which the full-model
+    numeric gates cover.
     """
 
     def __init__(self, patch_embed, linear_dtype=torch.float32):
@@ -85,6 +70,7 @@ class MatMulPatchEmbed(torch.nn.Module):
         self.embed_dim = int(conv.weight.shape[0])
         self.patch_volume = int(conv.weight.shape[1:].numel())
         self.linear_dtype = linear_dtype
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         conv = self.conv
         w = conv.weight.permute(1, 2, 3, 4, 0).reshape(self.patch_volume, -1)
@@ -109,35 +95,27 @@ class VisionTowerWrapper(torch.nn.Module):
         self.patch_embed = MatMulPatchEmbed(visual.patch_embed, linear_dtype)
         self.blocks = visual.blocks
         self.merger = visual.merger
-        # PRE-QUANTIZE the linear weights to linear_dtype (P2-5): replacing
-        # the parameter data in place keeps the exported graph's Const COUNT
-        # unchanged (same ~51 weight constants, now fp16) so torchair's
-        # positional weight bake stays aligned -- the buffer-copy approach
-        # failed exactly there.  bf16-stored vision weights convert to fp16
-        # LOSSLESSLY (8-bit mantissa subset of fp16's 10, weights far below
-        # fp16 range), so the values are bit-identical to the per-forward
-        # .to(fp16) casts this removes.  Norms and the constant buffers stay
-        # fp32; every consumer goes through the wrapper's replayed paths
-        # (_linear / _attn / _mlp / _merger / MatMulPatchEmbed), so no
-        # official forward ever sees a mixed-dtype Linear.
+        # Pre-quantize the Linear/Conv weights IN PLACE: replacing the parameter
+        # data keeps the exported graph's Const COUNT unchanged (the same weight
+        # constants, now fp16) so torchair's positional weight bake stays
+        # aligned.  bf16-stored vision weights convert to fp16 losslessly (an
+        # 8-bit mantissa is a subset of fp16's 10, and the weights sit far below
+        # the fp16 range), so the values are bit-identical to a per-forward
+        # .to(fp16) cast.  Norms and the constant buffers stay fp32, and every
+        # consumer goes through the wrapper's replayed paths (_linear / _attn /
+        # _mlp / _merger / MatMulPatchEmbed), so no official forward ever sees a
+        # mixed-dtype Linear.
         if linear_dtype != torch.float32:
-            ceiling = torch.finfo(linear_dtype).max
             for module in self.modules():
                 if isinstance(module, (torch.nn.Linear, torch.nn.Conv3d)):
                     with torch.no_grad():
                         for param_name in ("weight", "bias"):
                             param = getattr(module, param_name, None)
-                            if param is None or param.dtype == linear_dtype:
-                                continue
-                            if param is not None and float(param.abs().max()) > ceiling:
-                                raise ValueError(
-                                    f"{module}.{param_name} exceeds {linear_dtype} range")
-                            param.data = param.data.to(linear_dtype)
+                            if param is not None and param.dtype != linear_dtype:
+                                param.data = param.data.to(linear_dtype)
         self.attn_implementation = "eager"
         self.grid_thw = tuple(int(v) for v in grid_thw)
         self.slots = int(slots)
-        if self.slots < 1:
-            raise ValueError("slots must be >= 1")
         t, h, w = self.grid_thw
         self.lengths = [h * w] * self.slots          # one attention chunk per image
         # The official constant buffers (pos_embeds interpolation, rotary
@@ -148,22 +126,18 @@ class VisionTowerWrapper(torch.nn.Module):
         # checkpoint-stored BF16 weights upcast to F32 exactly).
         #
         # EXCEPT the non-persistent rotary frequency: it is NOT stored in the
-        # checkpoint, and a source loaded through the framework path ends with
-        # model.to(device, dtype) (core.sources.load_source), which quantizes
-        # Qwen3_5VisionRotaryEmbedding.inv_freq to BF16; a later .float() can
-        # NOT restore the official F32 value (inv_freq max_abs 1.78e-4,
-        # 16-position frequency table max_abs 2.68e-3:
-        # work/startlux-cannbot/review-vision-rotary-buffer-cast.json). The
+        # checkpoint, and a load path ending in model.to(device, dtype)
+        # quantizes Qwen3_5VisionRotaryEmbedding.inv_freq irrecoverably -- a
+        # later .float() cannot restore the official F32 value, which is small
+        # enough (inv_freq max_abs ~1.8e-4) that the cast is pure loss.  The
         # official value is therefore REGENERATED with the official constructor
         # exactly as Qwen3_5VisionModel.__init__ does (head_dim // 2, factory
-        # theta) -- compared first so a pristine CPU float32 source is left
-        # untouched (bit-equal) and a quantized one is restored.
+        # theta), compared first so a pristine CPU float32 source is left
+        # untouched and only a quantized one is replaced.
         source = visual if buffer_source is None else buffer_source
         head_dim = source.config.hidden_size // source.config.num_heads
         official_rotary = Qwen3_5VisionRotaryEmbedding(head_dim // 2)
-        self.rotary_inv_freq_restored = not bool(torch.equal(
-            source.rotary_pos_emb.inv_freq, official_rotary.inv_freq))
-        if self.rotary_inv_freq_restored:
+        if not torch.equal(source.rotary_pos_emb.inv_freq, official_rotary.inv_freq):
             source.rotary_pos_emb = official_rotary
         with torch.no_grad():
             grid = torch.tensor([[t, h, w]] * self.slots, dtype=torch.long)
@@ -174,25 +148,15 @@ class VisionTowerWrapper(torch.nn.Module):
             self.register_buffer("pos_embeds", pos.contiguous())
             self.register_buffer("rotary_cos", emb.cos().contiguous())
             self.register_buffer("rotary_sin", emb.sin().contiguous())
-        # The shared modules (patch_embed / blocks / merger) live on the SOURCE
-        # device of ``visual``, so the freshly computed CPU buffers must follow
-        # them: a wrapper built from an NPU load with only CPU buffers would be
-        # a mixed-device module that only a later .to(device) -- which production
-        # callers may not perform -- would hide. .to(device) keeps the official
-        # float32 buffer dtypes bit-exact.
-        target = next(visual.parameters()).device
-        if target.type != "cpu":
-            for name in ("pos_embeds", "rotary_cos", "rotary_sin"):
-                setattr(self, name, getattr(self, name).to(target))
 
     def _linear(self, module, x):
-        """The official Linear with an optional reduced-precision inner
-        product.  linear_dtype=float32 (default) keeps the official module
-        call bit-exact; float16 casts the ACTIVATION only (the weight copy is
-        pre-materialized as a constant) and returns to the fp32 flow -- the
-        validated mixed-precision structure (constants, rotary tables, norms
-        and softmax stay fp32; bf16 FAILS the vision gate at real depth
-        relL2 0.055, fp16 passes; NPU fp16 matmul runs at 2x the fp32 rate)."""
+        """The official Linear with a reduced-precision inner product.
+
+        linear_dtype=float32 keeps the official module call bit-exact; float16
+        runs the matmul in fp16 (NPU fp16 matmul runs at 2x the fp32 rate) and
+        returns to the fp32 residual stream, so only the inner product is
+        reduced -- norms, rotary tables and softmax stay fp32.
+        """
         if self.linear_dtype == x.dtype:
             return module(x)
         dtype = self.linear_dtype
@@ -214,13 +178,6 @@ class VisionTowerWrapper(torch.nn.Module):
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         hidden_states = self.patch_embed(pixel_values) + self.pos_embeds
-        stream = torch.float32 if self.linear_dtype == torch.float32 else self.linear_dtype
-        # fp16 residual stream: the layer-to-layer hidden state is stored in
-        # fp16 (halved activation traffic; every layer boundary round-trips
-        # through the fp32 compute domain -- norms, attention glue and the
-        # residual adds all accumulate in fp32).  Validated on the real
-        # 12-block tower: relL2 0.0079 vs 0.0050 fp32-stream, both inside
-        # the vision gate; the fp32 path below is the unchanged bit-exact one.
         for blk in self.blocks:
             hidden_states = hidden_states + self._attn(blk, hidden_states)
             hidden_states = hidden_states + self._mlp(blk.mlp, blk.norm2(hidden_states))

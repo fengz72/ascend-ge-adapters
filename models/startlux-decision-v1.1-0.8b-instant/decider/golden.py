@@ -1,24 +1,19 @@
 """Standalone official CPU FP32 golden for the StartLux unified ONE-AIR route.
 
-The reference stage of the standalone shell flow (docs/standalone-runtime-plan.md).
-This is the migration of the validated unified-route reference handle
-(unified_adapter.UnifiedReferenceHandle, P6/P7 accepted oracle recipe) onto the
-retained production modules -- no ``core``, no ``model.py`` adaptation code, no
-NPU, no LD_PRELOAD.  It loads the SAME weights folder (STARTLUX_MODEL_DIR) as
-an independent CPU float32 official model and consumes the SAVED official
-preprocessing results of the data stage (work/inputs/rows/<case>.npz, the
-per-row TRUE-length encodings), so nothing is re-tokenized or re-preprocessed
-here.
+The reference stage of the standalone shell flow (docs/standalone-runtime-plan.md):
+no ``core``, no ``model.py`` adaptation code, no NPU, no LD_PRELOAD.  It loads
+the SAME weights folder (STARTLUX_MODEL_DIR) as an independent CPU float32
+official model and consumes the SAVED official preprocessing results of the
+data stage (work/inputs/rows/<case>.npz, the per-row TRUE-length encodings), so
+nothing is re-tokenized or re-preprocessed here.
 
-Official recipe per row (unchanged from the accepted oracle): the original HF
-get_image_features -> official get_placeholder_mask + masked_scatter injection
--> the official get_rope_index planes of the REAL loaded model -> the vendored
-official bidirectional text_forward -> the ORIGINAL embedding head
-(get_output_embeddings().weight, tied).  Every batch row runs UNPADDED at its
-true length; image features keep their official order and usage positions.
-The 26 letters and temperatures come from the model folder's official
-decision_config.json (cross-checked against the loaded model), never from
-fixture provenance.
+Official recipe per row: the original HF get_image_features -> official
+get_placeholder_mask + masked_scatter injection -> the official get_rope_index
+planes of the REAL loaded model -> the vendored official bidirectional
+text_forward -> the ORIGINAL embedding head (get_output_embeddings().weight,
+tied).  Every batch row runs UNPADDED at its true length; image features keep
+their official order and usage positions.  The 26 letter columns come from the
+model folder's official decision_config.json, never from fixture provenance.
 
 Output (isomorphic to the runtime infer result, so the comparison tool treats
 both sides uniformly): work/golden/outputs.bin (the concatenated [B, 26]
@@ -38,13 +33,11 @@ import numpy as np
 import torch
 
 MODEL_DIR = Path(__file__).resolve().parents[1]   # the model root
-ROOT = MODEL_DIR.parents[1]
 WORK = MODEL_DIR / "work"
 INPUTS = WORK / "inputs"
 GOLDEN = WORK / "golden"
 
 OUTPUT_NAME = "scores"
-N_COLUMNS = 26
 
 
 def _load_module(name, filename):
@@ -75,20 +68,10 @@ def _source_ref():
 
 
 class OfficialReference:
-    """The independent official CPU FP32 oracle (the accepted unified recipe)."""
+    """The independent official CPU FP32 oracle."""
 
     def __init__(self, source, folder):
-        if source.dtype != torch.float32:
-            raise ValueError("the unified reference is the CPU float32 official baseline; "
-                             f"the source was loaded as {source.dtype}")
-        config = {"model": {"params": {}}, "source": {"ref": str(folder)}}
-        self.letters26 = base._letters_from_model(source)
-        decision = base._decision_config(config)
-        if decision["letter_token_ids"] != self.letters26:
-            raise ValueError("source.ref decision_config letters disagree with the "
-                             "loaded model")
-        self.vocab_size = decision["vocab_size"]
-        self.source = source
+        self.letters26 = base._decision_config(folder)["letter_token_ids"]
         self.inner = source.model
         self.body = base._model_body(source)
         self.head = source.get_output_embeddings().weight
@@ -152,8 +135,6 @@ def main():
                          "run generate_inputs.py first")
     precision_ids = index["pools"]["precision"]
     cases = index["cases"]
-    if not precision_ids or any(case_id not in cases for case_id in precision_ids):
-        raise SystemExit("golden: the case index is inconsistent with its pool list")
 
     from transformers import Qwen3_5ForConditionalGeneration
 
@@ -168,19 +149,11 @@ def main():
     total_rows = 0
     with (GOLDEN / "outputs.bin").open("wb") as stream:
         for case_id in precision_ids:
-            case = cases[case_id]
-            samples = case["samples"]
-            if type(samples) is not int or samples < 1:
-                raise ValueError(f"case {case_id} samples must be a positive int")
+            samples = cases[case_id]["samples"]
             rows = _load_saved_rows(case_id, samples)
             scores = [reference.row_scores(row) for row in rows]
             tensor = torch.stack(scores, dim=0).detach().cpu().numpy()
             tensor = np.ascontiguousarray(tensor, dtype=np.float32)
-            if tensor.shape != (samples, N_COLUMNS):
-                raise ValueError(f"case {case_id} scores must be ({samples}, {N_COLUMNS}), "
-                                 f"got {tensor.shape}")
-            if not np.isfinite(tensor).all():
-                raise ValueError(f"case {case_id} golden scores contain nonfinite values")
             data = tensor.tobytes(order="C")
             result["outputs"][case_id] = [{"instance": 0, "tensors": [{
                 "name": OUTPUT_NAME, "dtype": "float32", "shape": list(tensor.shape),

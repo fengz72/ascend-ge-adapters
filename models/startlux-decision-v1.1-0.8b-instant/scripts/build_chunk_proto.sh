@@ -1,25 +1,24 @@
 #!/usr/bin/env bash
 # Build the StartLux ChunkGatedDeltaRule GE prototype (project-built compat,
 # non-official) and install the explicit local-loading dependency layout.
-# Invoked by core.dependencies.prepare with:
+# Invoked by prepare.sh with:
 #   GE_SRC_DIR    = models/startlux-decision-v1.1-0.8b-instant/native_proto
-#   GE_BUILD_DIR  = <work_dir>/dependencies/<id>/build
-#   GE_INSTALL_DIR= <work_dir>/dependencies/<id>/install
+#   GE_BUILD_DIR  = <model>/work/deps/<id>/build
+#   GE_INSTALL_DIR= <model>/work/deps/<id>/install
 # No system paths are written; everything lands inside GE_INSTALL_DIR.
 #
 # Loading contract (explicit project-local loading; auto vendor loading via
-# ASCEND_CUSTOM_OPP_PATH was investigated and REJECTED for this build: the
-# formal core.dependencies.environment reproducibly crashes GE init with
-# SIGSEGV/SIGILL, see work/startlux-cannbot/review-native-env-failure.md).
-# Therefore this script installs only:
+# ASCEND_CUSTOM_OPP_PATH was investigated and REJECTED for this build: it
+# reproducibly crashes GE init with SIGSEGV/SIGILL).  Therefore this script
+# installs only:
 #   install/lib/libchunk_gated_delta_rule_compat_proto.so  (the unique library)
 #   install/python/chunk_gated_delta_rule_proto.py         (activator module)
 #   install/dependency.info                                (identity record)
 # No opp/ tree is installed or exported, so GEInitialize never auto-loads it.
 # Consumers load it explicitly:
-#   - python activator (python_imports): ctypes dlopen RTLD_GLOBAL in-process
-#     for dynamo_export, plus task-level LD_PRELOAD for native subprocesses;
-#   - scripts/env_chunk_proto.sh <work_dir>: shell-level LD_PRELOAD export.
+#   - python activator: ctypes dlopen RTLD_GLOBAL in-process for dynamo_export,
+#     plus task-level LD_PRELOAD for native subprocesses;
+#   - run.sh: LD_PRELOAD injected into the export / infer / bench subprocesses.
 set -euo pipefail
 : "${GE_SRC_DIR:?configured dependency source is required}"
 : "${GE_BUILD_DIR:?}"

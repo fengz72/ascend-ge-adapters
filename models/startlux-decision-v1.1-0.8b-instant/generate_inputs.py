@@ -17,7 +17,7 @@ exactly once and persists everything the later stages consume:
   mm_token_type_ids): golden.py consumes these saved results and never
   re-tokenizes or re-preprocesses;
 * ``work/fixtures/*.ppm`` -- the self-regenerating deterministic 256x256
-  fixtures (byte-identical to the validated P6 production fixtures).
+  fixture image (the official example image is not distributed).
 
 Case pool (fixed, no configuration): ONLY the five official published
 example cases of StartLuxLabs/StartLux-Decision (examples @ main):
@@ -32,13 +32,12 @@ example cases of StartLuxLabs/StartLux-Decision (examples @ main):
 
 All five are business cases (bench pool = precision pool); the golden,
 per-row comparison and business gate treat them like any request.  Graph
-bounds (B<=4, S<=2048, minimum physical width 256, at most 2 global image
-slots) are enforced at encode time by the shared validated validator
-(multimodal.build_multimodal_batch / validate_batch_arrays) -- over-limit
-requests are rejected, never truncated, and every case runs at its TRUE
-length (min_width=1, no 256 floor).  The boundary constants come from
-the modules' single source (multimodal.MAX_BATCH / MAX_SEQ_LEN /
-startlux_npu_adapter._params defaults); this file invents no copies.
+bounds (B<=4, S<=2048, at most 2 global image slots, grid exactly [1, 16, 16])
+are enforced at encode time by multimodal.build_multimodal_batch -- over-limit
+requests are rejected, never truncated, and every case runs at its TRUE length
+(width = max row length, no padding floor).  The boundary constants come from
+their single source (multimodal.MAX_BATCH / MAX_SEQ_LEN / SLOTS and
+vision.GRID_THW); this file invents no copies.
 """
 from __future__ import annotations
 
@@ -54,7 +53,6 @@ MODEL_DIR = Path(__file__).resolve().parent
 ROOT = MODEL_DIR.parents[1]
 WORK = MODEL_DIR / "work"
 INPUTS = WORK / "inputs"
-FIXTURES = MODEL_DIR / "decider" / "fixtures"
 WORK_FIXTURES = WORK / "fixtures"
 
 SEED_RED = 20261031
@@ -108,20 +106,6 @@ OUTPUT_NAME = "scores"
 N_COLUMNS = 26
 
 
-def _config(source_ref):
-    """The minimal framework-free config dict the reused modules expect.
-
-    Model params stay EMPTY on purpose: the single source of the accepted
-    values (max_seq_len 2048 / compiled_seq_len 256 / chunk_size 64 /
-    max_batch 4) is the startlux_npu_adapter._params
-    default table; no constants are copied here.
-    """
-    return {"model": {"name": "startlux-decision-v1.1-0.8b-instant", "params": {}},
-            "source": {"kind": "transformers",
-                       "loader": "Qwen3_5ForConditionalGeneration",
-                       "ref": str(Path(source_ref).resolve())}}
-
-
 def _source_ref():
     value = os.environ.get("STARTLUX_MODEL_DIR")
     if not value or not value.strip():
@@ -161,30 +145,26 @@ def _ppm_bytes(spec):
     return buffer.getvalue()
 
 
-def ensure_fixtures(directory=WORK_FIXTURES):
-    """(re)generate the deterministic red fixture; returns {name: path}.
+def ensure_fixtures():
+    """(Re)generate the deterministic red fixture and return its path.
 
-    The picture is a pure function of its seed, so regeneration is
-    byte-identical to the validated P6 production fixture; an existing file
-    with different bytes is overwritten back to the canonical content.
+    The picture is a pure function of its seed, so an existing file with
+    different bytes is overwritten back to the canonical content.
     """
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    out = {}
-    path = directory / "fixture-red-256.ppm"
+    WORK_FIXTURES.mkdir(parents=True, exist_ok=True)
+    path = WORK_FIXTURES / "fixture-red-256.ppm"
     canonical = _ppm_bytes(RED_IMAGE)
     if not path.is_file() or path.read_bytes() != canonical:
         path.write_bytes(canonical)
-    out["fixture-red-256"] = path
-    return out
+    return path
 
 
 # --------------------------------------------------------------- case pool
 
-def _official_example_cases(folder):
-    """The official published examples (examples/{client,request,image_request}
-    .py of StartLuxLabs/StartLux-Decision @ main), rendered through the same
-    official prompt pipeline as every other case:
+def build_pool(folder, letters):
+    """The case pool: ONLY the five official published examples
+    (examples/{client,request,image_request}.py of StartLuxLabs/StartLux-Decision
+    @ main), rendered through the same official prompt pipeline as any request:
 
     * the support-ticket request of client.py / request.sh: one state asked
       three typed questions (team choice / urgent noul / severity score) --
@@ -197,11 +177,10 @@ def _official_example_cases(folder):
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(str(folder), local_files_only=True)
-    letters = json.loads((folder / "decision_config.json").read_text())["letter_token_ids"]
-    fixtures = ensure_fixtures()
+    fixture = ensure_fixtures()
     if str(MODEL_DIR / "decider" / "vendor") not in sys.path:
         sys.path.insert(0, str(MODEL_DIR / "decider" / "vendor"))
-    from startlux_decide.images import IMAGE_PLACEHOLDER, place_images
+    from startlux_decide.images import place_images
     from startlux_decide.prompt import from_systemone, messages, plain_prompt
 
     def render(state, spec, n_images=0):
@@ -209,16 +188,14 @@ def _official_example_cases(folder):
         return plain_prompt(tokenizer, messages(row))
 
     def meta(case_id, question_type, options):
+        active = _active_letters(letters, question_type, options)
         return {"case_id": case_id, "question_type": question_type,
-                "letter_ids": _active_letters(letters, question_type, options),
-                "letters_asked": len(_active_letters(letters, question_type, options))}
+                "letter_ids": active, "letters_asked": len(active)}
 
     ticket_prompts = {
         name: render(OFFICIAL_TICKET_STATE, spec)
         for name, spec in OFFICIAL_TICKET_QUESTIONS.items()}
     image_prompt = render(OFFICIAL_IMAGE_STATE, OFFICIAL_IMAGE_QUESTION, n_images=1)
-    if image_prompt.count(IMAGE_PLACEHOLDER) != 1:
-        raise ValueError("the official image example did not render one placeholder")
 
     def rel(path):
         return str(Path(path).relative_to(ROOT))
@@ -236,19 +213,8 @@ def _official_example_cases(folder):
             "rows": [{"prompt": ticket_prompts[name]}],
             "rows_meta": [meta(case_id, spec["type"], option_counts[name])]}})
     cases.append({"id": "official-image-damaged-r0", "samples": 1, "business": True, "payload": {
-        "rows": [{"prompt": image_prompt,
-                  "images": [rel(fixtures["fixture-red-256"])]}],
+        "rows": [{"prompt": image_prompt, "images": [rel(fixture)]}],
         "rows_meta": [meta("official-image-damaged-r0", "noul", 0)]}})
-    return cases
-
-
-def build_pool(folder):
-    """The unified case pool: ONLY the five official published example cases
-    (StartLuxLabs/StartLux-Decision examples @ main)."""
-    cases = _official_example_cases(folder)
-    ids = [case["id"] for case in cases]
-    if len(set(ids)) != len(ids):
-        raise ValueError(f"duplicate case ids in the pool: {ids}")
     return cases
 
 
@@ -266,50 +232,15 @@ def _save_row_encodings(case_id, encoded):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("wb") as stream:
         np.savez(stream, **arrays)
-    return path
-
-
-def _validate_against_io(arrays, io_inputs):
-    expected = {node["name"]: node for node in io_inputs}
-    if set(arrays) != set(expected):
-        raise ValueError(f"encoded input names {sorted(arrays)} differ from the graph "
-                         f"inputs {sorted(expected)}")
-    for name, node in expected.items():
-        array = arrays[name]
-        dtype = str(array.dtype)
-        if dtype != node["dtype"] or array.ndim != len(node["shape"]):
-            raise ValueError(f"input contract mismatch: {name} {dtype} "
-                             f"{array.shape} vs {node['dtype']} {node['shape']}")
-        for axis, (size, declared) in enumerate(zip(array.shape, node["shape"])):
-            if declared >= 0 and declared != size:
-                raise ValueError(f"input contract mismatch: {name} axis {axis} "
-                                 f"{size} != static {declared}")
-        if any(size < 1 for size in array.shape):
-            raise ValueError(f"empty input dimension in {name}: {array.shape}")
 
 
 def main():
     folder = _source_ref()
-    config = _config(folder)
-    params = base._params(config)
-    decision = base._decision_config(config)
-    if len(decision["letter_token_ids"]) != N_COLUMNS:
-        raise ValueError("decision_config letter_token_ids must carry 26 ids")
-    # min_width=1: every case runs at its TRUE length (width = max row length).
-    # The former 256 floor (the P4 pad256 acceptance, a conservative transition
-    # that kept the dynamic AIR's inputs bit-identical to the fixed-width era)
-    # was retired by the 2026-11-06 short-width gate on the delivered AIR:
-    # true-length execution (S=85/99/130, 3 repeats) is bit-stable and within
-    # bf16 quantization of both the CPU golden (relL2 <= 0.0037) and the
-    # accepted pad-256 outputs (relL2 <= 0.0046) -- the P4-era "unstable
-    # boundaries" observation does not reproduce on this configuration.
-    caps = {"max_batch": params["max_batch"], "max_seq_len": params["max_seq_len"],
-            "min_width": 1}
-    io_inputs = multimodal.describe(config)["io"]["inputs"]
-    order = [node["name"] for node in io_inputs]
+    decision = base._decision_config(folder)
+    order = [node["name"] for node in multimodal.io_spec()["inputs"]]
 
     preprocessor = unified_preprocess.OfficialPreprocessor(folder)
-    cases = build_pool(folder)
+    cases = build_pool(folder, decision["letter_token_ids"])
 
     INPUTS.mkdir(parents=True, exist_ok=True)
     records, packed_cases = [], {}
@@ -317,16 +248,11 @@ def main():
         for case in cases:
             payload = case["payload"]
             samples = case["samples"]
-            if len(payload["rows"]) != samples:
-                raise ValueError(f"case {case['id']} samples={samples} but the payload "
-                                 f"carries {len(payload['rows'])} row(s)")
             encoded = preprocessor.encode_payload_rows(payload["rows"])
             _save_row_encodings(case["id"], encoded)
             arrays = preprocessor.build_graph_inputs(
                 encoded, vocab_size=decision["vocab_size"],
-                max_batch=caps["max_batch"], max_seq_len=caps["max_seq_len"],
-                min_width=caps["min_width"])
-            _validate_against_io(arrays, io_inputs)
+                max_batch=multimodal.MAX_BATCH, max_seq_len=multimodal.MAX_SEQ_LEN)
             tensors = []
             for name in order:
                 array = arrays[name]

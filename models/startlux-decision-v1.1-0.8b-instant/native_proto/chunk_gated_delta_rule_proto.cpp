@@ -33,13 +33,12 @@
 // auto-override an official registration.
 //
 // Loading: EXPLICIT project-local loading only. Auto vendor loading via
-// ASCEND_CUSTOM_OPP_PATH was investigated and rejected: under the formal
-// core.dependencies.environment the GE initialization process reproducibly
-// dies with SIGSEGV/SIGILL (work/startlux-cannbot/review-native-env-failure.md),
-// so the dependency installs no opp/ tree. Instead the library is loaded
-// explicitly by the bundled python activator (ctypes dlopen RTLD_GLOBAL for
-// the exporting process, task-level LD_PRELOAD for ge_runtime subprocesses)
-// or by sourcing scripts/env_chunk_proto.sh <work_dir> in the parent shell.
+// ASCEND_CUSTOM_OPP_PATH was investigated and rejected: the GE initialization
+// process reproducibly dies with SIGSEGV/SIGILL, so the dependency installs no
+// opp/ tree. Instead the library is loaded explicitly by the bundled python
+// activator (ctypes dlopen RTLD_GLOBAL for the exporting process, task-level
+// LD_PRELOAD for ge_runtime subprocesses) or by run.sh, which injects
+// LD_PRELOAD into the export / infer / bench subprocesses.
 
 #include "graph/operator_reg.h"
 #include "graph/types.h"

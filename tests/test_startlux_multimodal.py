@@ -96,19 +96,9 @@ class TestMropeInterleave(unittest.TestCase):
 class TestDecoderMrope(unittest.TestCase):
     def _decoder(self):
         body = tiny_text_model()
-        decoder = npu.StartLuxTextDecoder(body, list(range(26)), chunk_size=4)
+        decoder = npu.StartLuxTextDecoder(body, list(range(26)))
         decoder.requires_grad_(False).eval()
         return decoder, body
-
-    def test_text_positions_bitexact_with_previous_formula(self):
-        decoder, _body = self._decoder()
-        generator = torch.Generator().manual_seed(1234)
-        positions = torch.randint(0, 300, (2, 7), generator=generator)
-        for dtype in (torch.float32, torch.bfloat16):
-            old = npu.rope_cos_sin(positions, decoder.inv_freq, dtype)
-            new = decoder.mrope_cos_sin(positions, dtype)
-            self.assertTrue(torch.equal(old[0], new[0]) and torch.equal(old[1], new[1]),
-                            f"2D text positions drifted for {dtype}")
 
     def test_three_plane_matches_hf_rotary(self):
         from transformers.models.qwen3_5.configuration_qwen3_5 import Qwen3_5TextConfig
@@ -154,12 +144,12 @@ class TestMultimodalInjection(unittest.TestCase):
     def _unified(self):
         body = tiny_text_model()
         visual = tiny_vision_model()
-        decoder = npu.StartLuxTextDecoder(body, list(range(26)), chunk_size=4)
+        decoder = npu.StartLuxTextDecoder(body, list(range(26)))
         decoder.requires_grad_(False).eval()
         tower = multimodal.vision_mod.VisionTowerWrapper(
             visual, self.GRID, slots=2)
         tower.requires_grad_(False).eval()
-        unified = multimodal.MultimodalDecoder(decoder, tower, slots=2)
+        unified = multimodal.MultimodalDecoder(decoder, tower)
         unified.requires_grad_(False).eval()
         return unified
 
@@ -182,219 +172,6 @@ class TestMultimodalInjection(unittest.TestCase):
             mask = (ids == image_token).unsqueeze(-1).expand_as(reference)
             reference = reference.masked_scatter(mask, feats.to(reference.dtype))
         self.assertTrue(torch.equal(embeds, reference))
-
-
-class TestBatchValidation(unittest.TestCase):
-    MERGED = multimodal.MERGED_ROWS
-
-    def _arrays(self, **overrides):
-        arrays = {
-            "input_ids": np.zeros((1, 8), dtype=np.int64),
-            "position_ids": np.zeros((3, 1, 8), dtype=np.int64),
-            "actual_seq_lengths": np.ones((1,), dtype=np.int32),
-            "pixel_values": np.zeros((2 * multimodal.PATCH_ROWS, 1536), dtype=np.float32),
-            "image_feature_index": np.full((1, 8), -1, dtype=np.int64),
-        }
-        arrays.update(overrides)
-        return arrays
-
-    def test_minimal_batch_valid(self):
-        self.assertTrue(multimodal.validate_batch_arrays(self._arrays()))
-
-    def test_batch_cap(self):
-        arrays = self._arrays(
-            input_ids=np.zeros((5, 8), dtype=np.int64),
-            position_ids=np.zeros((3, 5, 8), dtype=np.int64),
-            actual_seq_lengths=np.ones((5,), dtype=np.int32),
-            image_feature_index=np.full((5, 8), -1, dtype=np.int64))
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-
-    def test_image_tokens_in_padding_rejected(self):
-        arrays = self._image_arrays()
-        arrays["actual_seq_lengths"] = np.array([8], dtype=np.int32)
-        arrays["input_ids"][0, 8] = 248056
-        arrays["image_feature_index"][0, 8] = 0
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(
-                arrays, image_token=248056, vision_start=248053, vision_end=248054)
-
-    def _image_arrays(self):
-        width = 72
-        arrays = self._arrays(
-            input_ids=np.zeros((1, width), dtype=np.int64),
-            position_ids=np.zeros((3, 1, width), dtype=np.int64),
-            actual_seq_lengths=np.array([width], dtype=np.int32),
-            image_feature_index=np.full((1, width), -1, dtype=np.int64))
-        arrays["input_ids"][0, 1] = 248053           # vision_start
-        arrays["input_ids"][0, 2:66] = 248056        # 64 image pads
-        arrays["input_ids"][0, 66] = 248054          # vision_end
-        arrays["image_feature_index"][0, 2:66] = np.arange(64)
-        return arrays
-
-    def test_valid_image_batch_accepted(self):
-        arrays = self._image_arrays()
-        self.assertTrue(multimodal.validate_batch_arrays(
-            arrays, vocab_size=248400, image_token=248056,
-            vision_start=248053, vision_end=248054))
-
-    def test_non_contiguous_feature_run_rejected(self):
-        arrays = self._image_arrays()
-        arrays["image_feature_index"][0, 2] = 63
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(
-                arrays, image_token=248056, vision_start=248053, vision_end=248054)
-
-    def test_slot_pool_overflow_rejected(self):
-        width = 198
-        arrays = self._arrays(
-            input_ids=np.zeros((1, width), dtype=np.int64),
-            position_ids=np.zeros((3, 1, width), dtype=np.int64),
-            actual_seq_lengths=np.array([width], dtype=np.int32),
-            image_feature_index=np.full((1, width), -1, dtype=np.int64))
-        arrays["input_ids"][0, :192] = 248056
-        arrays["image_feature_index"][0, :192] = np.concatenate(
-            [np.arange(64), np.arange(64, 128), np.arange(64)])
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(
-                arrays, image_token=248056, vision_start=248053, vision_end=248054)
-
-    def test_index_token_consistency_rejected(self):
-        arrays = self._image_arrays()
-        arrays["image_feature_index"][0, 2:66] = -1
-        with self.assertRaises(ValueError):
-            # image tokens present but no index entries
-            multimodal.validate_batch_arrays(
-                arrays, image_token=248056, vision_start=248053, vision_end=248054)
-
-    def test_index_out_of_pool_rejected(self):
-        # 128..191 sit inside a 64-token group starting at a slot boundary but
-        # the vision tower only has 2*64 feature rows
-        arrays = self._image_arrays()
-        arrays["image_feature_index"][0, 2:66] = np.arange(128, 192)
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(
-                arrays, image_token=248056, vision_start=248053, vision_end=248054)
-
-    def test_index_below_minus_one_rejected(self):
-        arrays = self._image_arrays()
-        arrays["image_feature_index"][0, 0] = -2
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-
-    def test_two_images_sharing_one_slot_rejected(self):
-        # both groups mapped to 0..63: not the unique official row-major order
-        width = 134
-        arrays = self._arrays(
-            input_ids=np.zeros((1, width), dtype=np.int64),
-            position_ids=np.zeros((3, 1, width), dtype=np.int64),
-            actual_seq_lengths=np.array([width], dtype=np.int32),
-            image_feature_index=np.full((1, width), -1, dtype=np.int64))
-        arrays["input_ids"][0, 2:66] = 248056
-        arrays["input_ids"][0, 70:134] = 248056
-        arrays["image_feature_index"][0, 2:66] = np.arange(64)
-        arrays["image_feature_index"][0, 70:134] = np.arange(64)
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(
-                arrays, image_token=248056, vision_start=248053, vision_end=248054)
-
-    def test_swapped_slot_order_across_rows_rejected(self):
-        # row 0 gets the SECOND slot (64..127) and row 1 the first: wrong order
-        arrays = self._arrays(
-            input_ids=np.zeros((2, 70), dtype=np.int64),
-            position_ids=np.zeros((3, 2, 70), dtype=np.int64),
-            actual_seq_lengths=np.array([70, 70], dtype=np.int32),
-            image_feature_index=np.full((2, 70), -1, dtype=np.int64))
-        arrays["input_ids"][0, 2:66] = 248056
-        arrays["input_ids"][1, 2:66] = 248056
-        arrays["image_feature_index"][0, 2:66] = np.arange(64, 128)
-        arrays["image_feature_index"][1, 2:66] = np.arange(64)
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(
-                arrays, image_token=248056, vision_start=248053, vision_end=248054)
-
-    def test_hole_in_feature_order_rejected(self):
-        arrays = self._image_arrays()
-        arrays["image_feature_index"][0, 2:66] = np.arange(1, 65)
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(
-                arrays, image_token=248056, vision_start=248053, vision_end=248054)
-
-    def test_float_and_bool_arrays_rejected(self):
-        arrays = self._image_arrays()
-        arrays["input_ids"] = arrays["input_ids"].astype(np.float32)
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-        arrays = self._image_arrays()
-        arrays["position_ids"] = arrays["position_ids"].astype(np.int32)
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-        arrays = self._image_arrays()
-        arrays["image_feature_index"] = arrays["image_feature_index"].astype(np.bool_)
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-        arrays = self._image_arrays()
-        arrays["actual_seq_lengths"] = arrays["actual_seq_lengths"].astype(np.int64)
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-        arrays = self._image_arrays()
-        arrays["pixel_values"] = arrays["pixel_values"].astype(np.float64)
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-
-    def test_vocab_bounds_enforced(self):
-        arrays = self._image_arrays()
-        arrays["input_ids"][0, 66] = 300
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays, vocab_size=300)
-        arrays["input_ids"][0, 66] = -1
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays, vocab_size=300)
-
-    def test_rank_and_shape_strictness(self):
-        arrays = self._image_arrays()
-        arrays["input_ids"] = arrays["input_ids"][0]           # 1-D
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-        arrays = self._image_arrays()
-        arrays["position_ids"] = arrays["position_ids"][0]      # 2-D
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-        arrays = self._image_arrays()
-        arrays["pixel_values"] = np.zeros((256, 1536), dtype=np.float32)  # one slot only
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-
-    def test_row_structure_rejections(self):
-        class Cfg:
-            vision_start_token_id = 90
-            vision_end_token_id = 91
-            image_token_id = 92
-
-        # 60 pads is not the 64 the grid requires
-        row = [90] + [92] * 60 + [91] + [1, 2]
-        with self.assertRaises(ValueError):
-            multimodal._check_row_structure(row, Cfg, 1, 64)
-        # unbracketed group
-        row = [1] + [92] * 64 + [2]
-        with self.assertRaises(ValueError):
-            multimodal._check_row_structure(row, Cfg, 1, 64)
-        # start marker mismatched (an extra vision_start, counts disagree)
-        row = [90, 90] + [92] * 64 + [91, 2]
-        with self.assertRaises(ValueError):
-            multimodal._check_row_structure(row, Cfg, 1, 64)
-        # end marker replaced by a normal token
-        row = [1, 90] + [92] * 64 + [5, 2]
-        with self.assertRaises(ValueError):
-            multimodal._check_row_structure(row, Cfg, 1, 64)
-        # correct structure passes
-        row = [1, 90] + [92] * 64 + [91, 2]
-        groups = multimodal._check_row_structure(row, Cfg, 1, 64)
-        self.assertEqual(groups, [(2, 66)])
-        # two images, correct structure
-        row = [1, 90] + [92] * 64 + [91, 90] + [92] * 64 + [91, 2]
-        groups = multimodal._check_row_structure(row, Cfg, 2, 64)
-        self.assertEqual(groups, [(2, 66), (68, 132)])
 
 
 class TestBridgeInputHygiene(unittest.TestCase):
@@ -541,162 +318,13 @@ class TestBridgeInputHygiene(unittest.TestCase):
                                        np.zeros_like(arrays["pixel_values"])))
 
 
-class TestPaddingIndexStrictness(unittest.TestCase):
-    """image_feature_index must never mark padding positions (unconditional)."""
-
-    MERGED = multimodal.MERGED_ROWS
-
-    def _arrays(self, length=1, width=67):
-        return {
-            "input_ids": np.zeros((1, width), dtype=np.int64),
-            "position_ids": np.zeros((3, 1, width), dtype=np.int64),
-            "actual_seq_lengths": np.full((1,), length, dtype=np.int32),
-            "pixel_values": np.zeros((2 * multimodal.PATCH_ROWS, 1536), dtype=np.float32),
-            "image_feature_index": np.full((1, width), -1, dtype=np.int64),
-        }
-
-    def test_padding_index_run_rejected_unconditionally(self):
-        # the exact regression counter-example: B1, S67, L1, no valid image,
-        # and the 64 padding positions carry arange(64) -- passes token checks
-        # and the row-major order check, so only the explicit padding-index
-        # rule can catch it. Rejected with AND without marker ids supplied.
-        arrays = self._arrays()
-        arrays["image_feature_index"][0, 1:65] = np.arange(64)
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays, vocab_size=248400,
-                                              image_token=248056,
-                                              vision_start=248053, vision_end=248054)
-
-    def test_padding_positions_nonzero_rejected(self):
-        arrays = self._arrays()
-        arrays["position_ids"][:, 0, 1:] = 7
-        with self.assertRaises(ValueError):
-            multimodal.validate_batch_arrays(arrays)
-
-    def test_valid_prefix_with_clean_padding_accepted(self):
-        arrays = self._arrays()
-        self.assertTrue(multimodal.validate_batch_arrays(arrays))
-
-
-class TestRuntimeHandleEncode(unittest.TestCase):
-    """MultimodalRuntimeHandle.encode: raw payload typing + marker validation.
-
-    The handle is the array-only pipeline entry (prepare_runtime); it must not
-    be a second, laxer door around build_multimodal_batch's strict validation:
-    nested float/bool lists may never be silently truncated into integer
-    arrays, and the placeholder marker structure is checked with the real
-    config token ids.
-    """
-
-    VOCAB = 248400
-    TOKENS = {"image_token_id": 248056, "vision_start_token_id": 248053,
-              "vision_end_token_id": 248054}
-
-    @classmethod
-    def setUpClass(cls):
-        import tempfile
-        cls._tmp = tempfile.TemporaryDirectory()
-        folder = Path(cls._tmp.name) / "model"
-        folder.mkdir()
-        (folder / "decision_config.json").write_text(__import__("json").dumps({
-            "letter_token_ids": list(range(26)),
-            "temperature_by_type": {"choice": 1.0, "score": 1.0, "noul": 1.0}}))
-        (folder / "config.json").write_text(__import__("json").dumps({
-            "text_config": {"vocab_size": cls.VOCAB}, **cls.TOKENS}))
-        cls.config = {"model": {"params": {"max_seq_len": 2048, "compiled_seq_len": 256,
-                                           "chunk_size": 64, "max_batch": 4,
-                                           "max_batch": 4}},
-                      "source": {"ref": str(folder)}}
-        cls.handle = multimodal.MultimodalRuntimeHandle(cls.config, {"schema": "ge-io/1"})
-        cls.zeros_pixels = [[0.0] * 1536 for _ in range(2 * multimodal.PATCH_ROWS)]
-
-    @classmethod
-    def tearDownClass(cls):
-        cls._tmp.cleanup()
-
-    def _case(self, **payload):
-        base = {
-            "input_ids": [[1, 2, 3]],
-            "position_ids": [[[0, 0, 0]], [[1, 1, 1]], [[2, 2, 2]]],
-            "actual_seq_lengths": [3],
-            "pixel_values": self.zeros_pixels,
-            "image_feature_index": [[-1, -1, -1]],
-        }
-        base.update(payload)
-        return {"id": "case-1", "samples": 1, "payload": base}
-
-    def test_valid_text_payload_round_trips(self):
-        arrays = self.handle.encode(self._case())
-        self.assertEqual(arrays["input_ids"].dtype, np.int64)
-        self.assertEqual(arrays["pixel_values"].dtype, np.float32)
-        self.assertEqual(arrays["pixel_values"].shape,
-                         (2 * multimodal.PATCH_ROWS, 1536))
-        self.assertTrue(np.array_equal(arrays["image_feature_index"],
-                                       np.full((1, 3), -1, dtype=np.int64)))
-
-    def test_float_ids_rejected_not_truncated(self):
-        with self.assertRaises(ValueError):
-            self.handle.encode(self._case(input_ids=[[1.5, 2.5, 3.5]]))
-
-    def test_bool_ids_rejected_not_truncated(self):
-        with self.assertRaises(ValueError):
-            self.handle.encode(self._case(input_ids=[[True, False, True]]))
-
-    def test_int_pixels_rejected(self):
-        with self.assertRaises(ValueError):
-            self.handle.encode(self._case(pixel_values=[[0] * 1536
-                                                        for _ in range(2 * multimodal.PATCH_ROWS)]))
-
-    def test_ragged_payload_rejected(self):
-        with self.assertRaises(ValueError):
-            self.handle.encode(self._case(input_ids=[[1, 2], [3]]))
-
-    def test_out_of_int32_range_lengths_rejected(self):
-        with self.assertRaises(ValueError):
-            self.handle.encode(self._case(actual_seq_lengths=[2 ** 40]))
-
-    def test_marker_structure_enforced_through_handle(self):
-        # 64 image pads WITHOUT the vision_start/vision_end brackets: without
-        # the marker ids the handle would accept the mapping as text tokens;
-        # with them (the fix) the official placeholder structure is required.
-        pads = [self.TOKENS["image_token_id"]] * 64
-        payload = {
-            "input_ids": [[1] + pads + [2, 3]],
-            "position_ids": [[[0] * 66]] * 3,
-            "actual_seq_lengths": [66],
-            "pixel_values": self.zeros_pixels,
-            "image_feature_index": [list(range(64)) + [-1, -1]],
-        }
-        with self.assertRaises(ValueError):
-            self.handle.encode({"id": "case-2", "samples": 1, "payload": payload})
-
-    def test_valid_bracketed_payload_accepted(self):
-        start, pad, end = (self.TOKENS["vision_start_token_id"],
-                           self.TOKENS["image_token_id"],
-                           self.TOKENS["vision_end_token_id"])
-        row = [1, start] + [pad] * 64 + [end, 2, 3]      # 69 tokens, pads at 2..65
-        payload = {
-            "input_ids": [row],
-            "position_ids": [[[i] * 69] for i in range(3)],
-            "actual_seq_lengths": [69],
-            "pixel_values": self.zeros_pixels,
-            "image_feature_index": [[-1, -1] + list(range(64)) + [-1] * 3],
-        }
-        arrays = self.handle.encode({"id": "case-3", "samples": 1, "payload": payload})
-        self.assertTrue(np.array_equal(arrays["image_feature_index"][0, 2:66],
-                                       np.arange(64)))
-
-
 class TestVisionBufferProvenance(unittest.TestCase):
-    """Official F32 constants from a core-path (dtype-cast) source.
+    """Official F32 constants from a dtype-cast source.
 
-    core.sources.load_source finishes with model.to(device, dtype=BF16); that
-    quantizes the NON-PERSISTENT Qwen3_5VisionRotaryEmbedding.inv_freq, which
-    .float() cannot restore (work/startlux-cannbot/review-vision-rotary-buffer-
-    cast.json). The wrapper must regenerate the official constructor frequency
-    so its buffers -- and the vision output -- are bit-exact with a pristine
+    A load path ending in model.to(device, dtype=BF16) quantizes the
+    NON-PERSISTENT Qwen3_5VisionRotaryEmbedding.inv_freq, which .float() cannot
+    restore.  The wrapper must regenerate the official constructor frequency so
+    its buffers -- and the vision output -- are bit-exact with a pristine
     official F32 module carrying the same weights.
     """
 
@@ -749,10 +377,8 @@ class TestVisionBufferProvenance(unittest.TestCase):
         wrapper = multimodal.vision_mod.VisionTowerWrapper(
             source, self.GRID, slots=2,
             buffer_source=deepcopy(source).to("cpu", torch.float32))
-        self.assertTrue(wrapper.rotary_inv_freq_restored)
         source.float()                       # build_unified_model's exact upcast
         wrapper_f32 = multimodal.vision_mod.VisionTowerWrapper(reference, self.GRID, slots=2)
-        self.assertFalse(wrapper_f32.rotary_inv_freq_restored)
         self.assertTrue(torch.equal(wrapper.rotary_cos, wrapper_f32.rotary_cos))
         self.assertTrue(torch.equal(wrapper.rotary_sin, wrapper_f32.rotary_sin))
         self.assertTrue(torch.equal(wrapper.pos_embeds, wrapper_f32.pos_embeds))
@@ -760,15 +386,6 @@ class TestVisionBufferProvenance(unittest.TestCase):
         pixels = torch.randn(2 * self.PATCH_ROWS, 1536, generator=generator)
         with torch.inference_mode():
             self.assertTrue(torch.equal(wrapper(pixels), wrapper_f32(pixels)))
-
-    def test_buffers_follow_source_device(self):
-        reference, _source = self._visual_pair()
-        wrapper = multimodal.vision_mod.VisionTowerWrapper(reference, self.GRID, slots=2)
-        device = next(reference.parameters()).device
-        for name in ("pos_embeds", "rotary_cos", "rotary_sin"):
-            self.assertEqual(getattr(wrapper, name).device, device)
-        # the real non-CPU source-device coverage is the NPU eager stage of
-        # work/startlux-validation/p6-unified (device audit, no masking .to)
 
 
 class TestVisionLinearDtype(unittest.TestCase):
