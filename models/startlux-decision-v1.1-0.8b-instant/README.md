@@ -120,8 +120,32 @@ python3 -m unittest tests.test_startlux_native_proto tests.test_startlux_unified
 python3 -m unittest tests.test_torchair_example_inputs
 ```
 
+### dev.txt 旁路（业务 query 意图 case，独立流程）
+
+`run_dev.sh` 是与主流程并行的独立旁路，**不改动官方 5 case 池**：把业务
+提供的 dev.txt（电商 query 意图分类，18 行 = 9 query × 2 选项序变体，
+4B teacher 标注 targets）跑通"数据 → CPU golden → 复用或重建 AIR/依赖 →
+精度推理 → 数值比较 → 业务门禁 + teacher 分布对比 → 逐 case bench（18 ×
+case_filter）+ 全池采样 bench → 汇总"。入口：
+
+```bash
+export STARTLUX_MODEL_DIR=/path/to/hf-model
+bash models/startlux-decision-v1.1-0.8b-instant/run_dev.sh [--device <chip>]
+```
+
+脚本：`generate_dev_inputs.py`（数据，官方渲染链）、`decider/golden_dev.py`
+（复用官方 `OfficialReference`）、`decider/verify_dev.py`（业务门禁 +
+teacher 报告）。case 文件默认 `work/devcase/source/dev.txt`（缺失自动从
+业务 URL 下载）；产物全部在 `work/devcase/`（不提交）。差异口径：dev 池
+业务概率门限 0.02（平坦 7 选项分布放大 |Δp|，官方池的 0.01 不适用，详见
+`verify_dev.py` 常量注释）；teacher 对比（top1 一致率 / 逐标签 Δp / KL /
+r0–r1 选项序不变性）**仅报告**，不阻断、不影响退出码。
+
 ## 使用限制
 
+- dev.txt 旁路：teacher 分布对比仅报告、不设门禁；dev 池业务概率门限为
+  0.02（与官方池 0.01 不同口径，原因见 `decider/verify_dev.py` 常量注释）；
+  旁路产物全部在 `work/devcase/`，不提交 Git。
 - 图边界：**对齐官方**——任意图片数量（每请求 ≤ 官方 serve 上限 16）与任意官方
   smart_resize 网格（每图 256..4096 patch 行，即 256²..1024² 像素，保持长宽比）；
   纯文本调用**完全跳过视觉阶段**（runtime 直喂 1×1024 零特征张量，注入
