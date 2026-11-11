@@ -72,9 +72,13 @@ class StartLuxRMSNormGated(nn.Module):
         self.variance_epsilon = eps
 
     def forward(self, x, gate):
-        ones = torch.ones_like(self.weight)
-        n, _ = torch.ops.npu.npu_rms_norm(x, ones, float(self.variance_epsilon))
-        return (self.weight * n.to(x.dtype) * F.silu(gate.float())).to(x.dtype)
+        # gamma = the trained weight itself: rms_norm(x, w) == w * rms_norm(x, 1)
+        # exactly in real arithmetic, and folding it into the kernel drops the
+        # separate weight-multiply node (18 Mul + 18 OnesLike per request
+        # otherwise; the kernel also applies gamma in its fp32 domain, one
+        # bf16 rounding fewer than the node path).
+        n, _ = torch.ops.npu.npu_rms_norm(x, self.weight, float(self.variance_epsilon))
+        return (n.to(x.dtype) * F.silu(gate.float())).to(x.dtype)
 
 
 class StartLuxMLP(nn.Module):

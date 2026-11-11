@@ -80,6 +80,29 @@ class GammaFold(unittest.TestCase):
         self.assertNotIsInstance(gated, self.mt.StartLuxRMSNorm)
         self.assertFalse(hasattr(gated, "fold_gamma"))
 
+    def test_gated_gamma_fold_equivalence(self):
+        # The gated-forward fold rests on rms_norm(x, w) == w * rms_norm(x, 1)
+        # exactly in real arithmetic (gamma is a pure post-normalization
+        # scale).  Pin the identity against a fp32 reference -- the NPU
+        # kernel acceptance is the integration gates' job.
+        def rms_ref(x, gamma, eps):
+            n = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps)
+            return gamma * n
+
+        torch.manual_seed(11)
+        x = torch.randn(64, 128)
+        w = torch.randn(128)
+        ones = torch.ones(128)
+        eps = 1e-6
+        self.assertTrue(torch.allclose(rms_ref(x, w, eps), w * rms_ref(x, ones, eps),
+                                       atol=0.0, rtol=0.0),
+                        "rms_norm(x, w) != w * rms_norm(x, 1) in fp32 reference")
+        # and the source passes the weight as the op gamma (no ones_like)
+        source = (MODEL / "model" / "modeling_text.py").read_text()
+        gated_block = source.split("class StartLuxRMSNormGated")[1].split("class ")[0]
+        self.assertIn("npu_rms_norm(x, self.weight", gated_block)
+        self.assertNotIn("ones_like", gated_block)
+
 
 if __name__ == "__main__":
     unittest.main()
