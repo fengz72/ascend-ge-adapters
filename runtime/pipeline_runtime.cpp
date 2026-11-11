@@ -25,6 +25,8 @@
 #include <exe_graph/runtime/tensor.h>
 #include <nlohmann/json.hpp>
 
+#include <dlfcn.h>
+
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -35,15 +37,50 @@
 #include <map>
 #include <numeric>
 #include <random>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 using Json = nlohmann::json;
 using Clock = std::chrono::steady_clock;
 
 namespace {
+
+// The text AIR carries CausalConv1dGE (vendored fla causal_conv1d wrapper);
+// its REG_OP + EagerExecuteOp implementation lives in the vendor package's
+// libcust_opapi.so.  GE does not discover that .so on its own in this
+// process, so open it explicitly (RTLD_GLOBAL, kept open for the process
+// lifetime) before GEInitialize -- the same contract the python activator
+// uses (ctypes RTLD_GLOBAL).  Optional override: GE_CAUSAL_CONV1D_OPAPI.
+// Returns the handle for an explicit dlclose in Destroy(): closing while GE
+// is still alive unregisters REG_OP cleanly; leaving it to the process-exit
+// static destruction instead trips a heap corruption abort (fastbins) after
+// GEFinalize on this build.
+void *LoadCausalConv1dOpApi() {
+    const char *override = std::getenv("GE_CAUSAL_CONV1D_OPAPI");
+    std::string path = override && *override ? override : std::string();
+    if (path.empty()) {
+        const char *opp = std::getenv("ASCEND_OPP_PATH");
+        if (opp && *opp) {
+            path = std::string(opp) +
+                   "/vendors/causal_conv1d/op_api/lib/libcust_opapi.so";
+        }
+    }
+    if (path.empty()) {
+        throw std::runtime_error("causal-conv1d opapi path unknown: set "
+                                 "ASCEND_OPP_PATH or GE_CAUSAL_CONV1D_OPAPI");
+    }
+    void *handle = dlopen(path.c_str(), RTLD_GLOBAL | RTLD_NOW);
+    if (handle == nullptr) {
+        const char *err = dlerror();
+        throw std::runtime_error(std::string("dlopen causal-conv1d opapi (") +
+                                 path + ") failed: " + (err ? err : "?"));
+    }
+    return handle;
+}
 
 double ElapsedMs(Clock::time_point begin, Clock::time_point end) {
     return std::chrono::duration<double, std::milli>(end - begin).count();
@@ -140,12 +177,31 @@ class Pipeline {
 public:
     ~Pipeline() { Destroy(); }
 
-    void Init(int device, const std::string &visionAir, const std::string &textAir) {
+    void Init(int device, const std::string &visionAir, const std::string &textAir,
+              const Json *profiling) {
+        opapi_ = LoadCausalConv1dOpApi();
         std::map<ge::AscendString, ge::AscendString> globalOptions = {
             {ge::AscendString("ge.graphRunMode"), ge::AscendString("0")},
             {ge::AscendString("ge.exec.deviceId"),
              ge::AscendString(std::to_string(device).c_str())},
         };
+        if (profiling != nullptr) {
+            // GE profiling via the global options (msprof-parseable PROF_*
+            // session; op_summary/task_time CSVs in mindstudio_profiler_output)
+            std::string path = profiling->at("output").get<std::string>();
+            MakeDirs(path);
+            nlohmann::json options = {{"output", path}, {"task_time", "on"},
+                                      {"runtime_api", "on"}};
+            if (profiling->contains("aic_metrics")) {
+                options["aic_metrics"] = profiling->at("aic_metrics").get<std::string>();
+            }
+            std::string text = options.dump();
+            globalOptions.emplace(ge::AscendString(ge::OPTION_EXEC_PROFILING_MODE),
+                                  ge::AscendString("1"));
+            globalOptions.emplace(ge::AscendString(ge::OPTION_EXEC_PROFILING_OPTIONS),
+                                  ge::AscendString(text.c_str()));
+            std::cout << "[INFO] GE profiling enabled -> " << path << std::endl;
+        }
         std::cout << "[INFO] GEInitialize ge.graphRunMode=0" << std::endl;
         if (ge::GEInitialize(globalOptions) != ge::SUCCESS) {
             throw std::runtime_error(std::string("GEInitialize failed: ") + ge::GEGetErrorMsg().c_str());
@@ -369,6 +425,14 @@ public:
             aclrtResetDevice(device_);
             deviceSet_ = false;
         }
+        // Close the causal-conv1d opapi while GE is still alive so its REG_OP
+        // static unregistration runs in a sane order; the process-exit static
+        // destruction of this .so (after GEFinalize) is what corrupts the
+        // heap (fastbins abort) on this build.
+        if (opapi_ != nullptr) {
+            dlclose(opapi_);
+            opapi_ = nullptr;
+        }
         if (geInited_) {
             ge::GEFinalize();
             geInited_ = false;
@@ -382,6 +446,7 @@ public:
 private:
     int device_ = 0;
     bool geInited_ = false, aclInited_ = false, deviceSet_ = false;
+    void *opapi_ = nullptr;
     std::unique_ptr<ge::Session> session_;
     void *dummyFeatures_ = nullptr;      // 1x1024 fp32 zeros: the text-only
                                          // features slot (shape matches the
@@ -442,9 +507,27 @@ int main() {
         }
         if (cases.empty()) throw std::runtime_error("no cases in the record pool");
 
+        const Json *profiling = request.contains("profiling") ? &request.at("profiling")
+                                                             : nullptr;
+        if (request.contains("case_filter")) {
+            std::set<std::string> wanted;
+            for (const auto &id : request.at("case_filter")) {
+                wanted.insert(id.get<std::string>());
+            }
+            std::vector<Case> filtered;
+            for (auto &one : cases) {
+                if (wanted.count(one.id)) {
+                    filtered.push_back(std::move(one));
+                }
+            }
+            if (filtered.empty()) {
+                throw std::runtime_error("case_filter selected no cases");
+            }
+            cases = std::move(filtered);
+        }
         Pipeline pipeline;
         pipeline.Init(device, request.at("vision_air").get<std::string>(),
-                      request.at("text_air").get<std::string>());
+                      request.at("text_air").get<std::string>(), profiling);
         pipeline.Allocate(cases);
 
         Json result = {{"status", "success"}, {"mode", mode}, {"backend", "ge_pipeline"}};
@@ -548,7 +631,25 @@ int main() {
             csv.close();
         }
         std::cout << "GE_RESULT " << result.dump() << std::endl;
-        return 0;
+        if (profiling != nullptr) {
+            // Profiled runs keep the normal exit path: msprof's atexit
+            // export (mindstudio_profiler_output CSVs) runs before the
+            // static-destruction tail, so the data is complete when the
+            // known heap-corruption abort spoils only the exit code.
+            return 0;
+        }
+        // Leave via _exit after the explicit Pipeline teardown: everything
+        // real (acl/GE finalize, output writes) is done by then, and the
+        // remaining C++ static destruction (dlopened CANN vendor libs + GE
+        // registry) reliably corrupts the heap on this build once the text
+        // AIR carries CausalConv1dGE.  _exit skips stack unwinding, so run
+        // the destructor by hand once here; the error path keeps the normal
+        // exit.
+        std::cout.flush();
+        std::cerr.flush();
+        pipeline.~Pipeline();
+        std::fflush(nullptr);
+        _exit(0);
     } catch (const std::exception &error) {
         std::cerr << error.what() << std::endl;
         return 1;
