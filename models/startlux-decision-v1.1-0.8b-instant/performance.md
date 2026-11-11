@@ -873,11 +873,40 @@ warmup 16 / 400 measured / seed 42, same chip, same AIRs):
 
 | item | pre (Conv2D chain) | post (CausalConv1d) |
 |---|---|---|
-| e2e P50 / P99 / avg (n=400, ms) | 26.599 / 26.815 / 26.612 | **22.279 / 22.425 / 22.281** (-16.2%) |
-| qps | 37.58 | **44.88** (+19.4%) |
-| msprof (416 profiled execs) | - | CausalConv1d 18/req, avg 64.3 us/layer, 7.3% of the (MatMulV3-excluded) AI time; Conv2D / TransData / Transpose all at zero; ChunkGatedDeltaRule is the dominant op at 38% |
+| e2e P50 / P99 / avg (n=400, ms) | 26.599 / 26.815 / 26.612 | **22.441 / 22.624 / 22.449** (-15.8%) |
+| qps | 37.58 | **44.54** (+18.5%) |
+| msprof (416 profiled execs) | - | CausalConv1d 18/req, avg 64.3 us/layer, 7.3% of the (MatMulV3-excluded) AI time; Conv2D / TransData / Transpose all at zero |
 
-Evidence: `work/devcase/bench/case/dev-intent-q00-r0/` (pre),
-`work/devcase/bench-new/case/dev-intent-q00-r0/` (post),
-`work/devcase/prof-conv1d-devq00/PROF_000001_20261111085122553_02015786FFFNCENI/`
-(msprof export).
+Number-source note: the post column cites the 09:15 same-day re-run of the
+identical request (`work/devcase/bench-new/case/dev-intent-q00-r0/`,
+overwritten in place by the 18-case sweep below).  The first run of the same
+config (08:51, evidence since overwritten) read 22.279 / 22.425 / 22.281 ms
+and 44.88 qps; the 0.7% spread is within the historical run-to-run band, and
+the pre column is unaffected.
+
+Reading the msprof export of this run requires the MatMulV3 caveat: the
+raw `op_statistic` drops all 77,792 MatMulV3 rows (the SQE-type UNKNOWN
+defect, `tools/restore_matmulv3.py`) and therefore shows
+ChunkGatedDeltaRule at "38%" of AI time.  The restored export
+(`op_statistic_20261111085318_restored.csv`, same directory, 393,952 rows =
+316,160 + 77,792) re-normalizes the picture: **MatMulV3 27.7% and
+ChunkGatedDeltaRule 27.5% are tied for the largest share** (6.07 and
+6.01 ms/request of the 21.9 ms steady-state device time; 947 device ops per
+request at 95.4% device utilization, 22.95 ms/request under msprof vs
+22.45 ms without).  The dominant-cost statement in the raw export is an
+artifact, not a finding.
+
+Long-text dev pool (18 cases, all text-only, seqlen 1001-1005, dev.txt
+bypass flow; pre = the same Conv2D-chain AIRs, post = the CausalConv1d
+AIRs):
+
+| item | pre (Conv2D chain) | post (CausalConv1d) |
+|---|---|---|
+| pooled bench (closed loop, seed 42) | warmup 32 / 2,048 measured requests | per-case sweep: warmup 16 / 400 x 18 cases |
+| e2e P50 (ms) | 26.557 (pool avg 26.566, P99 26.805) | **22.237-22.634 per case, mean 22.445** |
+| qps | 37.64 (pool) | **44.10-44.95 per case, mean 44.53** (+18.3% on the means) |
+| CPU preprocessing (official chain, outside the timing window) | - | avg 1.60 ms/case, worst P99 1.94 ms (`work/devcase/preproc-timing.json`) |
+
+Evidence: `work/devcase/bench/pool/` + `work/devcase/logs/bench-pool.log`
+(pre pool), `work/devcase/bench-new/case/*` (post 18-case sweep, 09:15),
+`work/devcase/preproc-timing.json`.
