@@ -25,9 +25,13 @@ preprocessing and the official get_rope_index run on the CPU side):
          output scores               [B, 26]      f32  dynamic
 
 The features stay ON DEVICE between the stages in the pipeline runtime.  A
-text-only call carries a 4-row zero dummy through the vision stage (grid
-[1,2,2]; the features are discarded via index -1) so no dynamic axis is ever
-zero-sized.  Image policy (per request <= 16 images, per image 256..4096 patch
+text-only call carries a 4-row zero dummy in the packed vision tensors (grid
+[1,2,2]) so the record format stays uniform and no dynamic axis is ever
+zero-sized -- but the PIPELINE RUNTIME skips the vision execution entirely
+for such calls (records carry has_images=false) and feeds a pre-allocated
+1x1024 zero features tensor to the text stage instead: the injection's
+where(is_image=false) discards it elementwise, the scores are bit-identical,
+and the [1,1024] shape matches the dummy vision output's exactly.  Image policy (per request <= 16 images, per image 256..4096 patch
 rows) follows the official vendored startlux_decide/images.py constants via
 modeling_vision; everything over-limit is rejected at encode time, never
 truncated.  modeling_text is loaded lazily (it imports torch_npu) so this
@@ -47,7 +51,6 @@ from torch import nn
 from model.modeling_vision import (MAX_IMAGES_PER_REQUEST, MAX_PATCH_ROWS,
                                     MIN_PATCH_ROWS, StartLuxVisionTower)
 
-SLOTS = 2                                    # legacy name kept for callers; see DUMMY_GRID
 DUMMY_GRID = (1, 2, 2)                       # 4 patch rows: the no-image vision dummy
 
 

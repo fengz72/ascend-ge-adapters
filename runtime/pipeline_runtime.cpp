@@ -89,6 +89,10 @@ struct TensorRef {
 struct Case {
     std::string id;
     size_t batch = 0;                    // text input_ids shape[0]
+    bool hasImages = true;               // false: skip the vision stage
+                                         // entirely (the official text-only
+                                         // behavior) and feed the 1x1024 zero
+                                         // dummy features to the text graph
     std::vector<TensorRef> vision, text; // 5 + 4 (features comes from stage 1)
 };
 
@@ -189,6 +193,12 @@ public:
             throw std::runtime_error("aclrtSetDevice failed");
         }
         deviceSet_ = true;
+        if (aclrtMalloc(&dummyFeatures_, 1024 * sizeof(float),
+                        ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS ||
+            aclrtMemset(dummyFeatures_, 1024 * sizeof(float), 0,
+                        1024 * sizeof(float)) != ACL_SUCCESS) {
+            throw std::runtime_error("dummy features buffer alloc failed");
+        }
         for (int stage = 0; stage < 2; stage++) {
             if (aclrtCreateStream(&stages_[stage].stream) != ACL_SUCCESS) {
                 throw std::runtime_error("aclrtCreateStream failed");
@@ -238,32 +248,35 @@ public:
         Stage &text = stages_[1];
 
         auto visionBegin = Clock::now();
-        vision.inputs.clear();
-        for (size_t i = 0; i < one.vision.size(); i++) {
-            const TensorRef &ref = one.vision[i];
-            if (aclrtMemcpy(vision.inputBuffers[i], vision.inputSizes[i],
-                            blob.data() + ref.offset, ref.bytes,
-                            ACL_MEMCPY_HOST_TO_DEVICE) != ACL_SUCCESS) {
-                fprintf(stderr, "[ERROR] vision H2D failed (input %zu)\n", i);
+        *visionMs = 0.0;
+        if (one.hasImages) {
+            vision.inputs.clear();
+            for (size_t i = 0; i < one.vision.size(); i++) {
+                const TensorRef &ref = one.vision[i];
+                if (aclrtMemcpy(vision.inputBuffers[i], vision.inputSizes[i],
+                                blob.data() + ref.offset, ref.bytes,
+                                ACL_MEMCPY_HOST_TO_DEVICE) != ACL_SUCCESS) {
+                    fprintf(stderr, "[ERROR] vision H2D failed (input %zu)\n", i);
+                    return false;
+                }
+                MakeTensor(vision.inputs, vision.inputBuffers[i],
+                           vision.inputSizes[i], ref.shape, ref.geDtype);
+            }
+            vision.outputs.clear();
+            if (session_->ExecuteGraphWithStreamAsync(vision.graphId, vision.stream,
+                                                      vision.inputs,
+                                                      vision.outputs) != ge::SUCCESS ||
+                aclrtSynchronizeStream(vision.stream) != ACL_SUCCESS) {
+                fprintf(stderr, "[ERROR] vision ExecuteGraphWithStreamAsync failed\n");
                 return false;
             }
-            MakeTensor(vision.inputs, vision.inputBuffers[i],
-                       vision.inputSizes[i], ref.shape, ref.geDtype);
+            if (vision.outputs.size() != 1) {
+                fprintf(stderr, "[ERROR] vision stage returned %zu outputs\n",
+                        vision.outputs.size());
+                return false;
+            }
+            *visionMs = ElapsedMs(visionBegin, Clock::now());
         }
-        vision.outputs.clear();
-        if (session_->ExecuteGraphWithStreamAsync(vision.graphId, vision.stream,
-                                                  vision.inputs,
-                                                  vision.outputs) != ge::SUCCESS ||
-            aclrtSynchronizeStream(vision.stream) != ACL_SUCCESS) {
-            fprintf(stderr, "[ERROR] vision ExecuteGraphWithStreamAsync failed\n");
-            return false;
-        }
-        if (vision.outputs.size() != 1) {
-            fprintf(stderr, "[ERROR] vision stage returned %zu outputs\n",
-                    vision.outputs.size());
-            return false;
-        }
-        *visionMs = ElapsedMs(visionBegin, Clock::now());
 
         auto textBegin = Clock::now();
         text.inputs.clear();
@@ -290,16 +303,34 @@ public:
                     text.inputs.size());
             return false;
         }
-        // slot 3 adopts the vision output's device buffer: gert::Tensor copy
-        // assignment is deleted, so the descriptor is rebuilt over the same
-        // storage (shape + dtype + a fresh TensorData view of the address)
+        // slot 3 (image_features): with images, the vision output's device
+        // buffer -- gert::Tensor copy assignment is deleted, so the
+        // descriptor is rebuilt over the same storage.  Without images, the
+        // pre-allocated 1x1024 zero dummy (same shape the 4-row dummy vision
+        // output would have): the injection's where(is_image=false) discards
+        // it elementwise, so the scores are bit-identical while the vision
+        // stage never executes.
         gert::Tensor &features = text.inputs[3];
-        gert::Tensor &source = vision.outputs[0];
-        features.GetShape() = source.GetShape();
-        features.SetDataType(source.GetDataType());
-        features.MutableFormat() = gert::StorageFormat(ge::FORMAT_ND, ge::FORMAT_ND, {});
-        features.SetData(gert::TensorData(source.GetAddr(), nullptr, source.GetSize(),
-                                          gert::kOnDeviceHbm));
+        if (one.hasImages) {
+            gert::Tensor &source = vision.outputs[0];
+            features.GetShape() = source.GetShape();
+            features.SetDataType(source.GetDataType());
+            features.MutableFormat() = gert::StorageFormat(ge::FORMAT_ND, ge::FORMAT_ND, {});
+            features.SetData(gert::TensorData(source.GetAddr(), nullptr, source.GetSize(),
+                                              gert::kOnDeviceHbm));
+        } else {
+            features.GetShape().MutableOriginShape().SetDimNum(0);
+            features.GetShape().MutableStorageShape().SetDimNum(0);
+            features.GetShape().MutableOriginShape().AppendDim(1);
+            features.GetShape().MutableOriginShape().AppendDim(1024);
+            features.GetShape().MutableStorageShape().AppendDim(1);
+            features.GetShape().MutableStorageShape().AppendDim(1024);
+            features.SetDataType(ge::DT_FLOAT);
+            features.MutableFormat() = gert::StorageFormat(ge::FORMAT_ND, ge::FORMAT_ND, {});
+            features.SetData(gert::TensorData(dummyFeatures_, nullptr,
+                                              1024 * sizeof(float),
+                                              gert::kOnDeviceHbm));
+        }
         text.outputs.clear();
         if (session_->ExecuteGraphWithStreamAsync(text.graphId, text.stream,
                                                   text.inputs,
@@ -329,6 +360,10 @@ public:
                 stage.stream = nullptr;
             }
         }
+        if (dummyFeatures_ != nullptr) {
+            aclrtFree(dummyFeatures_);
+            dummyFeatures_ = nullptr;
+        }
         session_.reset();
         if (deviceSet_) {
             aclrtResetDevice(device_);
@@ -348,6 +383,9 @@ private:
     int device_ = 0;
     bool geInited_ = false, aclInited_ = false, deviceSet_ = false;
     std::unique_ptr<ge::Session> session_;
+    void *dummyFeatures_ = nullptr;      // 1x1024 fp32 zeros: the text-only
+                                         // features slot (shape matches the
+                                         // 4-row dummy vision output exactly)
     Stage stages_[2];
 };
 
@@ -389,6 +427,7 @@ int main() {
         for (const auto &entry : records.at("cases")) {
             Case one;
             one.id = entry.at("id").get<std::string>();
+            one.hasImages = entry.value("has_images", true);
             for (const auto &tensor : entry.at("vision_tensors")) {
                 one.vision.push_back(ParseTensorRef(tensor));
             }

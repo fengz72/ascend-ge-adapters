@@ -36,9 +36,9 @@ bounds (B<=4, S<=2048, at most 2 global image slots, grid exactly [1, 16, 16])
 are enforced at encode time by multimodal.build_multimodal_batch -- over-limit
 requests are rejected, never truncated, and every case runs at its TRUE length
 (width = max row length, no padding floor).  The S bound is the model's own
-config.text_config.max_position_embeddings; the image-slot and grid constants
-come from their single source (multimodal.SLOTS / vision.GRID_THW); this file
-invents no copies.
+config.text_config.max_position_embeddings; the image policy (per-request
+count and per-image grid bounds) is modeling_vision's single source; this
+file invents no copies.
 """
 from __future__ import annotations
 
@@ -227,6 +227,7 @@ def main():
             samples = case["samples"]
             encoded = preprocessor.encode_payload_rows(payload["rows"])
             _save_row_encodings(case["id"], encoded)
+            has_images = any("image_grid_thw" in row for row in encoded)
             arrays = preprocessor.build_graph_inputs(
                 encoded, vocab_size=decision["vocab_size"])
             vision_tensors, text_tensors = [], []
@@ -245,6 +246,7 @@ def main():
                                      "offset": stream.tell(), "bytes": len(data)})
                 stream.write(data)
             records.append({"id": case["id"], "samples": samples,
+                            "has_images": has_images,
                             "vision_tensors": vision_tensors,
                             "text_tensors": text_tensors})
             packed_cases[case["id"]] = case

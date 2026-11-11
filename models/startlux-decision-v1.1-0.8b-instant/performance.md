@@ -771,6 +771,28 @@ outputs (`e7157ae1...`).
   (comparison.json, business.json), `work/baseline-pre-rewrite/` (pre-rewrite
   artifacts + sha256), `work/logs/` (2026-11-10 08:0x-08:5x UTC).
 
+## Appendix: text-only vision skip (2026-11-10)
+
+Text-only requests no longer execute the vision AIR at all (records carry
+has_images=false; the pipeline runtime feeds a pre-allocated 1x1024 zero
+features tensor to the text graph's slot 3 -- the same shape the 4-row dummy
+vision output had, and the injection's where(is_image=false) discards it
+elementwise: the scores are byte-identical, outputs.bin sha unchanged).
+
+| item | with the 4-row dummy | vision skipped |
+|---|---|---|
+| infer outputs.bin sha | cff3bbdb... | cff3bbdb... (bit-identical) |
+| graph executions/s (mixed pool, 4/5 text-only) | 53.15 | **61.01 (+14.8%)** |
+| e2e P50 (n=2048, ms) | 17.27 | **13.90** |
+| text-only case e2e P50 (ms) | 17.3 (vision 3.7) | **13.86 (vision 0)** |
+| image case e2e P50 (ms) | 19.5 | 19.86 (vision p50 4.8, path unchanged) |
+
+- Cumulative text-only latency vs the unified AIR baseline: 18.55 -> 13.86 ms
+  (-25%); vision cost 1 ms (2 static slots) -> 3.7 ms (4-row dynamic dummy)
+  -> 0 (skipped, the official media=None behavior).
+- Evidence: `work/bench/` (requests.csv: vision_ms all 0 for text-only cases),
+  `work/infer/` (2026-11-10 17:0x UTC).
+
 ## Appendix: two-stage split AIRs via pipeline_runtime (2026-11-10)
 
 The delivery moved from ONE unified AIR to TWO dynamic AIRs (vision + text)

@@ -59,6 +59,37 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `tests/test_startlux_unified_preprocess.py`（23 项）与
 `tests/test_startlux_native_proto.py` 改路径后全部通过。
 
+## 2026-11-10 变更：纯文本请求完全跳过视觉阶段（对齐官方 media=None 行为）
+
+**决策**（用户提议）：拆分后纯文本调用仍把 4 行哑元跑一遍视觉 AIR（bench
+requests.csv 实测 **3.7ms/请求**，占 e2e 17.3ms 的 ~21%）——官方行为是
+`media is None → 不跑视觉塔`，两阶段形态现在可以完整对齐。
+
+**设计**：
+- `generate_inputs.py`：每 case 记录 `has_images`（从编码行是否携带
+  image_grid_thw 判定）；records 格式不变，视觉哑元张量仍打包（格式统一、
+  eager 调试仍可跑视觉），runtime 只是**不执行**；
+- `pipeline_runtime.cpp`：`has_images=false` 的 case **完全跳过视觉图的
+  H2D 与 ExecuteGraphWithStreamAsync**，text 图输入槽 3 直喂**预分配的
+  1×1024 零特征张量**（aclrtMemset 清零一次）——形状与 4 行哑元视觉输出
+  **完全一致**（[1,16,16] 哑元的 T_m = 4/4 = 1），零新增形状特化；
+- **位相同性证明**：注入是 `where(is_image, gathered, embeds)`，is_image
+  全 false 时逐元素选择与 gathered 值无关 → 零特征与哑元视觉输出产出
+  **逐字节相同的 scores**（实测 outputs.bin sha 前后一致 `cff3bbdb…`）。
+
+**验证**（chip 14）：
+
+| 门禁 | 跳过前 | 跳过后 |
+|---|---|---|
+| infer outputs.bin | `cff3bbdb…` | **`cff3bbdb…`（位相同）** |
+| compare / business | 0.006053 / 0.004028 PASS | 同值 PASS |
+| bench（2048 req，0 error） | 53.15 exec/s、P50 17.27ms | **61.01 exec/s（+14.8%）、P50 13.90ms** |
+| 文本 case e2e p50 | 17.3ms（vision 3.7ms） | **13.86ms（vision 0）** |
+| 图像 case e2e p50 | — | 19.86ms（vision p50 4.8ms，路径不变） |
+
+纯文本请求累计收益自统一 AIR 基线（18.55ms，2 槽哑元照算 ~1ms 视觉）：
+视觉成本 1ms→3.7ms→**0**；e2e 18.55→13.86ms（**-25%**）。
+
 ## 2026-11-10 变更：两阶段拆分（动态视觉 AIR + 文本 AIR）对齐官方不限图数/分辨率
 
 **决策**（用户拍板）：对齐官方"不限数量、不限分辨率"。视觉路径的三个动态维度

@@ -115,7 +115,8 @@ python3 -m unittest tests.test_torchair_example_inputs
 
 - 图边界：**对齐官方**——任意图片数量（每请求 ≤ 官方 serve 上限 16）与任意官方
   smart_resize 网格（每图 256..4096 patch 行，即 256²..1024² 像素，保持长宽比）；
-  纯文本调用经 4 行哑元走视觉阶段（特征经 index=-1 全部丢弃）；
+  纯文本调用**完全跳过视觉阶段**（runtime 直喂 1×1024 零特征张量，注入
+  where 丢弃、得分位相同——与官方 media=None 不跑视觉塔的行为一致）；
   **S ≤ 模型原生 `max_position_embeddings`（当前 checkpoint 为 262144，编码期从
   folder config 派生；S=262144 已实测可执行且数值正确）；B 无编码期上限**——
   真实约束是运行期 HBM（激活 ~B·S），超内存组合以 GE 内部错误失败而非静默截断；
