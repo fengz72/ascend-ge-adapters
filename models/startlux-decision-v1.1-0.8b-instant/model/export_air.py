@@ -1,33 +1,19 @@
-"""Standalone AIR export and request generation for the StartLux unified route.
+"""Two-stage split AIR export: dynamic vision AIR + text AIR.
 
-The export stage of the standalone shell flow
-(docs/standalone-runtime-plan.md): loads modeling_multimodal.py's composed
-wrapper, exports
-the ONE dynamic AIR through TorchAir (the bind_input identity markers, the
-Data-node re-partition, the dynamic/static axis pinning, the frozen-parameter +
-specialize_float dynamo context -- no ``core`` imports), embeds the IO contract
-into the AIR through the runtime's ``write_io`` mode, and generates both
-execution requests automatically:
+The export stage of the standalone shell flow: exports the StartLux delivery
+as TWO dynamic AIRs (docs: the split decision, 2026-11-10) -- the vision
+stage (any image count / any official grid; the official position tables as
+inputs) and the text stage (image_features as an input, injected like the
+official masked_scatter) -- through TorchAir (the bind_input identity
+markers, the Data-node re-partition, the dynamic/static axis pinning, the
+frozen-parameter + specialize_float dynamo context).
 
-* ``work/infer/request.json``  -- mode infer, the full precision pool
-  (all official example cases), one execution per case;
-* ``work/bench/request.json``  -- mode bench, the bench pool, with the
-  instance / warmup / iterations / seed parameters run.sh passes in (warmup
-  requests are per-instance preheat, not consumed from the measurement
-  sequence).
-
-Node names, order and dtypes are taken from the ACTUAL export result
-(parse_bindings on the emitted pbtxt), never hand-written.  The graph IO is
-embedded into the AIR with the runtime's write_io mode and the echoed IO (the
-authoritative embedded contract) is what the requests carry.  The compat
-prototype (chunk_gated_delta_rule_proto) is loaded by LD_PRELOAD alone: the
-process must be started with the prototype .so preloaded (run.sh injects it),
-which registers the op before any torchair/GE import and is inherited by the
-ge_runtime children spawned here (write_io); _require_proto_preloaded asserts it.
-
-Both requests use the same AIR.  The GESession options are explicit
-(graph_run_mode 0, precision_mode must_keep_origin_dtype) -- the runtime's
-default precision policy is never relied upon.
+The text graph contains ChunkGatedDeltaRule, so the process must run with
+the compat prototype .so LD_PRELOADed (run.sh injects it;
+_require_proto_preloaded asserts it).  No io is embedded into the AIRs: the
+pipeline runtime (runtime/pipeline_runtime.cpp) binds inputs positionally in
+the fixed order of vision_io_spec / text_io_spec, and parse_bindings still
+validates the exported Data binding is bijective before delivery.
 
 NOTE: no `from __future__ import annotations` here on purpose -- PEP 563 would
 keep the bind_input custom-op annotations as strings that torch's
@@ -37,18 +23,12 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 MODEL_DIR = Path(__file__).resolve().parents[1]   # the model root
-ROOT = MODEL_DIR.parents[1]
 WORK = MODEL_DIR / "work"
 BUILD = WORK / "build"
-INFER = WORK / "infer"
-BENCH = WORK / "bench"
-INPUTS = WORK / "inputs"
-RUNTIME = ROOT / "runtime" / "build" / "ge_runtime"
 PROTO_ID = "chunk_gated_delta_rule_proto"
 PROTO_INSTALL = WORK / "deps" / PROTO_ID / "install"
 PROTO_LIB_NAME = "libchunk_gated_delta_rule_compat_proto.so"
@@ -58,7 +38,7 @@ PROTO_LIB = PROTO_INSTALL / "lib" / PROTO_LIB_NAME
 # itself importable (the model root is the package's parent)
 if str(MODEL_DIR) not in sys.path:
     sys.path.insert(0, str(MODEL_DIR))
-from model import modeling_multimodal
+from model import modeling_multimodal                            # noqa: E402
 
 
 def _require_proto_preloaded():
@@ -80,26 +60,6 @@ def _require_proto_preloaded():
                          f"then start this process with LD_PRELOAD={PROTO_LIB}")
     raise SystemExit(f"export_air: the ChunkGatedDeltaRule GE prototype is not preloaded; "
                      f"start with LD_PRELOAD={PROTO_LIB} (run.sh does this automatically)")
-
-
-def _ge_call(plan):
-    """One ge_runtime subprocess on stdin JSON; returns the parsed GE_RESULT."""
-    if not RUNTIME.is_file():
-        raise SystemExit(f"export_air: runtime binary missing: {RUNTIME}; "
-                         "build it: bash runtime/build.sh")
-    process = subprocess.run([str(RUNTIME)], input=json.dumps(plan), text=True,
-                             capture_output=True)
-    if process.returncode:
-        tail = (process.stdout + process.stderr)[-4000:]
-        raise SystemExit(f"export_air: ge_runtime exited {process.returncode} "
-                         f"(mode {plan.get('mode')}); tail:\n{tail}")
-    messages = [line[len("GE_RESULT "):] for line in process.stdout.splitlines()
-                if line.startswith("GE_RESULT ")]
-    if len(messages) != 1:
-        tail = (process.stdout + process.stderr)[-4000:]
-        raise SystemExit(f"export_air: ge_runtime produced {len(messages)} GE_RESULT lines; "
-                         f"tail:\n{tail}")
-    return json.loads(messages[0])
 
 
 def _validate_io(io):
@@ -293,9 +253,8 @@ def export_torchair(spec, directory, export_name="model"):
     values = _example_values(io, spec["example_inputs"])
     for node, value in zip(io["inputs"], values):
         # dynamic=True symbolizes every UNMARKED axis as well, so axes the
-        # IOSpec declares static (position_ids leading 3, pixel_values
-        # [512,1536]) must be pinned with mark_static or the shipped AIR Data
-        # shapes degrade to numel-product-only symbolic dims.
+        # IOSpec declares static must be pinned with mark_static or the
+        # shipped AIR Data shapes degrade to numel-product-only symbolic dims.
         dynamic = set(node.get("dynamic_dims", []))
         for axis in range(len(node["shape"])):
             if axis in dynamic:
@@ -335,75 +294,55 @@ def export_torchair(spec, directory, export_name="model"):
     return {"format": "air", "path": str(path)}, io
 
 
-def build_request(mode, graph, io, records, case_ids, inputs_file, output_dir, device,
-                  instances, warmup, iterations, seed):
-    wanted = set(case_ids)
-    selected = [record for record in records if record["id"] in wanted]
-    missing = wanted - {record["id"] for record in selected}
-    if missing:
-        raise SystemExit(f"export_air: records.json misses pool cases {sorted(missing)}")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    return {"mode": mode, "backend": "ge_session",
-            "graph": {"format": "air", "path": graph["path"], "om_path": None},
-            "io": io,
-            "inputs": {"file": inputs_file, "cases": selected},
-            "device": device, "instances": instances,
-            "warmup": warmup, "iterations": iterations, "seed": seed,
-            "options": {"graph_run_mode": 0, "precision_mode": "must_keep_origin_dtype"},
-            "observability": {"profiling": False, "dump": False},
-            "output_dir": str(output_dir.resolve())}
-
-
 def main():
-    parser = argparse.ArgumentParser(description="Export the StartLux unified AIR and "
-                                                 "generate the execution requests")
+    parser = argparse.ArgumentParser(description="Export the StartLux split AIRs "
+                                                 "(vision + text)")
     parser.add_argument("--device", type=int, default=0,
                         help="in-process device index (ASCEND_RT_VISIBLE_DEVICES maps it)")
-    parser.add_argument("--instances", type=int, required=True)
-    parser.add_argument("--warmup", type=int, required=True)
-    parser.add_argument("--iterations", type=int, required=True)
-    parser.add_argument("--seed", type=int, required=True)
     args = parser.parse_args()
 
     _require_proto_preloaded()
     unified, _placement = modeling_multimodal.load(args.device)
-    spec = modeling_multimodal.export_example(unified, args.device)
 
     BUILD.mkdir(parents=True, exist_ok=True)
-    air = BUILD / "model.air"
-    if air.exists():
-        air.unlink()
-    graph, io = export_torchair(spec, BUILD)
+    for name in ("vision", "text"):
+        stale = BUILD / f"{name}.air"
+        if stale.exists():
+            stale.unlink()
 
-    embedded = _ge_call({"mode": "write_io",
-                         "graph": {"format": "air", "path": graph["path"]},
-                         "io": io})["io"]
-    _validate_io(embedded)
+    import torch
 
-    records_doc = json.loads((INPUTS / "records.json").read_text())
-    if records_doc.get("schema") != "startlux-standalone-records/1":
-        raise SystemExit("export_air: work/inputs/records.json is not the standalone "
-                         "record index; run generate_inputs.py first")
-    records = records_doc["cases"]
-    cases_doc = json.loads((INPUTS / "cases.json").read_text())
-    pools = cases_doc["pools"]
+    vision_spec = {
+        "format": "torch", "model": unified.model.visual,
+        "io": modeling_multimodal.vision_io_spec(),
+        "example_inputs": {
+            key: torch.from_numpy(value).to(f"npu:{args.device}")
+            for key, value in modeling_multimodal.vision_example_inputs().items()},
+    }
+    graph, _io = export_torchair(vision_spec, BUILD, export_name="vision")
+    vision_path = graph["path"]
 
-    infer_plan = build_request(
-        "infer", graph, embedded, records, pools["precision"], records_doc["file"],
-        INFER, args.device, instances=1, warmup=0, iterations=1, seed=args.seed)
-    (INFER / "request.json").write_text(json.dumps(infer_plan, indent=1) + "\n")
+    text_spec = {
+        "format": "torch", "model": unified,
+        "io": modeling_multimodal.text_io_spec(),
+        "example_inputs": {
+            key: torch.from_numpy(value).to(f"npu:{args.device}")
+            for key, value in modeling_multimodal.text_example_inputs().items()},
+    }
+    graph, _io = export_torchair(text_spec, BUILD, export_name="text")
+    text_path = graph["path"]
 
-    bench_plan = build_request(
-        "bench", graph, embedded, records, pools["bench"], records_doc["file"],
-        BENCH, args.device, instances=args.instances, warmup=args.warmup,
-        iterations=args.iterations, seed=args.seed)
-    (BENCH / "request.json").write_text(json.dumps(bench_plan, indent=1) + "\n")
-
-    print(f"export_air: AIR {graph['path']} ({Path(graph['path']).stat().st_size} bytes) "
-          f"with embedded IO; requests: infer ({len(infer_plan['inputs']['cases'])} cases) -> "
-          f"{INFER / 'request.json'}, bench ({len(bench_plan['inputs']['cases'])} cases, "
-          f"warmup {args.warmup}, {args.iterations} requests, seed {args.seed}) -> "
-          f"{BENCH / 'request.json'}")
+    manifest = {"schema": "startlux-split-air/1",
+                "vision": {"path": vision_path,
+                           "bytes": Path(vision_path).stat().st_size},
+                "text": {"path": text_path,
+                         "bytes": Path(text_path).stat().st_size},
+                "vision_io": modeling_multimodal.vision_io_spec(),
+                "text_io": modeling_multimodal.text_io_spec()}
+    (BUILD / "split.json").write_text(json.dumps(manifest, indent=1) + "\n")
+    print(f"export_air: vision {vision_path} ({manifest['vision']['bytes']} bytes), "
+          f"text {text_path} ({manifest['text']['bytes']} bytes); manifest: "
+          f"{BUILD / 'split.json'}")
 
 
 if __name__ == "__main__":

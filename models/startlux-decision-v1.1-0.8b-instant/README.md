@@ -10,7 +10,7 @@ GE 适配目录。
 交付形态为**独立脚本流程**（[docs/standalone-runtime-plan.md](docs/standalone-runtime-plan.md)
 定稿方案，2026-11-05 实施并通过全流程验收）：Shell 串行调度
 （`run.sh`），Python 直接完成数据（`generate_inputs.py`）、官方 CPU 参考
-（`decider/golden.py`）与两阶段 split AIR 导出（`model/export_split.py`，产出
+（`decider/golden.py`）与两阶段 split AIR 导出（`model/export_air.py`，产出
 vision.air + text.air），C++ pipeline runtime
 完成推理与性能，公共工具（`tools/compare.py`）完成精度比较，业务概率门禁由
 `decider/verify_business.py` 承担。**不依赖 `core` 流程框架**，无 YAML / adapter /
@@ -35,7 +35,7 @@ handle；固定参数集中在 `run.sh` 顶部。
   `modeling_multimodal.py`（两阶段拆分：视觉/文本 IO 契约、组批桥（任意图数/
   网格 + 官方位置表 provider）、`from_folder` 逐张量加载与对账）、
   `unified_preprocess.py`（官方 CPU 预处理）、
-  `export_split.py`（两阶段 AIR 导出）；执行端
+  `export_air.py`（两阶段 split AIR 导出）；执行端
   `runtime/pipeline_runtime.cpp`（最小 C++ 两阶段 runner：vision AIR →
   设备常驻 features → text AIR）。
 - **`decider/`**（官方 CPU 参考与业务门禁）：`golden.py`（官方 CPU golden）、

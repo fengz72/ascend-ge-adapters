@@ -88,7 +88,8 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `runtime/pipeline_runtime.cpp`（~530 行）：位置绑定（无 write_io/read_io）、
 **features 设备常驻直连**（vision 输出 gert::Tensor 重建描述符直喂 text 输入
 槽 3，不经主机 D2H/H2D）、infer/bench 双模式（输出格式兼容 compare.py/
-verify_business.py）。run.sh 切换到 export_split + pipeline_runtime。
+verify_business.py）。run.sh 切换到 export_air（两阶段导出，即原 export_split 更名合并——单 AIR 导出
+流程连同 write_io 嵌入一并删除）+ pipeline_runtime。
 
 **踩坑与修复**（eager 阶段全部即时暴露）：bridge `ids_rows` 已是 list 再调
 `.tolist()`（UnboundLocalError/AttributeError 定位）；`validated` 文本行分支

@@ -81,7 +81,7 @@ bash "$ROOT/runtime/build.sh" 2>&1 | tee "$LOGS/runtime-build.log"
 # ---------------------------------------------------------------- 6. 导出
 step "导出两阶段 split AIR（vision + text）"
 rm -f "$WORK/build/vision.air" "$WORK/build/text.air" "$WORK/build/split.json"
-LD_PRELOAD="$PROTO_LIB" python3 "$MODEL_DIR/model/export_split.py" \
+LD_PRELOAD="$PROTO_LIB" python3 "$MODEL_DIR/model/export_air.py" \
     --device "$DEVICE" 2>&1 | tee "$LOGS/export.log"
 
 # ---------------------------------------------------------------- 7. 精度推理
