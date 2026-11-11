@@ -39,6 +39,11 @@ PROTO_LIB = PROTO_INSTALL / "lib" / PROTO_LIB_NAME
 if str(MODEL_DIR) not in sys.path:
     sys.path.insert(0, str(MODEL_DIR))
 from model import modeling_multimodal                            # noqa: E402
+import causal_conv1d  # noqa: E401,F401  activator: dlopen libcust_opapi.so, mount
+# the vendor opp, register torch.ops.ascend_ops.causal_conv1d (Meta +
+# PrivateUse1) and the CausalConv1dGE fx converter -- must precede
+# dynamo_export; fail-loud until third_party/ascend-ops/causal-conv1d is
+# installed (prepare.sh runs its install.sh).
 
 
 def _require_proto_preloaded():

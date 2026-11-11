@@ -22,10 +22,11 @@ def _softplus(x):
 
 
 def causal_conv4(x, weight):
-    channels, seq = x.shape[1], x.shape[2]
-    w = weight.float().reshape(channels, 1, 1, 4)
-    y = F.conv2d(x.float().unsqueeze(2), w, groups=channels, padding=(0, 3))
-    return F.silu(y[..., :seq].squeeze(2).to(x.dtype))
+    # vendored fla AscendC kernel via causal-conv1d (CausalConv1dGE in the
+    # exported graph): fused depthwise causal conv + silu, dim-last (B,S,D)
+    # bf16.  Weight (C,1,4) -> (W,C); constant-folds into the frozen graph.
+    w = weight.reshape(weight.shape[0], 4).t().contiguous()
+    return torch.ops.ascend_ops.causal_conv1d(x, w, None, "silu")
 
 
 def _mrope_interleave_index(mrope_section, half, device=None):
@@ -113,11 +114,11 @@ class StartLuxGatedDeltaNet(nn.Module):
 
     def forward(self, hidden_states):
         batch, width, _ = hidden_states.shape
-        mixed_qkv = self.in_proj_qkv(hidden_states).transpose(1, 2)
+        mixed_qkv = self.in_proj_qkv(hidden_states)
         z = self.in_proj_z(hidden_states).reshape(batch, width, -1, self.head_v_dim)
         b = self.in_proj_b(hidden_states)
         a = self.in_proj_a(hidden_states)
-        mixed = causal_conv4(mixed_qkv, self.conv1d.weight).transpose(1, 2)
+        mixed = causal_conv4(mixed_qkv, self.conv1d.weight)
         q = mixed[..., :self.key_dim].reshape(batch, width, -1, self.head_k_dim)
         k = mixed[..., self.key_dim:2 * self.key_dim].reshape(
             batch, width, -1, self.head_k_dim)

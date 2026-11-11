@@ -50,6 +50,15 @@ handle；固定参数集中在 `run.sh` 顶部。
   MatMul/MatMulV2 常量权重转 FRACTAL_NZ 重建为 MatMulV3（系统级安装至
   CANN vendors 目录；安装后首次图编译按形状逐一 TBE 编译、kernel_meta
   缓存）。2026-11-09 实测：ticket-team 单 case AI 时间 −14.4%。
+- `prepare.sh` 还构建安装 **causal-conv1d** vendor 算子包
+  （`third_party/ascend-ops/causal-conv1d`：vendored fla AscendC kernel +
+  `CausalConv1dGE` GE 包装 + torch 绑定）：GDN 层因果卷积由 7 算子链
+  （Transpose×2 + TransData×2 + Conv2D + Slice + Swish）融合为单算子
+  （含 SiLU、dim-last 直连 in_proj 输出），图腿经 torchair converter 落
+  `CausalConv1dGE` 节点，`pipeline_runtime` 在 GEInitialize 前 dlopen
+  `libcust_opapi.so`（C++ 进程无 activator；GE 自动发现不到该库）。
+  2026-11-11 实测：bench e2e P50 −13.1%、每请求 AI 时间 −12.3%，见
+  performance.md 附录。
 - `work/`：全部生成产物（inputs / golden / build / infer / bench / deps /
   logs / fixtures），不提交 Git。
 
@@ -139,9 +148,18 @@ python3 -m unittest tests.test_torchair_example_inputs
   融合算子路线实测净负（融合算子内部 128 对齐、本模型 shape 偏小：B1 −28% /
   B2 −51%，吞吐 −23%），代码已移除，测量证据见 validation.md /
   performance.md。
+- GDR conv：GDN 因果卷积依赖 causal-conv1d vendor 包（prepare.sh 安装至
+  CANN vendors，系统级）：`torch.ops.ascend_ops.causal_conv1d` 图腿落
+  `CausalConv1dGE`（EagerExecuteOp），数值为 kernel 固有 bf16 行为
+  （与上游 fla-npu wheel 逐位一致；端到端 relL2 0.0057，见 performance.md
+  附录）。限制：dense prefill、`(B,S,D)` 布局、D 需 16 倍数、W∈{2,3,4}。
+  C++ runtime 在 GEInitialize 前 dlopen 该 `libcust_opapi.so`，进程退出时
+  其静态析构在 GEFinalize 后触发 glibc fastbins 损坏——runtime 成功路径
+  已显式 teardown 后 `_exit(0)` 规避；带 GE profiling 的运行保留正常退出
+  （msprof 的 atexit 导出先完成，仅退出码受损，预期 134/abort）。
 - 性能：口径与数值见 [performance.md](performance.md)；graph executions/s
   不是完整业务 QPS。bench 前需人工确认卡空闲。
 - AIR 导出非字节可复现（同源同参数多次导出 sha256 不同、字节数恒定
-  1,708,279,731，嵌入 IO 契约经 runtime write_io/read_io 验证一致）；正式证据
-  以数值验收为准。字节数曾为 1,907,534,423，融合 RoPE 与融合 full-attention
-  后降至当前值（−10%，见 performance.md 附录）。
+  1,507,412,645（causal-conv1d 替换后；曾为 1,708,279,731，融合 RoPE 与
+  融合 full-attention 后为该值），嵌入 IO 契约经 runtime write_io/read_io
+  验证一致）；正式证据以数值验收为准。

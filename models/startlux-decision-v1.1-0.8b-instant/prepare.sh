@@ -45,3 +45,10 @@ cmake -S "$NZ_PASS_DIR" -B "$NZ_PASS_DIR/build" > /dev/null
 cmake --build "$NZ_PASS_DIR/build" --parallel > /dev/null
 cmake --install "$NZ_PASS_DIR/build" > /dev/null
 echo "prepare: installed WeightNzAndMatMulV3Pass -> ${ASCEND_OPP_PATH}/vendors/custom_nz_pass/custom_fusion_passes/"
+
+# causal-conv1d (vendored fla AscendC kernel + CausalConv1dGE wrapper): builds
+# the vendor package into $ASCEND_OPP_PATH/vendors/causal_conv1d, writes it
+# first in the vendors load_priority, and pip-registers the torch binding
+# used by modeling_text.causal_conv4 (both export legs and eager calls).
+bash "$ROOT/third_party/ascend-ops/causal-conv1d/install.sh"
+echo "prepare: installed causal-conv1d -> ${ASCEND_OPP_PATH}/vendors/causal_conv1d/"

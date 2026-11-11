@@ -827,3 +827,57 @@ trip).
 - Evidence paths: `work/bench/` (result.json, requests.csv),
   `work/infer/`, `work/logs/` (2026-11-10 15:0x-16:0x UTC), probes as
   described in validation.md 2026-11-10.
+
+## Appendix: GDN causal-conv path switch to the vendored CausalConv1d op (2026-11-11)
+
+`modeling_text.causal_conv4` was replaced by the vendored fla AscendC
+kernel behind `torch.ops.ascend_ops.causal_conv1d`
+(`third_party/ascend-ops/causal-conv1d`, graph leg = `CausalConv1dGE`
+custom-op-v2 wrapper): fused depthwise causal conv + SiLU, dim-last
+(B,S,D) bf16, fed directly by the `in_proj_qkv` matmul output.  The old
+7-op chain (Transpose-in + TransData->fractal + Conv2D + TransData<-
+fractal + tail Slice + Swish + Transpose-out, 128.9 us/layer on the team
+case) collapses to the single op, and both layout round-trips disappear.
+
+| item | pre (Conv2D chain) | post (CausalConv1d) |
+|---|---|---|
+| bench plan | instances 1, warmup 32, 2048 measured requests, seed 42, closed loop, chip 14 | same |
+| e2e P50 / P99 / avg (n=2048, ms) | 13.755 / 21.165 / 16.157 | **11.949 / 19.238 / 14.053** (-13.1% / -9.1% / -13.0%) |
+| qps | 61.9 (imputed from avg e2e) | **71.16** |
+| per-case e2e P50 (ms) | team 13.546, severity 13.549, urgent 13.725, image-damaged 19.448, b3 20.479 | **11.645, 11.644, 11.886, 17.757, 17.040** |
+| in-graph op mix per request | Conv2D x18 + TransData x36 + Transpose x37 + Slice x108 + Swish x60 | CausalConv1d x18, TransData x0, Transpose x2.7 |
+| AI task time per request (msprof op_statistic, us/req) | 10,445 | **9,156** (-12.3%; both sides exclude MatMulV3 -- the msprof export drops CubeCore rows, same-scope comparison; with the pre-side MatMulV3 restored at 2,687 us/req (187/req, `*_restored.csv`) the full pre AI time is 13,132 us/req, and the conv switch leaves the matmul set untouched, so the relative gain carries) |
+| causal-conv path per request (in-graph) | 2,322 (kernel 439.6 + transdata 642.4 + transpose 731.4 + slice/swish/cast tail) | **411.4** (22.9 us/layer) |
+| text AIR bytes | 1,708,279,731 | 1,507,412,645 (-11.7%) |
+| precision (5 cases vs CPU FP32 golden) | worst cosine 0.999999, worst relL2 0.004004 | worst cosine 0.999999, worst relL2 0.005704 (gate 0.999 / 0.02) |
+| business gate | worst active-prob max abs 0.005507 | worst 0.004267 (gate 0.01) |
+
+Integration notes (measured on the same build as this appendix):
+
+- `pipeline_runtime` dlopens the vendor `libcust_opapi.so` (RTLD_GLOBAL)
+  before GEInitialize; GE does not discover it on its own in the C++
+  runner and the graph compile aborts with `has_ir is 0` otherwise.
+- With the op loaded, the process-exit static destruction (after
+  GEFinalize) trips a glibc fastbins corruption abort; the runner
+  therefore tears down explicitly and leaves via `_exit(0)` on the
+  success path (profiling runs keep the normal exit: msprof's atexit
+  export completes before the abort, only the exit code is spoiled).
+- Evidence: `work/bench/` (post) and `work/bench-baseline-conv2d/`
+  (pre, requests.csv), `work/prof-conv1d-msprof/` (msprof, 200-iter
+  op_statistic vs `work/prof-team-split/bench-profiling/`, pre side
+  additionally `op_statistic_*_restored.csv` via `tools/restore_matmulv3.py`),
+  `work/logs/bench-new-runtime.log`.
+
+Long-text dev case (single-case bench, `case_filter dev-intent-q00-r0`,
+warmup 16 / 400 measured / seed 42, same chip, same AIRs):
+
+| item | pre (Conv2D chain) | post (CausalConv1d) |
+|---|---|---|
+| e2e P50 / P99 / avg (n=400, ms) | 26.599 / 26.815 / 26.612 | **22.279 / 22.425 / 22.281** (-16.2%) |
+| qps | 37.58 | **44.88** (+19.4%) |
+| msprof (416 profiled execs) | - | CausalConv1d 18/req, avg 64.3 us/layer, 7.3% of the (MatMulV3-excluded) AI time; Conv2D / TransData / Transpose all at zero; ChunkGatedDeltaRule is the dominant op at 38% |
+
+Evidence: `work/devcase/bench/case/dev-intent-q00-r0/` (pre),
+`work/devcase/bench-new/case/dev-intent-q00-r0/` (post),
+`work/devcase/prof-conv1d-devq00/PROF_000001_20261111085122553_02015786FFFNCENI/`
+(msprof export).
