@@ -59,6 +59,63 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `tests/test_startlux_unified_preprocess.py`（23 项）与
 `tests/test_startlux_native_proto.py` 改路径后全部通过。
 
+## 2026-11-11 变更（负结果，已回退）：手动 npu_add_rms_norm 替换 InplaceAddRmsNorm
+
+**问题**（用户提议）：team profiling 显示 48 个 InplaceAddRmsNorm 融合点各带一对
+bf16→f32 / f32→bf16 Cast（[1,99,1024] 双向 ×48，~534us/请求）——当时归因于
+AddRmsNormFusionGraphPass 的 fp32 域。能否手动调用
+`torch_npu.npu_add_rms_norm` 绕过融合 pass、消除 cast？
+
+**实验**：tuple-flow 重构 DecoderLayer/TextModel（mlp_out + pending 残差流，
+48 个 Add+RmsNorm 位点全部改为显式 `npu_add_rms_norm` 调用）。
+
+**结果**：
+- eager：`npu_add_rms_norm` 确实直收直出 bf16（y/sum 均 bf16，sum 与
+  bf16(fp32 加法) 位精确，数值 relL2 0.0028 同级）——eager 路径无 cast；
+- **图路径 cast 原样保留**：`[1,99,1024]` bf16→f32 ×48 + `[99,1024]`
+  f32→bf16 ×48 与替换前逐形状相同；
+- AI 时间 13,238 → 13,616 us/exec（+2.9%，方差带内持平略差）；内核
+  AddRmsNorm（手动）540us vs InplaceAddRmsNorm（pass 融合）495us——同族
+  内核，手动路由无优势；
+- 门禁：eager 冒烟 5 类 case PASS（0.0011–0.0058），图 infer 门禁 PASS
+  （worst relL2 0.006053 与基线同值）。
+
+**结论（2026-11-11 深挖修正，用户指正后重新定案）**：上面"内核族要求 fp32"的
+归因是**错的**。追加三轮证据：
+1. **TBE 内核二进制元数据**（`opp/built-in/.../add_rms_norm/AddRmsNorm_3_high_performance.json`
+   与 `inplace_add_rms_norm/InplaceAddRmsNorm_3_high_performance.json` 的
+   supportInfo）：**x1/x2/gamma 均为 bfloat16，输出 x1/x2 也 bfloat16**（唯一
+   f32 输出是 rstd [..,1]，尺寸可忽略）——内核原生 bf16（与 ops-nn 9.1.0
+   README 一致）；
+2. **原始导出图（保留 dynamo.pbtxt 的 4 层迷你图）**：norm 输出 bf16、
+   BatchMatMul x1 bf16，norm↔matmul 边界**零 cast**——模型代码与 dynamo
+   导出全程干净；
+3. **自定义 WeightNzAndMatMulV3Pass 源码**：`ReplaceWithMatMulV3` 将 x1
+   desc 原样复制（不改 dtype、不插 cast）。
+
+**归属（计数证据定案）**：cast 的形状/数量与 **MatMulV3 的输入/输出位**
+完全对齐——[1,99,1024] bf16→f32 ×48 = 每层 norm1+norm2 输出喂投影（24+24）；
+[99,1024] f32→bf16 ×48 = down_proj（24）+ out_proj（18+6）输出回 bf16 流；
+[1,99,3584]/[99,3584] ×24 = MLP 中间界。norm 内核 bf16 进出（supportInfo），
+不可能产出 f32 [99,1024]——**f32 往返 attach 在 MatMulV3 激活值边界**，由
+编译期（我们 NZ pass 之后的 CANN 内部阶段）插入；旁证：本 SoC 的
+MatMulV3/MatMulV2 runtime KB 仅有 fp16/fp32 条目、无 bf16。手动
+`npu_add_rms_norm` 失败的完整解释：cast 本就不在 norm 边界，换 norm 的
+调用方式不触及它。InplaceAddRmsNorm 无 torch/torchair 暴露的调用入口
+（torch.ops.npu 与 torchair ge_apis 均查无此算子），“直接手动调用”
+不可达，且按归属也不解决问题。
+
+**新的可行杠杆（未测）**：fusion switch 配置禁用这两个内置 pass，让残差走
+朴素路径——67 个非融合 RmsNorm 位点（`RmsNorm_normal_all_bf16` 内核）实测
+**零 cast**，证明朴素路径无此开销。预估：省 ~534us cast，付 ~48 次额外 Add
+内核（~3us/次），净赚 ~300-400us/请求。GE Session 侧的禁用方式需查
+（ATC 有 `--fusion_switch_file`，Session 选项名待确认）。
+**代码已回退**（outputs 位相同恢复 `cff3bbdb…`）；pipeline_runtime 的
+profiling + case_filter 能力保留（未提交）。
+
+实验证据：`work/prof-team-split/`（替换前）、`work/prof-team-fused/`
+（替换后，两者 op/cast 形状对照）。
+
 ## 2026-11-10 变更：纯文本请求完全跳过视觉阶段（对齐官方 media=None 行为）
 
 **决策**（用户提议）：拆分后纯文本调用仍把 4 行哑元跑一遍视觉 AIR（bench
