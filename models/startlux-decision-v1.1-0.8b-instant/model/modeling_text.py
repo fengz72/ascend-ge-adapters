@@ -46,9 +46,23 @@ class StartLuxRMSNorm(nn.Module):
         self.eps = eps
 
     def forward(self, x):
-        gamma = 1.0 + self.weight
-        y, _ = torch.ops.npu.npu_rms_norm(x, gamma, float(self.eps))
+        # weight already carries gamma (see fold_gamma): the exported graph
+        # must not recompute `1.0 + weight` on frozen parameters every
+        # request (61 per-request Add nodes on the delivery graph otherwise).
+        y, _ = torch.ops.npu.npu_rms_norm(x, self.weight, float(self.eps))
         return y.to(x.dtype)
+
+    def fold_gamma(self):
+        """Bake `1.0 + weight` into the parameter, once, after checkpoint
+        load (from_folder calls this for every instance).  Bit-identical to
+        the runtime add (same dtype, same operand order); the module is
+        unusable before folding -- a fresh construction holds zeros."""
+        if getattr(self, "gamma_folded", False):
+            return False
+        with torch.no_grad():
+            self.weight.data.add_(1.0)
+        self.gamma_folded = True
+        return True
 
 
 class StartLuxRMSNormGated(nn.Module):
