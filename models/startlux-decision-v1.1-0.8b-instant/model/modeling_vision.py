@@ -1,34 +1,61 @@
-"""StartLux vision tower: self-owned nn.Module tree (checkpoint-mirroring names,
-model.visual.*) behind fixed same-grid image slots.  FP32 residual stream with
-FP16 Linear/Conv inner products; the shape-derived pos_embeds / rotary tables are
-precomputed by the OFFICIAL fast_pos_embed_interpolate / rot_pos_emb methods after
-the weight load (build_static_buffers, called by from_folder).  Full record:
-validation.md 2026-11-10.
+"""StartLux dynamic vision tower: self-owned nn.Module tree (checkpoint-mirroring
+names, model.visual.*) for the two-stage split AIR (vision stage + text stage).
+
+forward(pixel_values [T_v, 1536] f32, vision_pos_embeds [T_v, 768] f32,
+        vision_rotary_cos [T_v, 64] f32, vision_rotary_sin [T_v, 64] f32,
+        vision_cu_seqlens [n] i64) -> merged features [T_m, 1024] f32
+
+T_v is the sum of every image's t*h*w patch rows and n the image count of the
+call -- ANY count and ANY even grid inside the official smart_resize bounds
+(PATCH_ROW_BOUNDS below).  The shape-derived tables (pos-embed interpolation,
+rotary cos/sin, per-image boundaries) are computed per call on the CPU by the
+OFFICIAL fast_pos_embed_interpolate / rot_pos_emb methods and enter the graph
+as INPUTS (multimodal.vision_tables_provider) -- the same pattern as the text
+side's position_ids; the graph carries no interpolation math and no per-slot
+buffers.
+
+Attention: the official per-image non-causal full attention is ONE
+npu_fused_infer_attention_score varlen call (TND layout, cumulative
+cu_seqlens on both q/kv sides, no mask, no S^2).  FIA takes fp16/bf16 only, so
+the attention inner math runs fp16 (q/k/v cast after the OFFICIAL fp32 rotary;
+output cast back to the fp32 residual stream) -- the one accepted precision
+deviation, gated against the CPU FP32 official reference.  Graph leg via
+torchair's `air` op, eager leg via the torch_npu host op (is_compiling
+dispatch); FIA rejects non-contiguous inputs (v is an unbind view).
+
+The merger's view performs the 2x2 spatial merge in row-major order, so the
+output rows follow the input order exactly: image k of the packed pixel rows
+maps to its own [T_v_k/4, out_hidden] feature block.
 """
 from __future__ import annotations
 
-import types
-
 import torch
+import torch_npu
+import torchair
 from torch import nn
 import torch.nn.functional as F
 
 from transformers.activations import ACT2FN
-from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
-from transformers.models.qwen3_5.modeling_qwen3_5 import (
-    Qwen3_5VisionModel, Qwen3_5VisionRotaryEmbedding, apply_rotary_pos_emb_vision,
-    eager_attention_forward)
+from transformers.models.qwen3_5.modeling_qwen3_5 import apply_rotary_pos_emb_vision
 
-GRID_THW = (1, 16, 16)        # t, h, w of every image slot (256x256 input)
-PATCH_ROWS = GRID_THW[1] * GRID_THW[2]            # 256 patch rows per slot
-MERGED_ROWS = (GRID_THW[1] // 2) * (GRID_THW[2] // 2)   # 64 merged rows per slot
+# Official image policy (vendored startlux_decide/images.py: MAX_IMAGES=16,
+# MIN_PIXELS=65536, MAX_PIXELS=1<<20 with 16x16 patches => 256..4096 patch
+# rows per image, h/w even for the 2x2 spatial merge).
+MAX_IMAGES_PER_REQUEST = 16
+MIN_PATCH_ROWS = 256
+MAX_PATCH_ROWS = 4096
 
 
 def _fp16_linear(module, x):
+    # fp32 residual stream cast to fp16 for the matmul, cast back -- only the
+    # inner product is reduced
     return F.linear(x.to(torch.float16), module.weight, module.bias).to(x.dtype)
 
 
 class MatMulPatchEmbed(nn.Module):
+    # The official patch Conv3d (stride == kernel, no receptive-field overlap)
+    # as ONE per-patch MatMul: out[p, o] = x_flat[p, :] . W_flat[:, o] + b[o]
+    # exactly; proj keeps the checkpoint's parameter names.
     def __init__(self, config):
         super().__init__()
         kernel = (config.temporal_patch_size, config.patch_size, config.patch_size)
@@ -39,8 +66,6 @@ class MatMulPatchEmbed(nn.Module):
         self.patch_volume = int(config.in_channels * kernel[0] * kernel[1] * kernel[2])
 
     def forward(self, x):
-        # stride == kernel -> one per-patch MatMul is exact: out[p, o] =
-        # x_flat[p, :] . W_flat[:, o] + b[o]
         w = self.proj.weight.permute(1, 2, 3, 4, 0).reshape(self.patch_volume, -1)
         y = x.to(torch.float16).view(-1, self.patch_volume) @ w
         if self.proj.bias is not None:
@@ -49,39 +74,39 @@ class MatMulPatchEmbed(nn.Module):
 
 
 class StartLuxVisionAttention(nn.Module):
+    # Qwen3_5VisionAttention: per-image non-causal full attention as ONE FIA
+    # varlen call; num_key_value_groups kept for nothing (no GQA: 12/12 heads).
     def __init__(self, config):
         super().__init__()
         self.num_heads = config.num_heads
         self.head_dim = config.hidden_size // self.num_heads
-        self.num_key_value_groups = 1     # required by eager_attention_forward
         self.scaling = self.head_dim ** -0.5
-        self.attention_dropout = 0.0
         self.qkv = nn.Linear(config.hidden_size, config.hidden_size * 3, bias=True,
                             dtype=torch.float16)
         self.proj = nn.Linear(config.hidden_size, config.hidden_size, bias=True,
                              dtype=torch.float16)
 
-    def forward(self, x, rotary_cos, rotary_sin, lengths):
+    def forward(self, x, rotary_cos, rotary_sin, cu_seqlens):
         seq_length = x.shape[0]
         qkv = _fp16_linear(self.qkv, x)
-        query_states, key_states, value_states = (
-            qkv.reshape(seq_length, 3, self.num_heads, -1).permute(1, 0, 2, 3).unbind(0))
-        query_states, key_states = apply_rotary_pos_emb_vision(
-            query_states, key_states, rotary_cos, rotary_sin)
-        query_states = query_states.transpose(0, 1).unsqueeze(0)
-        key_states = key_states.transpose(0, 1).unsqueeze(0)
-        value_states = value_states.transpose(0, 1).unsqueeze(0)
-        # one attention chunk per image (fixed lengths), official eager math
-        splits = [torch.split(t, lengths, dim=2)
-                  for t in (query_states, key_states, value_states)]
-        interface = ALL_ATTENTION_FUNCTIONS.get_interface("eager",
-                                                          eager_attention_forward)
-        attn_outputs = [interface(self, q, k, v, attention_mask=None,
-                                  scaling=self.scaling, dropout=0.0, is_causal=False)[0]
-                        for q, k, v in zip(*splits)]
-        attn_output = torch.cat(attn_outputs, dim=1)
-        attn_output = attn_output.reshape(seq_length, -1).contiguous()
-        return _fp16_linear(self.proj, attn_output)
+        q, k, v = (qkv.reshape(seq_length, 3, self.num_heads, self.head_dim)
+                   .permute(1, 0, 2, 3).unbind(0))
+        # official rotary in fp32 on the TND views (q/k outputs are fresh
+        # contiguous tensors; v is an unbind view -> contiguous for FIA)
+        q, k = apply_rotary_pos_emb_vision(q, k, rotary_cos, rotary_sin)
+        v = v.contiguous()
+        fia = (torchair.ops.npu_fused_infer_attention_score
+               if torch.compiler.is_compiling()
+               else torch_npu.npu_fused_infer_attention_score)
+        out = fia(q.to(torch.float16), k.to(torch.float16), v.to(torch.float16),
+                  num_heads=self.num_heads, scale=self.scaling,
+                  pre_tokens=2147483647, next_tokens=2147483647,
+                  input_layout="TND", num_key_value_heads=self.num_heads,
+                  sparse_mode=0,
+                  actual_seq_lengths=cu_seqlens,
+                  actual_seq_lengths_kv=cu_seqlens)[0].to(x.dtype)
+        out = out.reshape(seq_length, self.num_heads * self.head_dim)
+        return _fp16_linear(self.proj, out)
 
 
 class StartLuxVisionMLP(nn.Module):
@@ -106,13 +131,16 @@ class StartLuxVisionBlock(nn.Module):
         self.norm2 = nn.LayerNorm(config.hidden_size, eps=1e-6)
         self.mlp = StartLuxVisionMLP(config)
 
-    def forward(self, hidden, rotary_cos, rotary_sin, lengths):
+    def forward(self, hidden, rotary_cos, rotary_sin, cu_seqlens):
         hidden = hidden + self.attn(self.norm1(hidden), rotary_cos, rotary_sin,
-                                    lengths)
+                                    cu_seqlens)
         return hidden + self.mlp(self.norm2(hidden))
 
 
 class StartLuxVisionPatchMerger(nn.Module):
+    # use_postshuffle_norm=False: norm at patch resolution, then the view IS
+    # the 2x2 row-major spatial merge; the act is the official PLAIN nn.GELU
+    # (exact, unlike the MLP's gelu_pytorch_tanh).
     def __init__(self, config):
         super().__init__()
         self.hidden_size = config.hidden_size * (config.spatial_merge_size ** 2)
@@ -121,18 +149,20 @@ class StartLuxVisionPatchMerger(nn.Module):
                                     dtype=torch.float16)
         self.linear_fc2 = nn.Linear(self.hidden_size, config.out_hidden_size,
                                     bias=True, dtype=torch.float16)
-        self.act_fn = nn.GELU()     # the official merger uses PLAIN GELU
+        self.act_fn = nn.GELU()
 
     def forward(self, x):
-        # use_postshuffle_norm=False: norm at patch resolution, then the view IS
-        # the 2x2 row-major spatial merge
         y = self.norm(x).view(-1, self.hidden_size)
         return _fp16_linear(self.linear_fc2,
                             self.act_fn(_fp16_linear(self.linear_fc1, y)))
 
 
 class StartLuxVisionTower(nn.Module):
-    def __init__(self, config, grid_thw=GRID_THW, slots=2):
+    # The pos_embed parameter stays for checkpoint compatibility (load_state_dict
+    # expects model.visual.pos_embed.weight); the forward never touches it -- the
+    # interpolated tables arrive as inputs -- so dynamo drops it from the graph
+    # and the CPU bridge reads the tensor straight from the checkpoint.
+    def __init__(self, config):
         super().__init__()
         self.config = config
         self.patch_embed = MatMulPatchEmbed(config)
@@ -141,35 +171,9 @@ class StartLuxVisionTower(nn.Module):
         self.blocks = nn.ModuleList([StartLuxVisionBlock(config)
                                       for _ in range(config.depth)])
         self.merger = StartLuxVisionPatchMerger(config)
-        self.grid_thw = tuple(int(v) for v in grid_thw)
-        self.slots = int(slots)
-        t, h, w = self.grid_thw
-        self.lengths = [h * w] * self.slots     # one attention chunk per image
-        self.head_dim = config.hidden_size // config.num_heads
 
-    def build_static_buffers(self):
-        # inv_freq is NOT stored in the checkpoint and a .to(dtype) pass
-        # quantizes it irrecoverably, so it is always regenerated with the
-        # official constructor and never cast.
-        merge = self.config.spatial_merge_size
-        shim = types.SimpleNamespace(
-            pos_embed=self.pos_embed,
-            num_grid_per_side=int(self.config.num_position_embeddings ** 0.5),
-            spatial_merge_size=merge,
-            config=types.SimpleNamespace(spatial_merge_size=merge),
-            rotary_pos_emb=Qwen3_5VisionRotaryEmbedding(self.head_dim // 2))
-        with torch.no_grad():
-            grid = torch.tensor([list(self.grid_thw)] * self.slots, dtype=torch.long)
-            pos = Qwen3_5VisionModel.fast_pos_embed_interpolate.__get__(shim)(grid)
-            rot = Qwen3_5VisionModel.rot_pos_emb.__get__(shim)(grid)
-            rot = rot.reshape(-1, rot.shape[-1])            # official reshape
-            emb = torch.cat((rot, rot), dim=-1)
-            self.register_buffer("pos_embeds", pos.contiguous())
-            self.register_buffer("rotary_cos", emb.cos().contiguous())
-            self.register_buffer("rotary_sin", emb.sin().contiguous())
-
-    def forward(self, pixel_values):
-        hidden = self.patch_embed(pixel_values) + self.pos_embeds
+    def forward(self, pixel_values, pos_embeds, rotary_cos, rotary_sin, cu_seqlens):
+        hidden = self.patch_embed(pixel_values) + pos_embeds
         for block in self.blocks:
-            hidden = block(hidden, self.rotary_cos, self.rotary_sin, self.lengths)
+            hidden = block(hidden, rotary_cos, rotary_sin, cu_seqlens)
         return self.merger(hidden)

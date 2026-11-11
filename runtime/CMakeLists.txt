@@ -61,5 +61,28 @@ target_link_libraries(ge_runtime
     stdc++
     pthread
 )
+
+# 最小两阶段 pipeline runtime: vision AIR -> (device 常驻) features -> text AIR。
+# 不嵌 io_spec、不带请求池/回放框架; 输入按 io spec 的固定顺序位置绑定。
+add_executable(pipeline_runtime pipeline_runtime.cpp)
+target_include_directories(pipeline_runtime PRIVATE
+    ${ASCEND_HOME}/include
+    ${THIRD_PARTY_DIR}
+)
+target_link_directories(pipeline_runtime PRIVATE ${ASCEND_HOME}/lib64)
+target_compile_options(pipeline_runtime PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+target_link_libraries(pipeline_runtime
+    ge_compiler
+    ge_runner
+    ge_common
+    ge_common_base
+    graph
+    graph_base
+    fmk_onnx_parser
+    parser_common
+    ascendcl
+    stdc++
+    pthread
+)
 # 注: 不链 acl_op_compiler —— 本运行时不调任何算子编译/aclnn API (图编译走 ATC 子进程或
 # ge::Session::CompileGraph)。曾经链着它但无一处引用, 白增一条对 CANN 组件的依赖。

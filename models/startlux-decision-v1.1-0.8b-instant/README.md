@@ -10,7 +10,8 @@ GE 适配目录。
 交付形态为**独立脚本流程**（[docs/standalone-runtime-plan.md](docs/standalone-runtime-plan.md)
 定稿方案，2026-11-05 实施并通过全流程验收）：Shell 串行调度
 （`run.sh`），Python 直接完成数据（`generate_inputs.py`）、官方 CPU 参考
-（`decider/golden.py`）与 AIR 导出（`model/modeling_multimodal.py` + `model/export_air.py`），现有 C++ runtime
+（`decider/golden.py`）与两阶段 split AIR 导出（`model/export_split.py`，产出
+vision.air + text.air），C++ pipeline runtime
 完成推理与性能，公共工具（`tools/compare.py`）完成精度比较，业务概率门禁由
 `decider/verify_business.py` 承担。**不依赖 `core` 流程框架**，无 YAML / adapter /
 handle；固定参数集中在 `run.sh` 顶部。
@@ -29,11 +30,14 @@ handle；固定参数集中在 `run.sh` 顶部。
   decoder：参数名镜像 checkpoint 零映射加载、A_log 显式 F32、融合 RoPE（BSND）、
   FIA 按行长注意力（图腿 torchair `air` 算子 / eager 腿 torch_npu host 实现，
   无 S² 掩码））、`modeling_vision.py`
-  （自持权重固定网格视觉塔：FP32 残差流 + FP16 Linear/Conv 内积）、
-  `modeling_multimodal.py`（统一图组合与组批校验，图边界常量与 IO
-  契约单一来源，`from_folder` 逐张量加载与对账）、
+  （动态视觉塔：任意图数/任意官方网格，官方位置表作为图输入，FIA TND varlen
+  逐图注意力，fp16 内积/fp32 流）、
+  `modeling_multimodal.py`（两阶段拆分：视觉/文本 IO 契约、组批桥（任意图数/
+  网格 + 官方位置表 provider）、`from_folder` 逐张量加载与对账）、
   `unified_preprocess.py`（官方 CPU 预处理）、
-  `export_air.py`（AIR 导出与请求生成）。
+  `export_split.py`（两阶段 AIR 导出）；执行端
+  `runtime/pipeline_runtime.cpp`（最小 C++ 两阶段 runner：vision AIR →
+  设备常驻 features → text AIR）。
 - **`decider/`**（官方 CPU 参考与业务门禁）：`golden.py`（官方 CPU golden）、
   `verify_business.py`（业务概率门禁）、`vendor/`（官方推理代码逐字节子集，
   13 个 Python 模块与固定上游 commit 一致；当前流程用到
@@ -109,16 +113,19 @@ python3 -m unittest tests.test_torchair_example_inputs
 
 ## 使用限制
 
-- 图边界：官方 processed grid [1,16,16]（256x256 输入）；每次调用全局最多 2
-  张图（pixel_values 静态 [512,1536] 双图位）；**S ≤ 模型原生
-  `max_position_embeddings`（当前 checkpoint 为 262144，编码期从 folder config
-  派生；S=262144 已实测可执行且数值正确）；B 无编码期上限**——真实约束是运行
-  期 HBM（激活 ~B·S），超内存组合以 GE 内部错误失败而非静默截断；**case 按真
-  长执行**（宽度 = max 行真长，无补齐下限）；超限拒绝、不截断。图槽位与网格
-  常量单一来源为 `modeling_multimodal.py` / `modeling_vision.py` 顶层，生成
-  输入时强制执行。
-- 混精度：视觉塔 FP32 残差流 + FP16 Linear/Conv 内积，文本 decoder BF16；
+- 图边界：**对齐官方**——任意图片数量（每请求 ≤ 官方 serve 上限 16）与任意官方
+  smart_resize 网格（每图 256..4096 patch 行，即 256²..1024² 像素，保持长宽比）；
+  纯文本调用经 4 行哑元走视觉阶段（特征经 index=-1 全部丢弃）；
+  **S ≤ 模型原生 `max_position_embeddings`（当前 checkpoint 为 262144，编码期从
+  folder config 派生；S=262144 已实测可执行且数值正确）；B 无编码期上限**——
+  真实约束是运行期 HBM（激活 ~B·S），超内存组合以 GE 内部错误失败而非静默截断；
+  **case 按真长执行**（宽度 = max 行真长，无补齐下限）；超限拒绝、不截断。
+- 混精度：视觉塔 FP32 残差流/位置表 + FP16 Linear/Conv 内积 + **FP16 FIA
+  注意力（逐图 varlen，唯一精度让步，门禁把关）**；文本 decoder BF16；
   A_log 以模块声明 F32（vLLM 同款，加载即位精确）、head26 F32。
+- 交付形态：**两阶段 split AIR**（vision.air + text.air）由
+  `runtime/pipeline_runtime` 串联执行——features 设备常驻直连（不经主机）、
+  每图独立 stream（单流交替两图会强制 GE 重绑执行计划，实测吞吐 -83%）。
 - wide_27 跨 dtype 分支披露（保留）：FP32 末轮第 6 名入围者 cause_18，官方
   BF16 与 GE 均为 cause_23；业务判据为 GE vs 相同 dtype 官方 BF16 动态参考，
   详见 `validation.md`。

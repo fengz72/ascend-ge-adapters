@@ -770,3 +770,38 @@ outputs (`e7157ae1...`).
 - Evidence paths: `work/bench/` (result.json, requests.csv), `work/infer/`
   (comparison.json, business.json), `work/baseline-pre-rewrite/` (pre-rewrite
   artifacts + sha256), `work/logs/` (2026-11-10 08:0x-08:5x UTC).
+
+## Appendix: two-stage split AIRs via pipeline_runtime (2026-11-10)
+
+The delivery moved from ONE unified AIR to TWO dynamic AIRs (vision + text)
+run by the new minimal C++ pipeline_runtime (positional binding, no io_spec
+embedding): the vision stage takes any image count / any official grid (the
+official per-call position tables enter as INPUTS -- the position_ids
+pattern), attention is FIA TND varlen per-image (fp16 inner math, the one
+precision concession), and image_features stay device-resident between the
+stages (the vision output's gert::Tensor descriptor is rebuilt over the same
+storage and fed directly as the text graph's input slot 3 -- no host round
+trip).
+
+| item | split pipeline (53.15 exec/s) | unified AIR (pre-split) |
+|---|---|---|
+| precision (text vs CPU FP32 golden) | 5/5, worst cosine 0.999998, worst relL2 0.006053 | 0.999998 / 0.006006 |
+| eager two-stage vs golden (1img/multires-2/3img/B3/textonly) | 0.00093 / 0.00440 / 0.00500 / 0.00283 / 0.00142 | n/a |
+| business gate | 0.004028 | 0.004028 |
+| graph executions/s (mixed closed loop) | **53.15** | 49.680 |
+| e2e P50/P99 (n=2048, ms) | **17.27 / 24.19** | 18.548 / 25.161 |
+| AIR bytes | vision 198,629,675 + text 1,507,553,177 | 1,708,244,818 |
+| image capability | **any count <= 16/request, any official grid** | 2 global slots, grid [1,16,16] |
+| text-only vision cost | 4 dummy rows (microseconds) | 2 full slots (~1 ms) |
+
+- **Per-graph streams are load-bearing**: with both graphs on ONE stream the
+  alternating executes force GE to re-bind the execution plan every call --
+  9.08 exec/s, P50 81 ms, P99 818 ms (vision p50 13.4 ms against ~1 ms of
+  actual compute located it).  One stream per graph removes it entirely and
+  lands ABOVE the unified baseline (+7% exec/s, -1.3 ms P50): the text AIR
+  compiles/tils smaller without the vision tower.
+- The +7% is a real structural win of the split (smaller per-graph tiling)
+  on top of the unlimited-image-count/resolution capability.
+- Evidence paths: `work/bench/` (result.json, requests.csv),
+  `work/infer/`, `work/logs/` (2026-11-10 15:0x-16:0x UTC), probes as
+  described in validation.md 2026-11-10.

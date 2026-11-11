@@ -59,6 +59,61 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `tests/test_startlux_unified_preprocess.py`（23 项）与
 `tests/test_startlux_native_proto.py` 改路径后全部通过。
 
+## 2026-11-10 变更：两阶段拆分（动态视觉 AIR + 文本 AIR）对齐官方不限图数/分辨率
+
+**决策**（用户拍板）：对齐官方"不限数量、不限分辨率"。视觉路径的三个动态维度
+（数量、每图分辨率、逐图形状派生）此前被静态槽一次性固定（SLOTS=2、grid
+[1,16,16]）；FIA 切换后 S² 掩码已除，唯一剩余障碍是视觉形状派生量。方案按
+"视觉/文本拆分 + 关键降险设计"实施：
+
+- **官方位置表作图输入**（对应文本侧 position_ids 先例）：
+  `fast_pos_embed_interpolate`/`rot_pos_emb` 是逐图 Python 循环，图内张量化
+  易踩顺序坑——改为 CPU 每调用用**官方方法**算好 `vision_pos_embeds
+  [T_v,768]`/`rotary_cos,sin [T_v,64]`/`cu_seqlens [n]` 四表作为图输入，
+  图内零插值逻辑、表值=官方精确值（pos_embed 表从 checkpoint 读 BF16
+  →F32 精确上移，`vision_tables_provider` 绑定官方未绑定方法，同
+  `official_rope_index_provider` 模式）；
+- **视觉注意力 → FIA TND varlen**：官方逐图非因果全注意力 =
+  `npu_fused_infer_attention_score(input_layout="TND", actual_seq_qlen/kvlen
+  =累计 cu)`——与文本侧同族机制（bsnd 按行长 0.0022 的先例），段内双向；
+  **唯一精度让步：FIA 无 fp32，视觉注意力由 fp32 数学降为 fp16**（旋转仍在
+  fp32 官方函数、残差流/表 fp32），门禁把关；
+- **两阶段拆分**：vision AIR（5 动态输入 → image_features [T_m,1024]）+
+  text AIR（image_features 作为输入替代 pixel_values，注入 index_select+where
+  不变）；编码期策略对齐官方：每请求 ≤16 图（vendored MAX_IMAGES）、每图
+  256..4096 patch 行（MIN/MAX_PIXELS/256）、h/w 偶数、纯文本 4 行哑元；
+  SLOTS/build_static_buffers/固定网格拒绝全部删除。
+
+**runtime**（用户拍板 C++ 最小实现，不带 io_spec）：
+`runtime/pipeline_runtime.cpp`（~530 行）：位置绑定（无 write_io/read_io）、
+**features 设备常驻直连**（vision 输出 gert::Tensor 重建描述符直喂 text 输入
+槽 3，不经主机 D2H/H2D）、infer/bench 双模式（输出格式兼容 compare.py/
+verify_business.py）。run.sh 切换到 export_split + pipeline_runtime。
+
+**踩坑与修复**（eager 阶段全部即时暴露）：bridge `ids_rows` 已是 list 再调
+`.tolist()`（UnboundLocalError/AttributeError 定位）；`validated` 文本行分支
+未初始化；`from_systemone` spec 是单个问题 dict 不是 {q:...} 包装；单流交替
+两图 → **GE 每次执行重绑执行计划**（吞吐 9.08 exec/s、P50 81ms、P99 818ms，
+requests.csv 分解 vision p50 13.4ms/纯计算 ~1ms 定位）——**每图独立 stream 修
+复后 53.15 exec/s、P50 17.27ms**（比统一 AIR 49.7/18.5 快 ~7%，text 图更小
+tiling 更优）。
+
+**验证**（chip 14）：
+
+| 门禁 | 结果 |
+|---|---|
+| 25 项 CPU 测试（含 3 图/3 全局/混合分辨率接受断言新） | 通过 |
+| golden 哨兵 | 位相同 `bfc06e59` |
+| eager 两阶段冒烟 vs 官方 CPU golden（5 类 case） | 1图 0.00093 / 混合分辨率 2图 0.00440 / 3图 0.00500 / B3 混合 0.00283 / 纯文本哑元 0.00142，全 PASS |
+| 两 AIR 导出 | vision 198,629,675 + text 1,507,553,177 bytes（parse_bindings 双射） |
+| pipeline infer vs golden | cos 0.999998 / relL2 0.006053 PASS |
+| 业务门禁 | 0.004028 PASS |
+| bench（2048 req，0 error） | **exec/s 53.15、P50 17.27ms、P99 24.19ms**（统一 AIR：49.68/18.55/25.16） |
+
+**能力对照**（此前 vs 现在）：每请求图数 2 全局 → **16（官方上限）**；每图分辨率
+固定 256² → **256²..1024² 任意官方网格**；纯文本视觉成本 1ms（2 槽照算）→
+4 行哑元（微秒级）。
+
 ## 2026-11-10 变更：编码期上限改为模型自身边界（S 从 config 派生、B 取消上限）
 
 **决策**（用户提问"这些限制是不是可以去掉了"）：FIA 切换后 S 与 B 均无算子级

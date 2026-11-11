@@ -212,7 +212,9 @@ def _save_row_encodings(case_id, encoded):
 def main():
     folder = multimodal.source_folder()
     decision = multimodal.decision_config(folder)
-    order = [node["name"] for node in multimodal.io_spec()["inputs"]]
+    vision_order = [node["name"] for node in multimodal.vision_io_spec()["inputs"]]
+    text_order = [node["name"] for node in multimodal.text_io_spec()["inputs"]
+                  if node["name"] != "image_features"]
 
     preprocessor = unified_preprocess.OfficialPreprocessor(folder)
     cases = build_pool(folder, decision["letter_token_ids"])
@@ -227,16 +229,24 @@ def main():
             _save_row_encodings(case["id"], encoded)
             arrays = preprocessor.build_graph_inputs(
                 encoded, vocab_size=decision["vocab_size"])
-            tensors = []
-            for name in order:
+            vision_tensors, text_tensors = [], []
+            for name in vision_order:
                 array = arrays[name]
                 data = array.tobytes(order="C")
-                tensors.append({"name": name, "dtype": str(array.dtype),
-                                "shape": list(array.shape),
-                                "offset": stream.tell(), "bytes": len(data)})
+                vision_tensors.append({"name": name, "dtype": str(array.dtype),
+                                       "shape": list(array.shape),
+                                       "offset": stream.tell(), "bytes": len(data)})
                 stream.write(data)
-            records.append({"id": case["id"], "samples": samples, "tensors": tensors,
-                            "output_capacities": {OUTPUT_NAME: samples * N_COLUMNS * 4}})
+            for name in text_order:
+                array = arrays[name]
+                data = array.tobytes(order="C")
+                text_tensors.append({"name": name, "dtype": str(array.dtype),
+                                     "shape": list(array.shape),
+                                     "offset": stream.tell(), "bytes": len(data)})
+                stream.write(data)
+            records.append({"id": case["id"], "samples": samples,
+                            "vision_tensors": vision_tensors,
+                            "text_tensors": text_tensors})
             packed_cases[case["id"]] = case
 
     bench_ids = [case["id"] for case in cases if case["business"]]
@@ -248,7 +258,7 @@ def main():
         "cases": packed_cases,
     }, indent=1) + "\n")
     (INPUTS / "records.json").write_text(json.dumps({
-        "schema": "startlux-standalone-records/1",
+        "schema": "startlux-split-records/1",
         "file": str((INPUTS / "inputs.bin").resolve()),
         "output_name": OUTPUT_NAME,
         "cases": records,

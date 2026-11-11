@@ -233,16 +233,17 @@ def _example_values(io, examples):
     return values
 
 
-def export_torchair(spec, directory):
-    """Export ``spec`` to a TorchAir AIR under ``directory``; returns
-    (graph, io) with io's inputs carrying the real exported node names."""
-    import torch
-    import torch_npu  # noqa: F401  (the NPU backend must be initialized)
-    from torch_npu.dynamo.torchair import dynamo_export, CompilerConfig
-    from torchair import register_fx_node_ge_converter
+_BIND_REGISTERED = False
 
-    io = _validate_io(spec["io"])
-    names = [x["name"] for x in io["inputs"]]
+
+def _ensure_bind_input():
+    """Register ge_adapters::bind_input once per process (a second export in the
+    same process must not re-register the custom op or its converter)."""
+    global _BIND_REGISTERED
+    if _BIND_REGISTERED:
+        return
+    import torch
+    from torchair import register_fx_node_ge_converter
 
     @torch.library.custom_op("ge_adapters::bind_input", mutates_args=())
     def bind_input(x: torch.Tensor, logical: str) -> torch.Tensor:
@@ -264,13 +265,29 @@ def export_torchair(spec, directory):
         _reorder_data_nodes_first()
         return x
 
+    _BIND_REGISTERED = True
+
+
+def export_torchair(spec, directory, export_name="model"):
+    """Export ``spec`` to a TorchAir AIR under ``directory`` (file
+    ``<export_name>.air``); returns (graph, io) with io's inputs carrying the
+    real exported node names."""
+    import torch
+    import torch_npu  # noqa: F401  (the NPU backend must be initialized)
+    from torch_npu.dynamo.torchair import dynamo_export, CompilerConfig
+
+    _ensure_bind_input()
+    io = _validate_io(spec["io"])
+    names = [x["name"] for x in io["inputs"]]
+
     class BoundModel(torch.nn.Module):
         def __init__(self, model):
             super().__init__()
             self.model = model
 
         def forward(self, *args):
-            bound = [bind_input(x, name) for x, name in zip(args, names)]
+            bound = [torch.ops.ge_adapters.bind_input(x, name)
+                     for x, name in zip(args, names)]
             return self.model(*bound)
 
     values = _example_values(io, spec["example_inputs"])
@@ -299,11 +316,11 @@ def export_torchair(spec, directory):
                            "cannot export dynamic graphs with baked scalar attributes")
     with dynamo_context(specialize_float=True):
         dynamo_export(*values, model=BoundModel(spec["model"]).eval(),
-                      export_path=str(directory), export_name="model",
+                      export_path=str(directory), export_name=export_name,
                       dynamic=any(x.get("dynamic_dims") for x in io["inputs"]),
                       config=config)
     torch.npu.synchronize()
-    path = Path(directory) / "model.air"
+    path = Path(directory) / f"{export_name}.air"
     if not path.is_file():
         raise RuntimeError("TorchAir did not generate AIR")
     bindings = parse_bindings(Path(directory) / "dynamo.pbtxt")

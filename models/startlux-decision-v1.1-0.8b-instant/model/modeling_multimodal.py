@@ -1,11 +1,37 @@
-"""StartLux unified multimodal model (== Qwen3_5ForConditionalGeneration for the
-one-pass decision readout): vision tower + in-graph image injection + bidirectional
-hybrid decoder + 26-letter FP32 head, ONE AIR, one readout per row, no generation.
-Graph IO / slot semantics / bounds live in io_spec and build_multimodal_batch;
-the loading contract (zero key mapping, mtp.* skip, tied-head + A_log assertions)
-in from_folder.  modeling_text is loaded lazily (it imports torch_npu) so this
-module stays importable on CPU for golden.py / generate_inputs.py.  Full record:
-validation.md 2026-11-10.
+"""StartLux two-stage split model: dynamic vision AIR + text AIR.
+
+The delivery is TWO dynamic AIRs run by one pipeline (the C++ pipeline_runtime
+or the eager two-stage path): the vision stage turns any count of officially
+processed images (any even grid inside the official smart_resize bounds) into
+merged features; the text stage injects those features into the token
+embeddings and runs the bidirectional hybrid decoder + 26-letter FP32 head,
+one readout per row, no generation.
+
+Stage contracts (the CPU bridge produces every tensor; the official image
+preprocessing and the official get_rope_index run on the CPU side):
+
+  VISION  input  pixel_values        [T_v, 1536]  f32  dynamic (T_v = sum of
+                vision_pos_embeds    [T_v, 768]   f32  dynamic (OFFICIAL
+                vision_rotary_cos    [T_v, 64]    f32  dynamic  fast_pos_
+                vision_rotary_sin    [T_v, 64]    f32  dynamic  embed_
+                vision_cu_seqlens    [n]          i64  dynamic  interpolate /
+                                                                   rot_pos_emb)
+         output image_features       [T_m, 1024]  f32  dynamic
+  TEXT   input  input_ids            [B, S]       i64  dynamic (B<=HBM, S <=
+                position_ids         [3, B, S]    i64  dynamic  the model's
+                actual_seq_lengths   [B]          i32  dynamic  own
+                image_features       [T_m, 1024]  f32  dynamic  max_position_
+                image_feature_index  [B, S]       i64  dynamic  embeddings)
+         output scores               [B, 26]      f32  dynamic
+
+The features stay ON DEVICE between the stages in the pipeline runtime.  A
+text-only call carries a 4-row zero dummy through the vision stage (grid
+[1,2,2]; the features are discarded via index -1) so no dynamic axis is ever
+zero-sized.  Image policy (per request <= 16 images, per image 256..4096 patch
+rows) follows the official vendored startlux_decide/images.py constants via
+modeling_vision; everything over-limit is rejected at encode time, never
+truncated.  modeling_text is loaded lazily (it imports torch_npu) so this
+module stays importable on CPU for golden.py / generate_inputs.py.
 """
 from __future__ import annotations
 
@@ -18,15 +44,14 @@ import numpy as np
 import torch
 from torch import nn
 
-from model.modeling_vision import (GRID_THW, MERGED_ROWS, PATCH_ROWS,
-                                    StartLuxVisionTower)
+from model.modeling_vision import (MAX_IMAGES_PER_REQUEST, MAX_PATCH_ROWS,
+                                    MIN_PATCH_ROWS, StartLuxVisionTower)
 
-SLOTS = 2                                    # fixed GLOBAL image slots of the single AIR
+SLOTS = 2                                    # legacy name kept for callers; see DUMMY_GRID
+DUMMY_GRID = (1, 2, 2)                       # 4 patch rows: the no-image vision dummy
 
 
 def decision_config(folder):
-    # The 26 letter ids and the vocab bound, read from the model folder itself
-    # (decision_config.json + config.json) -- never from fixture provenance.
     folder = Path(folder)
     letters = json.loads((folder / "decision_config.json").read_text())["letter_token_ids"]
     if len(letters) != 26 or len(set(letters)) != 26:
@@ -47,15 +72,16 @@ class StartLuxModel(nn.Module):
 
 class StartLuxForDecision(nn.Module):
     # == Qwen3_5ForConditionalGeneration for the one-pass decision readout.
+    # The forward is the TEXT STAGE: image_features arrive as an input (the
+    # vision stage's output); self.model.visual is never called here.
     def __init__(self, model, letters26):
         super().__init__()
         self.model = model
         self.letters26 = list(letters26)
 
     def derive_decision_head(self):
-        # The 26-row FP32 readout head: a clone of the tied embedding's letter
-        # rows.  The checkpoint carries no lm_head.weight (tie_word_embeddings
-        # =True, asserted in from_folder) so an untied folder fails loudly there.
+        # tied head: the checkpoint has no lm_head.weight (tie_word_embeddings
+        # =True, asserted in from_folder)
         embedding = self.model.language_model.embed_tokens.weight
         with torch.no_grad():
             rows = embedding.index_select(
@@ -63,14 +89,13 @@ class StartLuxForDecision(nn.Module):
             ).to(torch.float32).clone()
         self.register_buffer("decision_head", rows, persistent=False)
 
-    def forward(self, input_ids, position_ids, actual_seq_lengths, pixel_values,
+    def forward(self, input_ids, position_ids, actual_seq_lengths, image_features,
                 image_feature_index):
-        feats = self.model.visual(pixel_values)                  # [slots*64, out_hidden] f32
         embeds = self.model.language_model.embed_tokens(input_ids)   # [B, S, hidden]
         flat = image_feature_index.reshape(-1).clamp(min=0)
-        gathered = feats.index_select(0, flat)
+        gathered = image_features.index_select(0, flat)
         gathered = gathered.reshape(input_ids.shape[0], input_ids.shape[1],
-                                    feats.shape[-1]).to(embeds.dtype)
+                                    image_features.shape[-1]).to(embeds.dtype)
         is_image = (image_feature_index >= 0).unsqueeze(-1)
         injected = torch.where(is_image, gathered, embeds)
         hidden = self.model.language_model(injected, position_ids, actual_seq_lengths)
@@ -83,9 +108,8 @@ class StartLuxForDecision(nn.Module):
 # ----------------------------------------------------- official rope-index binding
 
 def official_rope_index_provider(config):
-    # get_rope_index reads nothing but self.config, so binding the REAL unbound
-    # official methods to a config-only namespace reproduces the official
-    # positions without loading any model weights.
+    # binding the REAL unbound official methods to a config-only namespace
+    # reproduces the official positions without loading any model weights
     import transformers.models.qwen3_5.modeling_qwen3_5 as modeling
 
     namespace = types.SimpleNamespace(config=config)
@@ -99,6 +123,59 @@ def official_rope_index_provider(config):
         return planes
 
     return provider
+
+
+# ------------------------------------------------- official vision table provider
+
+def vision_tables_provider(config):
+    """Per-call OFFICIAL vision position tables (the vision analogue of
+    official_rope_index_provider): binds the unbound official
+    fast_pos_embed_interpolate / rot_pos_emb to a shim carrying the
+    checkpoint's pos_embed table (model.visual.pos_embed.weight, BF16-stored,
+    upcast to F32 exactly), and returns compute(grid_thw) -> the four vision
+    table inputs for the call's image order."""
+    from safetensors import safe_open
+    import transformers.models.qwen3_5.modeling_qwen3_5 as modeling
+
+    # from_pretrained keeps name_or_path; fall back to STARTLUX_MODEL_DIR for
+    # configs constructed any other way
+    folder = Path(getattr(config, "name_or_path", "") or source_folder())
+    table = None
+    key = "model.visual.pos_embed.weight"
+    for shard in sorted(folder.glob("*.safetensors")):
+        with safe_open(str(shard), framework="pt", device="cpu") as handle:
+            if key in handle.keys():
+                table = handle.get_tensor(key).to(torch.float32)
+                break
+    if table is None:
+        raise ValueError(f"{key} not found in the checkpoint at {folder}")
+    vision = config.vision_config
+    merge = vision.spatial_merge_size
+    shim = types.SimpleNamespace(
+        pos_embed=nn.Embedding.from_pretrained(table, freeze=True),
+        num_grid_per_side=int(vision.num_position_embeddings ** 0.5),
+        spatial_merge_size=merge,
+        config=types.SimpleNamespace(spatial_merge_size=merge),
+        rotary_pos_emb=modeling.Qwen3_5VisionRotaryEmbedding(
+            (vision.hidden_size // vision.num_heads) // 2))
+    interpolate = modeling.Qwen3_5VisionModel.fast_pos_embed_interpolate.__get__(shim)
+    rot_pos_emb = modeling.Qwen3_5VisionModel.rot_pos_emb.__get__(shim)
+
+    def compute(grid_thw):
+        # grid_thw: CPU int64 tensor [n, 3] in the call's image order; returns
+        # the official tables in that same row order
+        with torch.no_grad():
+            pos = interpolate(grid_thw)
+            rot = rot_pos_emb(grid_thw)
+            rot = rot.reshape(-1, rot.shape[-1])            # official reshape
+            emb = torch.cat((rot, rot), dim=-1)
+            cu = (grid_thw[:, 0] * grid_thw[:, 1] * grid_thw[:, 2]) \
+                .cumsum(0).to(torch.int64)
+        return {"vision_pos_embeds": pos.contiguous().numpy(),
+                "vision_rotary_cos": emb.cos().contiguous().numpy(),
+                "vision_rotary_sin": emb.sin().contiguous().numpy(),
+                "vision_cu_seqlens": cu.numpy()}
+    return compute
 
 
 # --------------------------------------------------------------- CPU-side bridge
@@ -115,9 +192,23 @@ def _require_cpu_tensor(value, name, dtype):
     return value
 
 
-def _row_groups(ids_row, image_token, merged_per_image):
-    # Contiguous image-pad groups of one row: [(start, end)) ranges, each of
-    # exactly merged_per_image image tokens.
+def _validate_grid(entry):
+    t, h, w = (int(v) for v in entry)
+    if t < 1 or h < 2 or w < 2 or h % 2 or w % 2:
+        raise ValueError(f"image grid {list(entry)} is invalid: t>=1 and even h,w>=2 "
+                         "are required (2x2 spatial merge)")
+    if not MIN_PATCH_ROWS <= h * w <= MAX_PATCH_ROWS:
+        raise ValueError(f"image grid {list(entry)} has {h * w} patch rows outside the "
+                         f"official smart_resize bounds "
+                         f"[{MIN_PATCH_ROWS}, {MAX_PATCH_ROWS}] "
+                         f"({MIN_PATCH_ROWS * 256}..{MAX_PATCH_ROWS * 256} pixels); "
+                         "refusing to stretch/crop")
+    return t, h, w
+
+
+def _row_groups(ids_row, image_token, expected_counts):
+    """Contiguous image-pad groups of one row: [(start, end)) ranges, the k-th
+    of exactly expected_counts[k] image tokens (per-image merged counts)."""
     groups, t, length = [], 0, len(ids_row)
     while t < length:
         if ids_row[t] != image_token:
@@ -126,27 +217,27 @@ def _row_groups(ids_row, image_token, merged_per_image):
         end = t
         while end < length and ids_row[end] == image_token:
             end += 1
-        if end - t != merged_per_image:
+        if len(groups) >= len(expected_counts) or end - t != expected_counts[len(groups)]:
             raise ValueError(f"image placeholder group at {t} has {end - t} tokens; "
-                             f"grid [1,16,16] requires exactly {merged_per_image}")
+                             f"the grids require {expected_counts[len(groups)] if len(groups) < len(expected_counts) else 'no more'}")
         groups.append((t, end))
         t = end
     return groups
 
 
-def _check_row_structure(ids_row, cfg, n_images, merged_per_image):
-    # Strict placeholder structure of one row: exactly n_images vision_start /
-    # vision_end markers, each group of exactly merged_per_image image tokens
-    # bracketed as [vision_start, pads..., vision_end].  Returns the groups.
+def _check_row_structure(ids_row, cfg, n_images, expected_counts):
+    # exactly n_images vision_start/end markers, each image-pad group of the
+    # per-image merged count, bracketed as [vision_start, pads..., vision_end]
     vs, ve, it = cfg.vision_start_token_id, cfg.vision_end_token_id, cfg.image_token_id
     starts = [i for i, v in enumerate(ids_row) if v == vs]
     ends = [i for i, v in enumerate(ids_row) if v == ve]
     pads = [i for i, v in enumerate(ids_row) if v == it]
     if len(starts) != n_images or len(ends) != n_images \
-            or len(pads) != n_images * merged_per_image:
+            or len(pads) != sum(expected_counts):
         raise ValueError(f"placeholder structure mismatch: {len(starts)} vision_start, "
-                         f"{len(ends)} vision_end, {len(pads)} image_pad for {n_images} image(s)")
-    groups = _row_groups(ids_row, it, merged_per_image)
+                         f"{len(ends)} vision_end, {len(pads)} image_pad for {n_images} "
+                         f"image(s) needing {sum(expected_counts)} pads")
+    groups = _row_groups(ids_row, it, expected_counts)
     for k, (s, e) in enumerate(groups):
         if s < 1 or ids_row[s - 1] != vs:
             raise ValueError(f"image group {k} is not preceded by vision_start")
@@ -155,35 +246,45 @@ def _check_row_structure(ids_row, cfg, n_images, merged_per_image):
     return groups
 
 
-def build_multimodal_batch(rows, rope_index, config, *, vocab_size=None, slots=SLOTS,
-                           grid_thw=GRID_THW, max_batch=None,
-                           max_seq_len=None, pad_token_id=0):
-    # rows: one dict per batch row carrying the OFFICIAL processor encoding of
-    # one request (CPU torch tensors: input_ids int64 [1, S]; for image rows also
-    # pixel_values float32 [256*n, 1536] and image_grid_thw int64 [n, 3]; optional
-    # mm_token_type_ids int32/int64 [1, S], falling back to ids == image_token).
-    # rope_index: official_rope_index_provider(config); config: the folder config.
-    # Returns the 5 numpy graph inputs; every bound / dtype / structure / marker
-    # violation raises ValueError -- nothing is silently resized or truncated.
+class _TokenIds:
+    def __init__(self, image_token, vision_start, vision_end):
+        self.image_token_id = image_token
+        self.vision_start_token_id = vision_start
+        self.vision_end_token_id = vision_end
+
+
+def build_multimodal_batch(rows, rope_index, config, vision_tables, *,
+                           vocab_size=None, max_batch=None, max_seq_len=None,
+                           pad_token_id=0):
+    """Build the 9 pipeline inputs (5 vision-stage + 4 text-stage) of one call
+    from per-row official processor encodings.
+
+    rows: one dict per batch row carrying the OFFICIAL encoding of one request
+    (CPU torch tensors: input_ids int64 [1, S]; image rows also pixel_values
+    float32 [sum t*h*w, 1536] and image_grid_thw int64 [n, 3]; optional
+    mm_token_type_ids).  rope_index: official_rope_index_provider(config).
+    vision_tables: vision_tables_provider(config) (the official position
+    tables).  Any image count / any official grid is accepted; a call without
+    images carries the 4-row dummy through the vision stage.  Every bound /
+    dtype / structure / marker violation raises ValueError.
+    """
     batch = len(rows)
     if batch < 1:
         raise ValueError("batch must be at least 1 row")
     if max_batch is not None and batch > max_batch:
         raise ValueError(f"batch {batch} exceeds max_batch {max_batch}")
     if max_seq_len is None:
-        # the model's own positional limit is the only S bound (the graph is
+        # the model's own positional limit is the only S bound (the graphs are
         # dynamic on S; nothing kernel- or graph-side caps it below this)
         max_seq_len = config.text_config.max_position_embeddings
-    merged_per_image = (grid_thw[1] // 2) * (grid_thw[2] // 2)
     image_token = config.image_token_id
-    cfg = SimpleNamespace(image_token_id=image_token,
-                          vision_start_token_id=config.vision_start_token_id,
-                          vision_end_token_id=config.vision_end_token_id)
+    cfg = _TokenIds(image_token, config.vision_start_token_id, config.vision_end_token_id)
     if vocab_size is None:
         vocab_size = config.text_config.vocab_size if getattr(config, "text_config", None) \
             else config.vocab_size
-    lengths, ids_rows, type_rows, pixel_blocks, grid_rows = [], [], [], [], []
-    row_groups = []
+
+    lengths, ids_rows, type_rows = [], [], []
+    pixel_blocks, row_grids = [], []
     for row in rows:
         ids = _require_cpu_tensor(row["input_ids"], "input_ids", torch.int64)
         if ids.dim() != 2 or ids.shape[0] != 1:
@@ -211,57 +312,64 @@ def build_multimodal_batch(rows, rope_index, config, *, vocab_size=None, slots=S
         pixels = row.get("pixel_values")
         n_images = 0 if grid is None else int(grid.shape[0])
         if n_images:
+            if n_images > MAX_IMAGES_PER_REQUEST:
+                raise ValueError(f"{n_images} images exceed the official per-request "
+                                 f"limit of {MAX_IMAGES_PER_REQUEST}")
             grid = _require_cpu_tensor(grid, "image_grid_thw", torch.int64)
             if grid.dim() != 2 or grid.shape[1] != 3:
                 raise ValueError(f"image_grid_thw must be [n, 3], got {tuple(grid.shape)}")
-            for entry in grid.tolist():
-                if tuple(int(v) for v in entry) != tuple(grid_thw):
-                    raise ValueError(f"image grid {list(entry)} is not the supported "
-                                     f"{list(grid_thw)} (256x256 after the official "
-                                     "preprocessing); refusing to stretch/crop")
+            validated = [_validate_grid(entry) for entry in grid.tolist()]
             pixels = _require_cpu_tensor(pixels, "pixel_values", torch.float32)
-            if tuple(pixels.shape) != (n_images * grid_thw[1] * grid_thw[2], 1536):
-                raise ValueError(f"pixel_values shape {tuple(pixels.shape)} does not "
-                                 f"match {n_images} image(s) of grid {list(grid_thw)}")
+            expected = pixels.shape[0]
+            if expected != sum(t * h * w for t, h, w in validated):
+                raise ValueError(f"pixel_values has {expected} patch rows; the grids "
+                                 f"require {sum(t * h * w for t, h, w in validated)}")
+            merged = [(h // 2) * (w // 2) for _t, h, w in validated]
         elif pixels is not None:
             raise ValueError("pixel_values present without image_grid_thw")
-        row_groups.append(_check_row_structure(ids_row, cfg, n_images, merged_per_image))
+        else:
+            validated, merged = [], []
+        _check_row_structure(ids_row, cfg, n_images, merged)
         lengths.append(len(ids_row))
         ids_rows.append(ids_row)
         type_rows.append(types_row)
-        grid_rows.append(n_images)
+        row_grids.append(validated)
         pixel_blocks.append(pixels)
-    total_images = sum(grid_rows)
-    if any(n > slots for n in grid_rows):
-        raise ValueError(f"at most {slots} images per request")
-    if total_images > slots:
-        raise ValueError(f"{total_images} images exceed the {slots} fixed global slots "
-                         "of one call (a B>1 batch shares the slot pool)")
+
+    # the call's image order: (row, image-within-row) -- the official
+    # masked_scatter fill order; features come out of the vision stage in it
+    all_grids = [g for grids in row_grids for g in grids]
+    if all_grids:
+        grid_thw = torch.tensor(all_grids, dtype=torch.int64)
+        pixel_values = torch.cat([p for p in pixel_blocks if p is not None], dim=0)
+    else:
+        grid_thw = torch.tensor([list(DUMMY_GRID)], dtype=torch.int64)
+        pixel_values = torch.zeros(4, 1536, dtype=torch.float32)
+    tables = vision_tables(grid_thw)
+
     width = max(lengths)
     if width > max_seq_len:
         raise ValueError(f"padded width {width} exceeds max_seq_len {max_seq_len}")
-
     input_ids = np.full((batch, width), pad_token_id, dtype=np.int64)
     index = np.full((batch, width), -1, dtype=np.int64)
     positions = np.zeros((3, batch, width), dtype=np.int64)
-    pixel_values = np.zeros((slots * grid_thw[1] * grid_thw[2], 1536), dtype=np.float32)
 
-    slot = 0
+    merged_cursor = 0
     for b in range(batch):
         length = lengths[b]
         input_ids[b, :length] = ids_rows[b]
-        n_images = grid_rows[b]
+        n_images = len(row_grids[b])
         if n_images:
-            for k, (s, e) in enumerate(row_groups[b]):
-                index[b, s:e] = np.arange(slot * merged_per_image,
-                                          (slot + 1) * merged_per_image, dtype=np.int64)
-                pixel_values[slot * PATCH_ROWS:(slot + 1) * PATCH_ROWS] = \
-                    pixel_blocks[b][k * PATCH_ROWS:(k + 1) * PATCH_ROWS].numpy()
-                slot += 1
+            groups = _row_groups(ids_rows[b], image_token,
+                                 [(h // 2) * (w // 2) for _t, h, w in row_grids[b]])
+            for k, (s, e) in enumerate(groups):
+                index[b, s:e] = np.arange(merged_cursor,
+                                          merged_cursor + (e - s), dtype=np.int64)
+                merged_cursor += e - s
         planes = rope_index(torch.tensor([ids_rows[b]], dtype=torch.long),
                             torch.tensor([type_rows[b]], dtype=torch.long),
                             None if not n_images else torch.tensor(
-                                [list(grid_thw)] * n_images, dtype=torch.long))
+                                row_grids[b], dtype=torch.long))
         if tuple(planes.shape) != (3, 1, length):
             raise ValueError(f"official get_rope_index returned {tuple(planes.shape)}, "
                              f"expected (3, 1, {length})")
@@ -270,27 +378,41 @@ def build_multimodal_batch(rows, rope_index, config, *, vocab_size=None, slots=S
         positions[:, b, :length] = planes[:, 0, :].numpy()
 
     return {
+        "pixel_values": pixel_values.numpy(),
+        **tables,
         "input_ids": input_ids,
         "position_ids": positions,
         "actual_seq_lengths": np.asarray(lengths, dtype=np.int32),
-        "pixel_values": pixel_values,
         "image_feature_index": index,
     }
 
 
 # --------------------------------------------------------------- adapter surface
 
-def io_spec():
-    # The graph IO spec of the single AIR; static (depends only on the
-    # module-level boundary constants), so it needs no config and is the single
-    # source both the exporter and generate_inputs.py read.
+def vision_io_spec():
+    return {
+        "schema": "ge-io/1",
+        "inputs": [
+            {"name": "pixel_values", "dtype": "float32", "shape": [-1, 1536], "dynamic_dims": [0]},
+            {"name": "vision_pos_embeds", "dtype": "float32", "shape": [-1, 768], "dynamic_dims": [0]},
+            {"name": "vision_rotary_cos", "dtype": "float32", "shape": [-1, 64], "dynamic_dims": [0]},
+            {"name": "vision_rotary_sin", "dtype": "float32", "shape": [-1, 64], "dynamic_dims": [0]},
+            {"name": "vision_cu_seqlens", "dtype": "int64", "shape": [-1], "dynamic_dims": [0]},
+        ],
+        "outputs": [
+            {"name": "image_features", "dtype": "float32", "shape": [-1, 1024], "dynamic_dims": [0]},
+        ],
+    }
+
+
+def text_io_spec():
     return {
         "schema": "ge-io/1",
         "inputs": [
             {"name": "input_ids", "dtype": "int64", "shape": [-1, -1], "dynamic_dims": [0, 1]},
             {"name": "position_ids", "dtype": "int64", "shape": [3, -1, -1], "dynamic_dims": [1, 2]},
             {"name": "actual_seq_lengths", "dtype": "int32", "shape": [-1], "dynamic_dims": [0]},
-            {"name": "pixel_values", "dtype": "float32", "shape": [SLOTS * PATCH_ROWS, 1536]},
+            {"name": "image_features", "dtype": "float32", "shape": [-1, 1024], "dynamic_dims": [0]},
             {"name": "image_feature_index", "dtype": "int64", "shape": [-1, -1], "dynamic_dims": [0, 1]},
         ],
         "outputs": [
@@ -299,19 +421,31 @@ def io_spec():
     }
 
 
-def example_inputs():
-    # Deterministic non-predicting trace example: B2/S65, one image row; both
-    # dynamic axes symbolic (B, S >= 2).
+def vision_example_inputs():
+    # deterministic non-predicting trace example: 2 dummy [1,16,16] images
+    # (T_v=512, n=2); values only need to be legal for tracing
+    return {
+        "pixel_values": np.zeros((512, 1536), dtype=np.float32),
+        "vision_pos_embeds": np.zeros((512, 768), dtype=np.float32),
+        "vision_rotary_cos": np.zeros((512, 64), dtype=np.float32),
+        "vision_rotary_sin": np.zeros((512, 64), dtype=np.float32),
+        "vision_cu_seqlens": np.asarray([256, 512], dtype=np.int64),
+    }
+
+
+def text_example_inputs():
+    # B2/S65, one image row (feature order 0..63) and one text row; both text
+    # dynamic axes and the feature axis stay symbolic (>= 2)
     batch, width = 2, 65
     ids = np.zeros((batch, width), dtype=np.int64)
     index = np.full((batch, width), -1, dtype=np.int64)
-    index[0, :MERGED_ROWS] = np.arange(MERGED_ROWS)
+    index[0, :64] = np.arange(64)
     positions = np.tile(np.arange(width, dtype=np.int64)[None, None, :], (3, batch, 1))
     return {
         "input_ids": ids,
         "position_ids": positions,
         "actual_seq_lengths": np.asarray([64, 65], dtype=np.int32),
-        "pixel_values": np.zeros((SLOTS * PATCH_ROWS, 1536), dtype=np.float32),
+        "image_features": np.zeros((64, 1024), dtype=np.float32),
         "image_feature_index": index,
     }
 
@@ -319,7 +453,6 @@ def example_inputs():
 # ------------------------------------------------------------ loading and export
 
 def source_folder():
-    # STARTLUX_MODEL_DIR as a resolved Path (the single weight source).
     import os
 
     value = os.environ.get("STARTLUX_MODEL_DIR")
@@ -332,8 +465,6 @@ def source_folder():
 
 
 def _verify_a_log_float32(model, text_config):
-    # A_log must survive the load as float32 (a bf16 A_log would silently drift
-    # the chunk decay).
     expected = sum(1 for kind in text_config.layer_types[:text_config.num_hidden_layers]
                    if kind == "linear_attention")
     a_log = {name: param for name, param in model.named_parameters()
@@ -345,10 +476,9 @@ def _verify_a_log_float32(model, text_config):
 
 
 def from_folder(folder, device):
-    # The per-site dtype declarations of the module tree decide every tensor's
-    # dtype (bf16 default for the language trunk, fp32 for the vision tower);
-    # load_state_dict's copy_ lands each checkpoint tensor in its declared
-    # dtype and the device-only .to moves the whole tree -- never a global cast.
+    # per-site dtype declarations decide every tensor's dtype; load_state_dict's
+    # copy_ lands each checkpoint tensor in its declared dtype and the
+    # device-only .to moves the whole tree -- never a global cast
     from transformers import Qwen3_5Config
     from safetensors.torch import load_file
 
@@ -360,14 +490,13 @@ def from_folder(folder, device):
                          "checkpoint must have tie_word_embeddings=True")
     letters = decision_config(folder)["letter_token_ids"]
 
-    # lazy: modeling_text imports torch_npu, this stays importable on CPU
     from model import modeling_text
     previous = torch.get_default_dtype()
     try:
         torch.set_default_dtype(torch.bfloat16)
         language_model = modeling_text.StartLuxTextModel(text_config)
         torch.set_default_dtype(torch.float32)
-        visual = StartLuxVisionTower(config.vision_config, GRID_THW, SLOTS)
+        visual = StartLuxVisionTower(config.vision_config)
     finally:
         torch.set_default_dtype(previous)
 
@@ -388,13 +517,12 @@ def from_folder(folder, device):
 
     model.derive_decision_head()
     _verify_a_log_float32(model, text_config)
-    visual.build_static_buffers()
     return model.to(device).requires_grad_(False).eval()
 
 
 def load(device):
-    # Load STARTLUX_MODEL_DIR on the NPU; device is the in-process index (with
-    # ASCEND_RT_VISIBLE_DEVICES pinning one chip, 0).  Returns (model, summary).
+    # device is the in-process index (with ASCEND_RT_VISIBLE_DEVICES pinning
+    # one chip, 0); returns (StartLuxForDecision, summary)
     import torch_npu
 
     target = torch.device(f"npu:{int(device)}")
@@ -410,11 +538,3 @@ def load(device):
     return model, {"device": str(target), "tensors": len(tensors),
                    "a_log_float32": [name for name in tensors
                                      if name.endswith(".linear_attn.A_log")]}
-
-
-def export_example(wrapper, device):
-    # The export spec: the unified IO contract plus the deterministic B2/S65
-    # trace example that keeps both dynamic axes symbolic.
-    return {"format": "torch", "model": wrapper, "io": io_spec(),
-            "example_inputs": {name: torch.from_numpy(value).to(f"npu:{int(device)}")
-                               for name, value in example_inputs().items()}}

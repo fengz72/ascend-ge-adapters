@@ -57,6 +57,18 @@ class FakePreprocessor(unified_preprocess.OfficialPreprocessor):
         self._tokenizer = None
         self._processor = None
         self._rope_index = None
+        self._vision_tables = None
+
+    @property
+    def vision_tables(self):
+        def compute(grid_thw):
+            rows = int((grid_thw[:, 0] * grid_thw[:, 1] * grid_thw[:, 2]).sum())
+            return {"vision_pos_embeds": torch.zeros(rows, 768),
+                    "vision_rotary_cos": torch.zeros(rows, 64),
+                    "vision_rotary_sin": torch.zeros(rows, 64),
+                    "vision_cu_seqlens": (grid_thw[:, 0] * grid_thw[:, 1]
+                                          * grid_thw[:, 2]).cumsum(0)}
+        return compute
 
 
 def official_image_deps():
@@ -158,20 +170,22 @@ try:
                 [{"prompt": p_one, "images": [RED]}] * 3, max_batch=2)),
             ("max_seq_len", lambda: build(
                 [{"prompt": p_one, "images": [RED]}], max_seq_len=100)),
-            ("three_per_request", lambda: build(
-                [{"prompt": p_three, "images": [RED, BLUE, RED]}])),
-            ("three_slots", lambda: build(
-                [{"prompt": p_one, "images": [RED]},
-                 {"prompt": p_one, "images": [BLUE]},
-                 {"prompt": p_one, "images": [RED]}])),
-            ("four_slots_b2", lambda: build(
-                [{"prompt": p_ab, "images": [RED, BLUE]},
-                 {"prompt": p_one, "images": [BLUE]}]))):
+            ("max_seq_len", lambda: build(
+                [{"prompt": p_one, "images": [RED]}], max_seq_len=100))):
         try:
             fn(); caps[name] = False
         except ValueError:
             caps[name] = True
     r["rejections"] = caps
+
+    arrays = build([{"prompt": p_three, "images": [RED, BLUE, RED]}])
+    r["three_per_request"] = {"pixel_rows": list(arrays["pixel_values"].shape),
+                              "images": int(arrays["vision_cu_seqlens"].shape[0]),
+                              "merged_rows": int(arrays["image_feature_index"].max()) + 1}
+    arrays = build([{"prompt": p_ab, "images": [RED, BLUE]},
+                    {"prompt": p_one, "images": [BLUE]}])
+    r["three_global_b2"] = {"pixel_rows": list(arrays["pixel_values"].shape),
+                            "images": int(arrays["vision_cu_seqlens"].shape[0])}
 
     ids = pre.encode_row("hello official text row")["input_ids"][0].tolist()
     r["text_row_matches_tokenizer"] = ids == pre.tokenizer.encode(
@@ -246,7 +260,9 @@ class RealOfficialComponents(unittest.TestCase):
         shapes = self.result["b2_shapes"]
         self.assertEqual(shapes["input_ids"], [2, 173])
         self.assertEqual(shapes["position_ids"], [3, 2, 173])
-        self.assertEqual(shapes["pixel_values"], [512, 1536])
+        # dynamic vision: only the actual images' patch rows are packed (1
+        # image x 256 rows; the static 2-slot padding is gone)
+        self.assertEqual(shapes["pixel_values"], [256, 1536])
         self.assertEqual(shapes["image_feature_index"], [2, 173])
         self.assertEqual(self.result["b2_lengths"], [173, 5])
         self.assertTrue(self.result["b2_row1_index_all_minus1"])
@@ -258,8 +274,16 @@ class RealOfficialComponents(unittest.TestCase):
         self.assertTrue(self.result["rejections"]["max_seq_len"])
 
     def test_rejections(self):
-        for name in ("three_per_request", "three_slots", "four_slots_b2"):
+        for name in ("max_batch", "max_seq_len"):
             self.assertTrue(self.result["rejections"][name], name)
+
+    def test_multi_image_accepted(self):
+        # any count up to the official per-request limit (16); the global
+        # pool is unbounded -- 3-per-request and 3-global both build now
+        self.assertEqual(self.result["three_per_request"],
+                         {"pixel_rows": [768, 1536], "images": 3, "merged_rows": 192})
+        self.assertEqual(self.result["three_global_b2"],
+                         {"pixel_rows": [768, 1536], "images": 3})
 
     def test_text_row_matches_the_official_tokenizer(self):
         self.assertTrue(self.result["text_row_matches_tokenizer"])

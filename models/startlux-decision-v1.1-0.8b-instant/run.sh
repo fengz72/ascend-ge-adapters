@@ -21,7 +21,7 @@ MODEL_DIR="$SCRIPT_DIR"
 ROOT="$(cd "$MODEL_DIR/../.." && pwd)"
 WORK="$MODEL_DIR/work"
 LOGS="$WORK/logs"
-RUNTIME_BIN="$ROOT/runtime/build/ge_runtime"
+RUNTIME_BIN="$ROOT/runtime/build/pipeline_runtime"
 PROTO_LIB="$WORK/deps/chunk_gated_delta_rule_proto/install/lib/libchunk_gated_delta_rule_compat_proto.so"
 
 # ---------------- 固定参数（唯一可调处） ----------------
@@ -79,16 +79,24 @@ step "构建 C++ runtime"
 bash "$ROOT/runtime/build.sh" 2>&1 | tee "$LOGS/runtime-build.log"
 
 # ---------------------------------------------------------------- 6. 导出
-step "导出单 AIR，生成 IO 与运行请求"
-rm -f "$WORK/infer/request.json" "$WORK/bench/request.json"
-LD_PRELOAD="$PROTO_LIB" python3 "$MODEL_DIR/model/export_air.py" \
-    --device "$DEVICE" --instances "$INSTANCES" --warmup "$WARMUP" \
-    --iterations "$ITERATIONS" --seed "$SEED" 2>&1 | tee "$LOGS/export.log"
+step "导出两阶段 split AIR（vision + text）"
+rm -f "$WORK/build/vision.air" "$WORK/build/text.air" "$WORK/build/split.json"
+LD_PRELOAD="$PROTO_LIB" python3 "$MODEL_DIR/model/export_split.py" \
+    --device "$DEVICE" 2>&1 | tee "$LOGS/export.log"
 
 # ---------------------------------------------------------------- 7. 精度推理
-step "C++ GESession 精度推理"
-rm -f "$WORK/infer/outputs.bin" "$WORK/infer/result.json" \
-      "$WORK/infer/comparison.json" "$WORK/infer/business.json"
+step "C++ pipeline 精度推理（vision -> features -> text）"
+rm -rf "$WORK/infer"
+mkdir -p "$WORK/infer"
+python3 - "$WORK" "$DEVICE" <<'PYREQ' > "$WORK/infer/request.json"
+import json, sys
+work, device = sys.argv[1], int(sys.argv[2])
+print(json.dumps({"mode": "infer", "device": device,
+                  "vision_air": work + "/build/vision.air",
+                  "text_air": work + "/build/text.air",
+                  "records": work + "/inputs/records.json",
+                  "output_dir": work + "/infer"}))
+PYREQ
 LD_PRELOAD="$PROTO_LIB" "$RUNTIME_BIN" < "$WORK/infer/request.json" \
     > "$LOGS/infer-runtime.log" 2>&1
 sed -n 's/^GE_RESULT //p' "$LOGS/infer-runtime.log" > "$WORK/infer/result.json"
@@ -116,8 +124,19 @@ case "$answer" in
 esac
 
 # ---------------------------------------------------------------- 11. 性能测试
-step "C++ GESession 性能测试"
-rm -f "$WORK/bench/result.json" "$WORK/bench/requests.csv"
+step "C++ pipeline 性能测试（vision -> features -> text）"
+rm -rf "$WORK/bench"
+mkdir -p "$WORK/bench"
+python3 - "$WORK" "$DEVICE" "$WARMUP" "$ITERATIONS" "$SEED" <<'PYREQ' > "$WORK/bench/request.json"
+import json, sys
+work, device, warmup, iterations, seed = sys.argv[1:6]
+print(json.dumps({"mode": "bench", "device": int(device),
+                  "vision_air": work + "/build/vision.air",
+                  "text_air": work + "/build/text.air",
+                  "records": work + "/inputs/records.json",
+                  "warmup": int(warmup), "iterations": int(iterations),
+                  "seed": int(seed), "output_dir": work + "/bench"}))
+PYREQ
 LD_PRELOAD="$PROTO_LIB" "$RUNTIME_BIN" < "$WORK/bench/request.json" \
     > "$LOGS/bench-runtime.log" 2>&1
 sed -n 's/^GE_RESULT //p' "$LOGS/bench-runtime.log" > "$WORK/bench/result.json"

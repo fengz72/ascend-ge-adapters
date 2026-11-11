@@ -104,6 +104,7 @@ class OfficialPreprocessor:
         self._tokenizer = None
         self._processor = None
         self._rope_index = None
+        self._vision_tables = None
 
     @property
     def config(self):
@@ -132,6 +133,14 @@ class OfficialPreprocessor:
         if self._rope_index is None:
             self._rope_index = multimodal.official_rope_index_provider(self.config)
         return self._rope_index
+
+    @property
+    def vision_tables(self):
+        """The SHARED official vision table provider (pos-embed interpolation
+        and rotary from the checkpoint's pos_embed table)."""
+        if self._vision_tables is None:
+            self._vision_tables = multimodal.vision_tables_provider(self.config)
+        return self._vision_tables
 
     @property
     def processor(self):
@@ -244,17 +253,16 @@ class OfficialPreprocessor:
 
     def build_graph_inputs(self, rows, *, vocab_size=None, max_batch=None,
                            max_seq_len=None):
-        """Official per-row encodings -> the 5 validated graph inputs.
+        """Official per-row encodings -> the 9 validated pipeline inputs
+        (5 vision-stage + 4 text-stage tensors).
 
-        The caps default to the model's own bounds: S is checked against
-        config.text_config.max_position_embeddings and B has no encode-time
-        cap (the runtime HBM envelope bounds B*S).  Explicit caps tighten.
-        Every structural bound (S<=max_seq_len, images per request, global
-        image slots per call, grid exactly [1, 16, 16]) is enforced by
-        multimodal.build_multimodal_batch; violations raise, nothing is
+        Any image count and any official grid is accepted; every structural
+        bound (S<=max_seq_len, images per request <= the official limit, per
+        image patch rows inside the official smart_resize bounds) is enforced
+        by multimodal.build_multimodal_batch; violations raise, nothing is
         silently resized or truncated.  Rows run at their TRUE lengths, so
         width = max(true row lengths) and dynamic S stays dynamic.
         """
         return multimodal.build_multimodal_batch(
-            rows, self.rope_index, self.config, vocab_size=vocab_size,
-            max_batch=max_batch, max_seq_len=max_seq_len)
+            rows, self.rope_index, self.config, self.vision_tables,
+            vocab_size=vocab_size, max_batch=max_batch, max_seq_len=max_seq_len)
