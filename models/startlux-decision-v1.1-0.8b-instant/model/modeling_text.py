@@ -44,25 +44,28 @@ class StartLuxRMSNorm(nn.Module):
         super().__init__()
         self.weight = nn.Parameter(torch.zeros(dim))
         self.eps = eps
+        # Bake `1.0 + weight` into the parameter on every completed load:
+        # the post hook fires only after load_state_dict has overwritten the
+        # weight with the raw checkpoint value, so an unconditional +1 is
+        # exactly the invariant "loaded == gamma in place" -- a re-load
+        # overwrites with raw values and folds again, so no state marker is
+        # needed (a marker that skips a re-load would leave raw values in).
+        self.register_load_state_dict_post_hook(StartLuxRMSNorm._fold_gamma)
 
     def forward(self, x):
-        # weight already carries gamma (see fold_gamma): the exported graph
+        # weight already carries gamma (see _fold_gamma): the exported graph
         # must not recompute `1.0 + weight` on frozen parameters every
         # request (61 per-request Add nodes on the delivery graph otherwise).
         y, _ = torch.ops.npu.npu_rms_norm(x, self.weight, float(self.eps))
         return y.to(x.dtype)
 
-    def fold_gamma(self):
-        """Bake `1.0 + weight` into the parameter, once, after checkpoint
-        load (from_folder calls this for every instance).  Bit-identical to
-        the runtime add (same dtype, same operand order); the module is
-        unusable before folding -- a fresh construction holds zeros."""
-        if getattr(self, "gamma_folded", False):
-            return False
+    @staticmethod
+    def _fold_gamma(module, incompatible_keys):
+        """Load-time weight baking, bit-identical to the runtime add (same
+        dtype, same operand order).  A fresh, never-loaded construction holds
+        zeros and is deliberately unusable until a load lands."""
         with torch.no_grad():
-            self.weight.data.add_(1.0)
-        self.gamma_folded = True
-        return True
+            module.weight.data.add_(1.0)
 
 
 class StartLuxRMSNormGated(nn.Module):

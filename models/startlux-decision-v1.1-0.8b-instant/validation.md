@@ -59,6 +59,29 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `tests/test_startlux_unified_preprocess.py`（23 项）与
 `tests/test_startlux_native_proto.py` 改路径后全部通过。
 
+## 2026-11-12 变更：gamma 预折叠重构为类自带 load hook（等价重构）
+
+A1 的折叠从 `from_folder` 的显式 walk + `gamma_folded` 标记 + config 计数断言
+（~20 行）改为 **`StartLuxRMSNorm.__init__` 里注册
+`register_load_state_dict_post_hook`，hook 无条件 `weight += 1`**（~4 行）：
+
+- **动机 1（形态内聚）**：不变量"加载完成 = gamma 就位"归到类自身，任何
+  加载路径不可能忘折；`from_folder` 的 walk 与计数推导全部删除。
+- **动机 2（语义修复）**：原标记形态在"对已折叠实例重新 load"时会跳过折叠、
+  留下 raw checkpoint 值（本仓库无此路径，但属潜在缺陷）；hook 无条件 +1 使
+  re-load 语义正确（覆写 raw 后再折一次，既不累积 +2 也不停留 raw）。
+- **取舍**：隐式（`load_state_dict` 有了副作用）；未加载的新构造仍为零值
+  不可用（单测钉住）；config 计数断言随 walk 一并删除（from_folder 的
+  missing=Fatal 已保证全量加载）。
+- **验证（等价性）**：单测重写 5 项（位级、re-load、坑位、gated 无
+  hook、A2 等价性）；重导出 **AIR 字节数不变**（1,507,309,063，图未变，
+  forward 与 A2 完全相同）；infer 输出与 A2 **位级一致**
+  （outputs.bin md5 `14898c64acf4de3b689fdee99220f23c`）；门禁原样通过
+  （worst cosine 0.999993 / relL2 0.004937 / 业务 |dp| 0.010254）。
+  全套件除 2 个预存 ONNX 环境失败外 137 项通过。
+
+证据：`work/devcase/infer-a1hook/`（对照 `infer-a2/`）。
+
 ## 2026-11-12 调查（负结果，未集成）：MegaGdnPrefillV2 长文本复测（S=1001 stage-1 单算子探针，否决）
 
 **动机**：2026-11-05 整模否决（−23% 吞吐）的三个理由全部是短序列前提——

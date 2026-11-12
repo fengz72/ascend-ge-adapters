@@ -921,7 +921,12 @@ the gated norm's separate `weight * n` multiply):
 - **A1 (`70a4328`, bit-identical)**: `from_folder` bakes `1.0 + weight` into
   every text-side StartLuxRMSNorm parameter (bf16 domain, same operand order)
   with a config-derived count assertion (2/layer + final + 2 per
-  full-attention layer = 61).
+  full-attention layer = 61).  Same-day equivalent refactor: the fold now
+  lives in the class itself as a `register_load_state_dict_post_hook`
+  (unconditional +1, no state marker -- a marker that skipped a re-load
+  would leave raw values in); the `from_folder` walk and count assertion are
+  gone.  AIR bytes unchanged, infer outputs bit-identical, gates unchanged
+  (validation.md 2026-11-12).
 - **A2 (`0a1e1f6`, numerically equivalent)**: the gated norm passes its
   trained weight as the RmsNorm gamma directly (`rms_norm(x, w) ==
   w * rms_norm(x, 1)`), removing 18 OnesLike + 18 Mul per request.

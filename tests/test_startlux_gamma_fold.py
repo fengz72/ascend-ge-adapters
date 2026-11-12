@@ -1,15 +1,17 @@
 """Hermetic checks for the StartLuxRMSNorm gamma fold (models/startlux-
 decision-v1.1-0.8b-instant/model/modeling_text.py).
 
-from_folder bakes `1.0 + weight` into every text-side StartLuxRMSNorm
-parameter after checkpoint load so the exported graph stops recomputing the
-add on frozen weights (61 per-request Add nodes otherwise).  These checks pin
-the fold contract without NPU: bit-identity with the runtime add, idempotence,
-the module-unusable-before-folding hazard, and that the gated norm (a
-different class whose weight is a post-norm multiplier, never a gamma offset)
-cannot be swept up by the walker's isinstance filter.  The fold count (61) and
-the end-to-end bit-identity of the AIR are validated by the integration gates
-in the model's validation.md.
+StartLuxRMSNorm bakes `1.0 + weight` into its parameter through a
+load_state_dict post hook: the hook fires only after the raw checkpoint
+value has landed, so an unconditional +1 is exactly the invariant "loaded
+== gamma in place" (re-load included; no state marker -- a marker that
+skipped a re-load would leave raw values in).  These checks pin the fold
+contract without NPU: bit-identity with the runtime add, correct re-load
+semantics, the module-unusable-before-load hazard, and that the gated norm
+(a different class whose weight is a post-norm multiplier, never a gamma
+offset) carries no such hook.  The fold count (61) and the end-to-end
+bit-identity of the AIR are validated by the integration gates in the
+model's validation.md.
 """
 import importlib.util
 import sys
@@ -46,39 +48,52 @@ class GammaFold(unittest.TestCase):
             norm.weight.copy_(torch.randn(dim).to(dtype))
         return norm
 
+    @staticmethod
+    def _load_raw(norm, raw):
+        raw = raw.detach().clone()
+        norm.load_state_dict({"weight": raw})
+        return raw
+
     def test_fold_is_bit_identical_to_runtime_add(self):
         for dtype in (torch.bfloat16, torch.float32):
             for dim in (1, 128, 256, 1024):
                 norm = self._norm(dim, dtype)
-                expected = 1.0 + norm.weight.detach().clone()
-                self.assertTrue(norm.fold_gamma())
-                self.assertTrue(torch.equal(norm.weight.detach(), expected),
+                raw = self._load_raw(norm, norm.weight.detach())
+                self.assertTrue(torch.equal(norm.weight.detach(), 1.0 + raw),
                                 f"{dtype}/{dim}: folded weight differs")
 
-    def test_fold_is_idempotent(self):
+    def test_reload_folds_again_not_twice(self):
+        # the hook is unconditional by design: a re-load overwrites the
+        # weight with raw checkpoint values and folds exactly once more, so
+        # the parameter never accumulates (+2) and never sits at raw values
         norm = self._norm(64, torch.bfloat16)
-        self.assertTrue(norm.fold_gamma())
+        raw = torch.full((64,), 0.5, dtype=torch.bfloat16)
+        self._load_raw(norm, raw)
         once = norm.weight.detach().clone()
-        self.assertFalse(norm.fold_gamma())
+        self._load_raw(norm, raw)
         self.assertTrue(torch.equal(norm.weight.detach(), once))
+        self.assertTrue(torch.equal(norm.weight.detach(), 1.0 + raw))
 
-    def test_unfolded_module_is_identity_gamma_hazard(self):
-        # A fresh construction holds zeros: forward would scale by 0 until
-        # fold_gamma runs.  The load path folds every instance (loud count
-        # assertion in from_folder); this pins that the hazard exists and is
-        # the reason the fold must never be skipped.
+    def test_unloaded_module_is_identity_gamma_hazard(self):
+        # A fresh construction holds zeros: forward would scale by 0 until a
+        # load lands.  The hook fires only on load, so this hazard is the
+        # price of the checkpoint-shaped init; pinned so the contract is
+        # never "fixed" silently.
         norm = self.mt.StartLuxRMSNorm(8)
         self.assertTrue(bool((norm.weight.detach() == 0).all()))
-        norm.fold_gamma()
+        self._load_raw(norm, torch.zeros(8))
         self.assertTrue(bool((norm.weight.detach() == 1).all()))
 
-    def test_gated_norm_is_not_swept_by_the_walker(self):
+    def test_gated_norm_has_no_fold_hook(self):
         # StartLuxRMSNormGated's weight multiplies the normalized output, it
-        # is NOT a gamma offset; the from_folder walker's isinstance filter
-        # must never match it (and its forward must keep its own math).
+        # is NOT a gamma offset: loading state into it must leave the value
+        # untouched (no +1 anywhere).
         gated = self.mt.StartLuxRMSNormGated(8)
         self.assertNotIsInstance(gated, self.mt.StartLuxRMSNorm)
-        self.assertFalse(hasattr(gated, "fold_gamma"))
+        self.assertFalse(hasattr(gated, "_fold_gamma"))
+        raw = torch.full((8,), 0.5)
+        gated.load_state_dict({"weight": raw})
+        self.assertTrue(torch.equal(gated.weight.detach(), raw))
 
     def test_gated_gamma_fold_equivalence(self):
         # The gated-forward fold rests on rms_norm(x, w) == w * rms_norm(x, 1)

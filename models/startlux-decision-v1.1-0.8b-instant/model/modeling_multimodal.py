@@ -520,22 +520,9 @@ def from_folder(folder, device):
 
     model.derive_decision_head()
     _verify_a_log_float32(model, text_config)
-    # Bake `1.0 + weight` into every text-side StartLuxRMSNorm (hidden norms
-    # of [hidden_size] + full-attention q/k norms of [head_dim]): the exported
-    # graph otherwise recomputes the add per request on frozen weights, and
-    # those tiny launches stall the device queue at every iteration head.
-    # StartLuxRMSNormGated is a different class and never matches (its weight
-    # is the post-norm multiplier, not a gamma offset).
-    layers = text_config.num_hidden_layers
-    full_attn = sum(1 for kind in text_config.layer_types[:layers]
-                    if kind == "full_attention")
-    expected = 2 * layers + 1 + 2 * full_attn
-    folded = sum(bool(module.fold_gamma()) for module in model.modules()
-                  if isinstance(module, modeling_text.StartLuxRMSNorm))
-    if folded != expected:
-        raise RuntimeError(f"from_folder: folded gamma into {folded} StartLuxRMSNorm "
-                           f"modules, expected {expected} (2 per decoder layer + "
-                           "final norm + 2 per full-attention layer)")
+    # StartLuxRMSNorm weights carry gamma from the moment load_state_dict
+    # completes (the class's own load post hook bakes `1.0 + weight`; see
+    # modeling_text.StartLuxRMSNorm._fold_gamma) -- nothing to do here.
     return model.to(device).requires_grad_(False).eval()
 
 
