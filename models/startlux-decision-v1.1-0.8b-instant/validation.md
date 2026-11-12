@@ -77,17 +77,26 @@ GE 原型 REG_OP 必选 INPUT，仅 `g` 是 OPTIONAL）→ "缺省隐式零态"�
   （`14898c64acf4de3b689fdee99220f23c`）；门禁数值原样
   （worst cosine 0.999993 / relL2 0.004937 / 业务 |dp| 0.010254）。
 - text.air 1,507,309,063 → **1,507,247,677（−61,386 B，17 个 Fill 节点消失）**。
-- **bench 未测（如实记录）**：06:25 起全部 16 卡被租户占用（chip 14 AICore
-  87% / 52 GB）。被污染的尝试读数 37.7–38.1 ms，经**提升前对照 AIR 同条件
-  37.9 ms/case** 判定为占用所致（21.5/0.55 ≈ 39 ms 吻合），不作为结果记录。
-  预期增益 ~17 × 8.0 µs ≈ **−0.14 ms/请求（低于 ±0.7% 方差带，与 A1 同
-  性质：结构性收益）**，待下一空闲窗口的池跑顺带回收。期间所有干净测量
-  （A2 bench 21.533 ms、mega probe 685 µs）均在占用开始（03:48–06:25 之间）
-  之前完成。
+- **bench 补测（07:0x 空闲窗口，chip 14）**：同窗口 A/B——提升前 AIR 自
+  `555dafb` 精确重建导出，两腿背靠背各 2 跑：提升前 21.640/21.559 ms
+  （均值 21.599）、提升后 21.456/21.257 ms（均值 **21.356**）→
+  **−0.243 ms（−1.12%）、qps +1.14%，四跑区间完全不重叠**（好于
+  −0.14 ms 的保守预期）。测后恢复交付态源码重导出，AIR 字节数复现
+  1,507,247,677、infer 输出与被测 AIR **位级一致**（md5 同
+  `14898c64acf4de3b689fdee99220f23c`）。
+- **msprof 复采**（`work/devcase/prof-zerostate-devq00/`，restored）：
+  **Fill 416 次 = 1/请求**（原 7488 = 18/请求）、**850→833 ops/请求**、
+  busy 21.51→**21.15 ms**、idle 0.64→0.54 ms、利用率 97.1→**97.5%**、
+  msprof 下 wall 22.14→**21.69 ms**。
+- **测量污染事故（记录）**：06:25–07:0x 全 16 卡被租户占用（chip 14
+  AICore 87% / 52 GB），期间的尝试读数 37.7–38.1 ms 经提升前对照 AIR
+  同条件 37.9 ms/case 判定为占用所致（21.5/0.55 ≈ 39 ms 吻合），不作为
+  结果记录；干净测量（A2 bench、mega probe）均在占用窗口之外完成。
 
-证据：`work/devcase/infer-zerostate/`（对照 `infer-a1hook/`）、
-`/tmp/opencode/probe_state_mut.py` 的 probe 输出、
-`work/devcase/bench-zerostate-r{1,2}/`（标记为污染数据）。
+证据：`work/devcase/{infer-zerostate,infer-zerostate-final}/`（对照
+`infer-a1hook/`）、`bench-zerostate-r{1,2}`（污染标记）、
+`bench-prehoist-r{1,2}`、`bench-zerostate-r{3,4}`（干净 A/B）、
+`prof-zerostate-devq00/`。
 
 ## 2026-11-12 变更：gamma 预折叠重构为类自带 load hook（等价重构）
 

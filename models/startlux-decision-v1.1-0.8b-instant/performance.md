@@ -1016,17 +1016,35 @@ md5 14898c64acf4de3b689fdee99220f23c); gates unchanged (worst cosine
 1,507,309,063 -> 1,507,247,677 bytes (-61,386, the 17 Fill nodes and their
 descriptors).
 
-Bench note (recorded honestly): the e2e gain is expected to be ~-0.14 ms
-(17 x 8.0 us of removed device work, below the +/-0.7% variance band, same
-character as the gamma pre-fold).  The scheduled bench could not be measured:
-all 16 chips became tenant-occupied at ~06:25 (chip 14 at 87% AICore / 52
-GB); the contended attempts read 37.7-38.1 ms but the PRE-hoist control AIR
-reads the same 37.9 ms/case under the same conditions (21.5/0.55 ~ 39 ms
-matches the stolen-share arithmetic), so those numbers are contention, not
-regression.  All clean measurements of the day (A2 bench 21.533 ms, the mega
-probe 685 us) predate the occupancy window; the delta is to be picked up by
-the next idle-window pooled bench.
+Bench (idle window, chip 14, 07:0x): same-window A/B with the pre-hoist AIR
+rebuilt exactly from commit 555dafb, both legs back-to-back, 2 runs each:
 
-Evidence: `work/devcase/infer-zerostate/` (vs `infer-a1hook/`),
-`work/devcase/bench-zerostate-r{1,2}/` (marked polluted), the mutation probe
-logged in validation.md 2026-11-12.
+| leg | runs avg (ms) | mean | qps |
+|---|---|---|---|
+| pre-hoist | 21.640 / 21.559 | 21.599 | 46.30 |
+| hoist | 21.456 / 21.257 | **21.356** | **46.82** |
+| delta | | **-0.243 ms (-1.12%)** | **+1.14%** |
+
+The four run ranges do not overlap (21.257, 21.456 < 21.559, 21.640); the
+gain exceeds the ~-0.14 ms fill-time estimate (the removed dispatch helps
+too).  After the A/B the delivered source was restored and re-exported:
+AIR byte count reproduced (1,507,247,677) and infer outputs bit-identical
+to the benched AIR (md5 14898c64acf4de3b689fdee99220f23c).
+
+msprof re-collection (`work/devcase/prof-zerostate-devq00/`, restored):
+Fill 416 total = **1 per request** (was 7,488 = 18), **850 -> 833 device
+ops per request**, busy 21.51 -> **21.15 ms**, idle 0.64 -> 0.54 ms,
+utilization 97.1 -> **97.5%**, wall under msprof 22.14 -> **21.69 ms**.
+
+Measurement-pollution incident (kept for the record): between ~06:25 and
+the idle window all 16 chips were tenant-occupied (chip 14 at 87% AICore /
+52 GB); the contended attempts read 37.7-38.1 ms but the pre-hoist control
+AIR read the same 37.9 ms/case under the same conditions (21.5/0.55 ~ 39
+ms matches the stolen-share arithmetic) -- contention, not regression.
+All clean measurements of the day (A2 bench, the mega probe) predate the
+occupancy window.
+
+Evidence: `work/devcase/infer-zerostate{,-final}/` (vs `infer-a1hook/`),
+`bench-prehoist-r{1,2}` + `bench-zerostate-r{3,4}` (the clean A/B),
+`bench-zerostate-r{1,2}` (marked polluted), `prof-zerostate-devq00/`, the
+mutation probe logged in validation.md 2026-11-12.
