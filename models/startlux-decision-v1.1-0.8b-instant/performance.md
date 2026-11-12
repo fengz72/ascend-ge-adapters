@@ -910,3 +910,83 @@ AIRs):
 Evidence: `work/devcase/bench/pool/` + `work/devcase/logs/bench-pool.log`
 (pre pool), `work/devcase/bench-new/case/*` (post 18-case sweep, 09:15),
 `work/devcase/preproc-timing.json`.
+
+## Appendix: RMSNorm gamma pre-fold + gated-norm gamma fold (2026-11-11)
+
+Two independent commits against the long-text devcase profile (the restored
+msprof showed 61 per-request `Add` nodes recomputing `1.0 + weight` on frozen
+parameters at the iteration head with ~5 us of device idle before each, plus
+the gated norm's separate `weight * n` multiply):
+
+- **A1 (`70a4328`, bit-identical)**: `from_folder` bakes `1.0 + weight` into
+  every text-side StartLuxRMSNorm parameter (bf16 domain, same operand order)
+  with a config-derived count assertion (2/layer + final + 2 per
+  full-attention layer = 61).
+- **A2 (`0a1e1f6`, numerically equivalent)**: the gated norm passes its
+  trained weight as the RmsNorm gamma directly (`rms_norm(x, w) ==
+  w * rms_norm(x, 1)`), removing 18 OnesLike + 18 Mul per request.
+
+All numbers below: `dev-intent-q00-r0`, chip 14, warmup 16 / 400 measured /
+seed 42, same-session baseline for every comparison.
+
+| item | baseline | A1 | A2 (A1+A2) |
+|---|---|---|---|
+| AIR outputs vs baseline | - | **bit-identical** (outputs.bin md5 16a42648f00c39eb8098405e0605f7aa) | 468/468 floats differ, max logit |dp| 0.091, cosine 0.999993 |
+| numeric gate (vs CPU FP32 golden) | worst cosine 0.999995 / relL2 0.004779 | unchanged (bit-identical) | **0.999993 / 0.004937** (gate 0.999 / 0.02) |
+| business gate (dev threshold 0.02) | worst |dp| 0.013914 | unchanged | **0.010254** (improved) |
+| text AIR bytes | 1,507,412,645 | 1,507,343,564 (-69 KB) | **1,507,309,063** (-34 KB more) |
+| bench e2e avg (ms) | 22.177 | 22.156 (variance band) | **21.607** (two runs 21.681 / 21.533; -0.57 ms / -2.57%) |
+| qps | 45.09 | 45.13 | **46.28** (+2.64%) |
+
+msprof re-collection (`work/devcase/prof-gammafold-devq00/`, restored via
+`tools/restore_matmulv3.py`) confirms the structural removal:
+
+| metric (steady state, 416 profiled execs) | pre | post |
+|---|---|---|
+| device ops per request | 947 | **850** (-61 Add, -18 OnesLike, -18 Mul) |
+| device busy / idle per request | 21.88 / 1.06 ms | **21.51 / 0.64 ms** |
+| device utilization | 95.4% | **97.1%** |
+| wall per request under msprof | 22.94 ms | **22.14 ms** (-3.5%) |
+
+Honest reading: the ~0.4 ms prologue-idle saving is profiling-specific
+(msprof slows host launches; at bench level A1 measures within the variance
+band) -- A1 is kept as a strictly structural cleanup with a bit-identity
+proof.  A2's -0.57 ms (the removed Mul node time plus its dispatch) is real
+at bench level and is the whole measured gain.
+
+Evidence: `work/devcase/infer-base-a1/` + `infer-a1/` + `infer-a2/`
+(outputs.bin pairs), `bench-a1-base/`, `bench-a1/`, `bench-a2-r1/`,
+`bench-a2-r2/`, `prof-gammafold-devq00/`; commits 70a4328 / 0a1e1f6.
+
+## Appendix: MegaGdnPrefillV2 long-text re-probe (2026-11-12, stage-1 no-go)
+
+The 2026-11-05 whole-model rejection rested on short-sequence premises (128
+alignment waste ~34% at S85, B2 -51%, image-case business fails); the devcase
+pool is text-only B=1 at S=1001-1005, so the re-probe was warranted.  Stage 1
+was a standalone single-op probe (no model change, no AIR re-export) at the
+exact model geometry (NV=16 / DK=DV=128 / C=6144, tokens=1001, batch=1),
+operator and install unchanged from the 2026-11-05 fixed build.
+
+| item | result |
+|---|---|
+| break-even (native chain per GDN layer, post-gamma-fold msprof) | 611 us (CausalConv1d 66 + 3x Slice 39 + 2x L2 RmsNorm 49 + Fill 8 + CGDR 331 + gated RmsNorm 28 + silu/cast/mul/sigmoid tail ~90) |
+| mega graph leg (torchair default mode, pipelined) | **685 us/call** (827 on a cold kernel_meta; scratch allocs ~15 us included) |
+| mega eager leg | 1,310 us/call (bridge overhead; not the model route) |
+| verdict | **LOSS: even the best graph-leg number is +12% over the whole native chain**; x18 layers = +1.3 ms/request (-5.8% throughput) -> NO-GO |
+| accuracy side-finding | eager vs CPU FP32 golden relL2 **0.005017** (gate 0.02, better than the S~99 whole-model 0.0101); graph vs eager 0.0; the 1001%128=9 **remainder-chunk path is correct** (never exercised before); the fp16 pipeline does not degrade with length |
+
+Conclusion: the fused-op net-negative finding extends to the long-text
+workload at the kernel level -- the 128-alignment argument was necessary but
+not sufficient.  Integration-specific risks (three 128x128 mask Consts vs
+the positional bake; the per-layer cu_seqlens D2H read-back sync) stay
+unexercised by design.  An environment hazard was found and documented while
+probing: pip's `fla_npu` ships `fla_npu_opp_env.pth` which hijacks
+`ASCEND_CUSTOM_OPP_PATH` at every interpreter start, and mega's activator
+(old search order, CUSTOM_OPP_PATH first) then dlopens fla_npu_transformer's
+same-named `libcust_opapi.so` (`undefined symbol: mega_gdn_prefill_run_v2`);
+causal_conv1d's activator already carries the hardened search order.  See
+validation.md 2026-11-12 for the workaround and the follow-up if the op is
+ever re-integrated.
+
+Evidence: `work/devcase/mega-probe/` (probe_s1001.py, golden_t1001.pt,
+probe.log..probe5.log), chip 14 idle throughout.

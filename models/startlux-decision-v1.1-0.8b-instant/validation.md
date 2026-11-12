@@ -59,6 +59,84 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `tests/test_startlux_unified_preprocess.py`（23 项）与
 `tests/test_startlux_native_proto.py` 改路径后全部通过。
 
+## 2026-11-12 调查（负结果，未集成）：MegaGdnPrefillV2 长文本复测（S=1001 stage-1 单算子探针，否决）
+
+**动机**：2026-11-05 整模否决（−23% 吞吐）的三个理由全部是短序列前提——
+128 对齐浪费（S85 ~34%）、B2 mixed −51%、8/11 业务 FAIL 集中在图像用例。
+devcase 池是纯文本 S=1001–1005、B=1、业务阈值 0.02，前提已全部改变，且
+msprof 显示 mega 可吸收的原生链达 **~611 µs/GDN 层**（CausalConv1d 66 +
+3×StridedSlice 39 + 2×L2 RmsNorm 49 + Fill 8 + CGDR 331 + gated RmsNorm 28 +
+silu/cast/mul/sigmoid 尾 ~90，gamma 折叠后口径）。故先做 stage-1 单算子
+探针（`work/devcase/mega-probe/probe_s1001.py`，几何与模型一致
+NV=16/DK=DV=128/C=6144，tokens=1001/batch=1），不改模型、不重导出 AIR。
+
+**结果（chip 14，算子与安装均为 2026-11-05 修复版原样在位）**：
+
+- **计时（决定性）**：graph 腿（torchair 默认模式，模型 AIR 路径同构）
+  **685 µs/层**（另一次 827，kernel_meta 冷热差；均含每次调用的 scratch
+  分配 ~15 µs）、eager 腿 1,310 µs/层（桥开销，模型路径不适用）——
+  **连最佳值都高于整条原生链 611 µs/层（+12%）**，18 层放大为
+  +1.3 ms/请求（−5.8% 吞吐）。**NO-GO**，与 2026-11-05 结论一致：融合
+  收益为负**扩展到长文本负载**，非短序列假象。
+- **精度（附带数据点）**：eager vs CPU fp32 golden（逐 token 递推参考，
+  matmul 形式重写并经 T=64 与原 einsum 版交叉验证 max diff 3e-5 = 1 ulp）
+  **relL2 0.005017**（门限 0.02，4× 余量；比 S≈99 整模的 0.0101 更好）；
+  graph vs eager rel_l2 = 0.0。**1001%128=9 余块路径正确**（此前从未测过
+  非整块长度），fp16 内部流水不随长度劣化。
+- 同时避免了集成才会暴露的两项已知风险：3 个 128×128 mask Const 对
+  positional bake 的冲击、每层一次的 cu_seqlens D2H 回读同步（18 次/请求）。
+
+**环境事故与修复（记录为坑）**：pip 装的 `fla_npu` 包携带
+`site-packages/fla_npu_opp_env.pth`，**每个 python 进程启动时**把
+`ASCEND_CUSTOM_OPP_PATH` 指向自身 opp；mega activator 的 `find_op_lib` 是
+旧搜索顺序（先 `ASCEND_CUSTOM_OPP_PATH`），被劫持后 dlopen 了
+`fla_npu_transformer` 的同名 `libcust_opapi.so`，JIT 桥报
+`undefined symbol: mega_gdn_prefill_run_v2`。**causal_conv1d 的 activator
+已修过此顺序（先 `$ASCEND_OPP_PATH`，0ffc5b6 的 wrapper 加固）**，mega
+未跟进。探针用启动包装器重设 `ASCEND_CUSTOM_OPP_PATH=$ASCEND_OPP_PATH`
+绕过（`/tmp/opencode/run_probe.py` 模式）；若未来重新集成 mega，需同步修
+`third_party/ascend-ops/mega-gdn-prefill/python/mega_gdn_prefill.py` 的搜索
+顺序并重装。另：torch extension 的 file_baton 锁在 kill -9 后残留会使后续
+所有运行死等，删 `torch_extensions/mega_gdn_prefill_bridge/` 即恢复。
+
+证据：`work/devcase/mega-probe/`（probe_s1001.py、golden_t1001.pt、
+probe.log…probe5.log、探针期间 chip 14 idle）。
+
+## 2026-11-11 变更：RMSNorm gamma 预折叠 + gated norm gamma 折叠（两笔独立提交）
+
+msprof（dev-intent-q00-r0 长文本，restored 口径）定位：迭代头部 97 个小算子
+中 **61 个 Add（`1.0 + norm.weight`，49×[1024] + 12×[256]）与 18 个
+OnesLike（gated ones）是冻结权重的常量算术**，每个前有 ~5 µs 设备空转
+（profiling 下 host 发射受限）；另有 gated norm 的 `weight * n` 独立
+Mul 节点 18 次/请求（0.30 ms 设备时间）。
+
+- **A1（位级等价，`70a4328`）**：`from_folder` 在 load_state_dict 后把
+  `1.0 + weight` 原位烘进每个文本侧 `StartLuxRMSNorm` 参数（bf16 域、同
+  操作数序 → **位级一致**），forward 直用 `self.weight`；计数断言由 config
+  推导（2/层 + 终层 + 2/full-attention 层 = 61）。验证：**AIR 输出逐字节
+  相同**（infer outputs.bin md5 `16a42648f00c39eb8098405e0605f7aa` 与改前
+  一致）、门禁原样通过、text.air −69 KB（61 节点消失）。bench −0.02 ms
+  （方差带内）——msprof 下的前导空转收益是 profiling 特有的 host 开销，
+  如实记为结构性清理。
+- **A2（数值等价，`0a1e1f6`）**：`rms_norm(x, w) == w * rms_norm(x, 1)`
+  严格成立（gamma 是纯后置缩放），gated norm 直传 `self.weight` 为
+  gamma，消除 18×OnesLike + 18×Mul（kernel 在 fp32 域施加 gamma，少一次
+  bf16 舍入）。与被否决的 2026-11-09 scale 折叠（sqrt(D) 进 kernel scale
+  喂非线性递推，relL2 0.85）性质不同。验证：worst cosine 0.999993 /
+  relL2 0.004937（位级基线 0.004779，余量 4×）、业务 worst |dp|
+  **0.013914→0.010254（变好）**；bench ×2：avg 21.681/21.533 ms（均值
+  **21.607，−0.57 ms/−2.57%**，同会话基线 22.177），qps 45.09→46.28。
+- **msprof 复采**（`work/devcase/prof-gammafold-devq00/`）：**947→850
+  ops/请求**（−97 = 61 Add + 18 OnesLike + 18 Mul），设备 busy 21.88→21.51
+  ms、idle 1.06→**0.64 ms**、利用率 95.4→**97.1%**、msprof 下 wall
+  22.94→**22.14 ms（−3.5%）**。
+- 新增 hermetic 单测 `tests/test_startlux_gamma_fold.py`（5 项：折叠位级、
+  幂等、未折叠即失效的坑、walker 类过滤、gated 等价性 fp32 参考 + 源契约）。
+
+证据：`work/devcase/{infer-base-a1,infer-a1,infer-a2,bench-a1-base,bench-a1,
+bench-a2-r1,bench-a2-r2,prof-gammafold-devq00}/`；测量表见 performance.md
+当日附录。
+
 ## 2026-11-11 变更（负结果，已回退）：手动 npu_add_rms_norm 替换 InplaceAddRmsNorm
 
 **问题**（用户提议）：team profiling 显示 48 个 InplaceAddRmsNorm 融合点各带一对
