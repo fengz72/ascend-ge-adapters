@@ -59,6 +59,36 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `tests/test_startlux_unified_preprocess.py`（23 项）与
 `tests/test_startlux_native_proto.py` 改路径后全部通过。
 
+## 2026-11-12 变更：GDN 零态提升为层间共享（18 Fill → 1）
+
+**前置 probe（决定性，chip 14）**：`npu_chunk_gated_delta_rule` 的 `initial_state`
+是**只读输入** — 调用后仍全零、`final_state` 为独立新张量（data_ptr 不同，与
+aclnn 契约 `[in]/[out]` 一致）、同一零态复用 vs 新建零态输出**位级一致**。
+`initial_state=None` 双腿皆拒（eager 宿主 "initial_state cannot be empty" +
+GE 原型 REG_OP 必选 INPUT，仅 `g` 是 OPTIONAL）→ "缺省隐式零态"路线不可行，
+"常量折叠"路线因 B 动态轴不可行，但**层间共享零态可行**。
+
+**变更**：`torch.zeros` 从 18 个 GDN 层各自的 forward 提升到
+`StartLuxTextModel.forward` 一处（`gdn_state_shape` 由 config 推导，
+经 `DecoderLayer.forward` → `GatedDeltaNet.forward` 内部传参，
+文本模型 IO 三参签名不变）——每请求 Fill 节点 18 → 1。
+
+- **位级一致**：infer 输出与提升前 md5 相同
+  （`14898c64acf4de3b689fdee99220f23c`）；门禁数值原样
+  （worst cosine 0.999993 / relL2 0.004937 / 业务 |dp| 0.010254）。
+- text.air 1,507,309,063 → **1,507,247,677（−61,386 B，17 个 Fill 节点消失）**。
+- **bench 未测（如实记录）**：06:25 起全部 16 卡被租户占用（chip 14 AICore
+  87% / 52 GB）。被污染的尝试读数 37.7–38.1 ms，经**提升前对照 AIR 同条件
+  37.9 ms/case** 判定为占用所致（21.5/0.55 ≈ 39 ms 吻合），不作为结果记录。
+  预期增益 ~17 × 8.0 µs ≈ **−0.14 ms/请求（低于 ±0.7% 方差带，与 A1 同
+  性质：结构性收益）**，待下一空闲窗口的池跑顺带回收。期间所有干净测量
+  （A2 bench 21.533 ms、mega probe 685 µs）均在占用开始（03:48–06:25 之间）
+  之前完成。
+
+证据：`work/devcase/infer-zerostate/`（对照 `infer-a1hook/`）、
+`/tmp/opencode/probe_state_mut.py` 的 probe 输出、
+`work/devcase/bench-zerostate-r{1,2}/`（标记为污染数据）。
+
 ## 2026-11-12 变更：gamma 预折叠重构为类自带 load hook（等价重构）
 
 A1 的折叠从 `from_folder` 的显式 walk + `gamma_folded` 标记 + config 计数断言

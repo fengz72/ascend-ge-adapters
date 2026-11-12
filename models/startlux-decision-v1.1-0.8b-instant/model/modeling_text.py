@@ -133,7 +133,7 @@ class StartLuxGatedDeltaNet(nn.Module):
             (self.head_k_dim,), self.head_k_dim ** -0.5, dtype=torch.bfloat16),
             persistent=False)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, zero_state):
         batch, width, _ = hidden_states.shape
         mixed_qkv = self.in_proj_qkv(hidden_states)
         z = self.in_proj_z(hidden_states).reshape(batch, width, -1, self.head_v_dim)
@@ -156,12 +156,15 @@ class StartLuxGatedDeltaNet(nn.Module):
         beta, g = beta.flatten(0, 1), g.flatten(0, 1)
         # Zero initial state, per-row PHYSICAL width S as actual_seq_lengths
         # (never cumulative ends, never the true L); final state discarded.
-        state = torch.zeros(batch, self.num_v_heads, self.head_v_dim, self.head_k_dim,
-                            dtype=torch.bfloat16, device=hidden_states.device)
+        # zero_state is the ONE tensor shared by every GDN layer (created in
+        # StartLuxTextModel.forward): the kernel reads initial_state without
+        # mutating it and final_state is a separate output (eager probe
+        # 2026-11-12: reuse-vs-fresh bit-identical), so sharing is exact and
+        # the per-layer Fill node disappears (18 -> 1 per request).
         row_widths = torch.full((batch,), width, dtype=torch.int32,
                                 device=hidden_states.device)
         out, _final_state = torch.ops.npu.npu_chunk_gated_delta_rule(
-            q, k, v, beta=beta, initial_state=state,
+            q, k, v, beta=beta, initial_state=zero_state,
             actual_seq_lengths=row_widths,
             scale=float(self.head_k_dim) ** -0.5, g=g)
         out = out.reshape(-1, self.head_v_dim)
@@ -247,11 +250,11 @@ class StartLuxDecoderLayer(nn.Module):
         self.post_attention_layernorm = StartLuxRMSNorm(config.hidden_size,
                                                         eps=config.rms_norm_eps)
 
-    def forward(self, hidden, cos, sin, seq_lengths):
+    def forward(self, hidden, cos, sin, seq_lengths, zero_state):
         residual = hidden
         hidden = self.input_layernorm(hidden)
         if self.layer_type == "linear_attention":
-            hidden = self.linear_attn(hidden)
+            hidden = self.linear_attn(hidden, zero_state)
         else:
             hidden = self.self_attn(hidden, cos, sin, seq_lengths)
         hidden = residual + hidden
@@ -284,6 +287,15 @@ class StartLuxTextModel(nn.Module):
         self.register_buffer("inv_freq", inv_freq, persistent=False)
         self.register_buffer("mrope_gather", _mrope_interleave_index(
             self.mrope_section, self.rotary_dim // 2), persistent=False)
+        # GDN zero-state tail shared by every linear-attention layer; None
+        # when the stack has none.  The leading batch dim is dynamic, so the
+        # tensor is created per forward (one Fill node), never a buffer.
+        self.gdn_state_shape = (
+            (config.linear_num_value_heads, config.linear_value_head_dim,
+             config.linear_key_head_dim)
+            if any(kind == "linear_attention"
+                   for kind in config.layer_types[:config.num_hidden_layers])
+            else None)
 
     def mrope_cos_sin(self, position_ids, dtype):
         # bit-exact against Qwen3_5TextRotaryEmbedding
@@ -297,7 +309,15 @@ class StartLuxTextModel(nn.Module):
         cos, sin = self.mrope_cos_sin(position_ids, inputs_embeds.dtype)
         # the graph input is int32 [B]; the attention kernel takes int64 lengths
         seq_lengths = actual_seq_lengths.to(torch.int64)
+        # ONE zero initial state for all GDN layers (the kernel reads
+        # initial_state without writing it -- see the GDN forward note):
+        # replaces a per-layer Fill node, 18 -> 1 per request.
+        zero_state = None
+        if self.gdn_state_shape is not None:
+            zero_state = torch.zeros(inputs_embeds.shape[0], *self.gdn_state_shape,
+                                     dtype=torch.bfloat16,
+                                     device=inputs_embeds.device)
         hidden = inputs_embeds
         for layer in self.layers:
-            hidden = layer(hidden, cos, sin, seq_lengths)
+            hidden = layer(hidden, cos, sin, seq_lengths, zero_state)
         return self.norm(hidden)

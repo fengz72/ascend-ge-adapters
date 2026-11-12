@@ -995,3 +995,38 @@ ever re-integrated.
 
 Evidence: `work/devcase/mega-probe/` (probe_s1001.py, golden_t1001.pt,
 probe.log..probe5.log), chip 14 idle throughout.
+
+## Appendix: GDN zero-state hoisted to one shared Fill (2026-11-12)
+
+Each of the 18 GDN layers zeroed its own `[B416128x128]` initial_state before
+the ChunkGatedDeltaRule call (18 Fill nodes, ~8.0 us each, 0.14 ms/request of
+device time).  Eliminating the tensor entirely is blocked twice over: the GE
+prototype REG_OP makes `initial_state` a REQUIRED input (only `g` is optional;
+the eager host likewise rejects None -- "initial_state cannot be empty"), and
+the dynamic batch axis rules out a baked Constant (no compile-time B bound,
+see the model README).  The route that IS open: the kernel never writes
+initial_state (probe: still all-zero after the call, final_state is a
+separate output, reuse-vs-fresh bit-identical), so the 18 layers share ONE
+zero tensor created once in StartLuxTextModel.forward.  Fill nodes per
+request 18 -> 1.
+
+Validation: AIR outputs bit-identical to the pre-hoist build (outputs.bin
+md5 14898c64acf4de3b689fdee99220f23c); gates unchanged (worst cosine
+0.999993, worst relL2 0.004937, business worst |dp| 0.010254); text.air
+1,507,309,063 -> 1,507,247,677 bytes (-61,386, the 17 Fill nodes and their
+descriptors).
+
+Bench note (recorded honestly): the e2e gain is expected to be ~-0.14 ms
+(17 x 8.0 us of removed device work, below the +/-0.7% variance band, same
+character as the gamma pre-fold).  The scheduled bench could not be measured:
+all 16 chips became tenant-occupied at ~06:25 (chip 14 at 87% AICore / 52
+GB); the contended attempts read 37.7-38.1 ms but the PRE-hoist control AIR
+reads the same 37.9 ms/case under the same conditions (21.5/0.55 ~ 39 ms
+matches the stolen-share arithmetic), so those numbers are contention, not
+regression.  All clean measurements of the day (A2 bench 21.533 ms, the mega
+probe 685 us) predate the occupancy window; the delta is to be picked up by
+the next idle-window pooled bench.
+
+Evidence: `work/devcase/infer-zerostate/` (vs `infer-a1hook/`),
+`work/devcase/bench-zerostate-r{1,2}/` (marked polluted), the mutation probe
+logged in validation.md 2026-11-12.
