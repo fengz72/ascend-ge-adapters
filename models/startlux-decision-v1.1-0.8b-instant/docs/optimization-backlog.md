@@ -110,25 +110,25 @@ q, gate = torch.split_with_sizes(qkv, [self.head_dim, self.head_dim], dim=3)
 
 ```python
 q_rot, k_rot = torch_npu.npu_apply_rotary_pos_emb(
-    q2d[..., :self.rotary_dim], k2d[..., :self.rotary_dim],
+    q_heads[..., :self.rotary_dim], k_heads[..., :self.rotary_dim],
     cos.unsqueeze(2), sin.unsqueeze(2),
     layout="BSND", rotary_mode="half")
-q2d = torch.cat((q_rot, q2d[..., self.rotary_dim:]), dim=-1)
-k2d = torch.cat((k_rot, k2d[..., self.rotary_dim:]), dim=-1)
+q_heads = torch.cat((q_rot, q_heads[..., self.rotary_dim:]), dim=-1)
+k_heads = torch.cat((k_rot, k_heads[..., self.rotary_dim:]), dim=-1)
 ```
 
 改为（`q_rot_src/k_rot_src` 命名避免与 rope 输出遮蔽）：
 
 ```python
 q_rot_src, q_pass = torch.split_with_sizes(
-    q2d, [self.rotary_dim, self.head_dim - self.rotary_dim], dim=3)
+    q_heads, [self.rotary_dim, self.head_dim - self.rotary_dim], dim=3)
 k_rot_src, k_pass = torch.split_with_sizes(
-    k2d, [self.rotary_dim, self.head_dim - self.rotary_dim], dim=3)
+    k_heads, [self.rotary_dim, self.head_dim - self.rotary_dim], dim=3)
 q_rot, k_rot = torch_npu.npu_apply_rotary_pos_emb(
     q_rot_src, k_rot_src, cos.unsqueeze(2), sin.unsqueeze(2),
     layout="BSND", rotary_mode="half")
-q2d = torch.cat((q_rot, q_pass), dim=-1)
-k2d = torch.cat((k_rot, k_pass), dim=-1)
+q_heads = torch.cat((q_rot, q_pass), dim=-1)
+k_heads = torch.cat((k_rot, k_pass), dim=-1)
 ```
 
 要点：
@@ -200,7 +200,7 @@ S=1001（dev case）——只测 S=99 会全是固定开销、只测 S=1001 会�
 1. 图中出现 SplitV/SplitVD 节点，且 StridedSliceV2/V3 归零（若 dynamo 把
    split_with_sizes 分解回 slice，直接否决，零成本退出）；
 2. 输出与现路径**逐位一致**（纯数据搬移）；contiguity 断言对象 =
-   **reshape 后喂 kernel 的张量**（q/k/v、q2d/k2d、rope 输入）——eager
+   **reshape 后喂 kernel 的张量**（q/k/v、q_heads/k_heads、rope 输入）——eager
    腿 raw split view 末维切分必然非连续，不作断言对象；图中不得出现新增
    TransData；追加**整模 eager A/B 逐位断言**（两腿共享 modeling 代码，
    一次覆盖）；

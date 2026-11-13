@@ -203,18 +203,18 @@ class StartLuxAttention(nn.Module):
         # explicit slices: aten.chunk / aten.split.sizes have no GE converter
         q, gate = qkv[..., :self.head_dim], qkv[..., self.head_dim:]
         gate = gate.reshape(batch, width, -1)
-        q2d = self.q_norm(q.reshape(batch, width, -1, self.head_dim))
-        k2d = self.k_norm(self.k_proj(hidden).view(batch, width, -1, self.head_dim))
+        q_heads = self.q_norm(q.reshape(batch, width, -1, self.head_dim))
+        k_heads = self.k_norm(self.k_proj(hidden).view(batch, width, -1, self.head_dim))
         v = self.v_proj(hidden).view(batch, width, -1, self.head_dim)
         # Partial RoPE via npu_apply_rotary_pos_emb (BSND, "half" == exact
         # rotate-half math); both legs verified bit-identical vs pure math
         # (2026-11-10 probe).
         q_rot, k_rot = torch_npu.npu_apply_rotary_pos_emb(
-            q2d[..., :self.rotary_dim], k2d[..., :self.rotary_dim],
+            q_heads[..., :self.rotary_dim], k_heads[..., :self.rotary_dim],
             cos.unsqueeze(2), sin.unsqueeze(2),
             layout="BSND", rotary_mode="half")
-        q2d = torch.cat((q_rot, q2d[..., self.rotary_dim:]), dim=-1)
-        k2d = torch.cat((k_rot, k2d[..., self.rotary_dim:]), dim=-1)
+        q_heads = torch.cat((q_rot, q_heads[..., self.rotary_dim:]), dim=-1)
+        k_heads = torch.cat((k_rot, k_heads[..., self.rotary_dim:]), dim=-1)
         # One fused infer attention per call in the natural BSND layout -- no
         # transposes: the op rejects non-contiguous inputs.  The per-row true
         # lengths on BOTH query and kv sides shield the padding keys, so there
@@ -225,7 +225,7 @@ class StartLuxAttention(nn.Module):
         fia = (torchair.ops.npu_fused_infer_attention_score
                if torch.compiler.is_compiling()
                else torch_npu.npu_fused_infer_attention_score)
-        out = fia(q2d, k2d, v, num_heads=self.num_heads, scale=float(self.scaling),
+        out = fia(q_heads, k_heads, v, num_heads=self.num_heads, scale=float(self.scaling),
                   pre_tokens=2147483647, next_tokens=2147483647,
                   input_layout="BSND", num_key_value_heads=self.num_key_value_heads,
                   sparse_mode=0, actual_seq_lengths=seq_lengths,
