@@ -86,3 +86,27 @@ target_link_libraries(pipeline_runtime
 )
 # 注: 不链 acl_op_compiler —— 本运行时不调任何算子编译/aclnn API (图编译走 ATC 子进程或
 # ge::Session::CompileGraph)。曾经链着它但无一处引用, 白增一条对 CANN 组件的依赖。
+
+# 纯文本极简 executor: 单 text AIR, 2 输入位置绑定 (input_ids, position_ids);
+# CLI 参数控制 infer/bench (--iterations 出现即 bench); 输出 ge-compare/1 +
+# (bench) requests.csv。
+add_executable(executor executor.cpp)
+target_include_directories(executor PRIVATE
+    ${ASCEND_HOME}/include
+    ${THIRD_PARTY_DIR}
+)
+target_link_directories(executor PRIVATE ${ASCEND_HOME}/lib64)
+target_compile_options(executor PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+target_link_libraries(executor
+    ge_compiler
+    ge_runner
+    ge_common
+    ge_common_base
+    graph
+    graph_base
+    fmk_onnx_parser
+    parser_common
+    ascendcl
+    stdc++
+    pthread
+)
