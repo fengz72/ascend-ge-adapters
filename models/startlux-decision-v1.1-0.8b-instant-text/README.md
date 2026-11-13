@@ -107,4 +107,42 @@ LD_PRELOAD=work/deps/chunk_gated_delta_rule_proto/install/lib/libchunk_gated_del
 
 ### 3.2 性能数据
 
+图冷启动（不计入请求时延）：
+
+| 阶段         |        耗时 |
+| ------------ | ----------: |
+| CompileGraph |  17460.2 ms |
+| LoadGraph    | 3676.36 ms |
+
+首个 case 的 614.693 ms 含首次执行冷开销，单独列出；其余 17 个 case 为稳态：
+
+| 指标 |                ms |
+| ---- | ----------------: |
+| min  |           24.9399 |
+| P50  |           25.0753 |
+| avg  |            25.193 |
+| max  |           25.8392 |
+
+逐 case 模型段耗时（S 为 token 长度）：
+
+| case              |    S |        text ms |
+| ----------------- | ---: | -------------: |
+| dev-intent-q00-r0 | 1001 |        614.693 |
+| dev-intent-q00-r1 | 1001 |        24.9774 |
+| dev-intent-q01-r0 | 1003 |        25.8058 |
+| dev-intent-q01-r1 | 1003 |        25.1426 |
+| dev-intent-q02-r0 | 1005 |        25.5748 |
+| dev-intent-q02-r1 | 1005 |        25.0582 |
+| dev-intent-q03-r0 | 1002 |        25.5652 |
+| dev-intent-q03-r1 | 1002 |        24.9828 |
+| dev-intent-q04-r0 | 1002 |        25.0139 |
+| dev-intent-q04-r1 | 1002 |        24.9828 |
+| dev-intent-q05-r0 | 1004 |        25.8392 |
+| dev-intent-q05-r1 | 1004 |        25.0753 |
+| dev-intent-q06-r0 | 1002 |        24.9399 |
+| dev-intent-q06-r1 | 1002 |        24.9402 |
+| dev-intent-q07-r0 | 1004 |        25.1266 |
+| dev-intent-q07-r1 | 1004 |        25.0217 |
+| dev-intent-q08-r0 | 1004 |        25.1545 |
+| dev-intent-q08-r1 | 1004 |        25.0836 |
 
