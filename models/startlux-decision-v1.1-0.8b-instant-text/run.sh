@@ -92,7 +92,7 @@ LD_PRELOAD="$PROTO_LIB" ../../runtime/build/executor \
 
 # ---------------------------------------------------------------- 8. 数值比较
 step "公共工具比较精度"
-python3 ../../../tools/compare.py \
+python3 ../../tools/compare.py \
     --golden work/golden \
     --output work/output \
     --cosine-min "$COSINE_MIN" \

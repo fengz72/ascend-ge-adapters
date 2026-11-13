@@ -5,6 +5,7 @@ decoder stack (Gated DeltaNet + bidirectional full attention) -> last-token
 readout and returns the float32 [B, 26] scores.  Every host op is torch_npu;
 the independent CPU reference is model/golden.py.
 """
+
 import torch
 import torch.nn.functional as F
 import torch_npu

@@ -6,6 +6,7 @@ ChunkGatedDeltaRule, so the process must start with the compat proto
 LD_PRELOADed (``run.sh`` injects it).  Runs as a script
 (``python3 model/export_air.py``) or as a module (``python3 -m model.export_air``).
 """
+
 import argparse
 import json
 import os
@@ -26,7 +27,8 @@ if str(ADAPTER_DIR) not in sys.path:
     sys.path.insert(0, str(ADAPTER_DIR))
 
 import torch
-from model import modeling_text  # noqa: E402
+
+from model import modeling_text
 
 
 def weights_dir():
