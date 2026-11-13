@@ -44,7 +44,8 @@ handle；固定参数集中在 `run.sh` 顶部。
   `images` / `prompt` / `backends.bidirectional` 及其传递依赖，其余模块按
   SOURCE.md 的固定 commit 子集原样保留）。
 - `native_proto/` 与 `scripts/`：ChunkGatedDeltaRule GE 兼容原型源码与构建脚本
-  （加载靠单一 `LD_PRELOAD` 契约，无 python activator）。
+  （加载靠单一 `LD_PRELOAD` 契约，无 python activator；纯文本交付目录
+  `../startlux-decision-v1.1-0.8b-instant-text/native_proto/` 保有同一份源码副本）。
 - `prepare.sh` 同时构建安装 **WeightNzAndMatMulV3Pass** 自定义融合 Pass
   （`third_party/custom_development_code/fusion_pass/`）：图编译期将
   MatMul/MatMulV2 常量权重转 FRACTAL_NZ 重建为 MatMulV3（系统级安装至
