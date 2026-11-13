@@ -274,11 +274,7 @@ def export_torchair(spec, directory, export_name="model"):
     # specialize_float keeps them as baked constants exactly like the
     # dynamic=False route. This is a documented dynamo compile option applied
     # for this export call only and restored afterwards.
-    dynamo_context = getattr(torch._dynamo.config, "patch", None)
-    if dynamo_context is None or not hasattr(torch._dynamo.config, "specialize_float"):
-        raise RuntimeError("torch dynamo config.patch/specialize_float unavailable; "
-                           "cannot export dynamic graphs with baked scalar attributes")
-    with dynamo_context(specialize_float=True):
+    with torch._dynamo.config.patch(specialize_float=True):
         dynamo_export(*values, model=BoundModel(spec["model"]).eval(),
                       export_path=str(directory), export_name=export_name,
                       dynamic=any(x.get("dynamic_dims") for x in io["inputs"]),
