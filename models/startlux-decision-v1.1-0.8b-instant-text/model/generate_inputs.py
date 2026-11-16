@@ -4,7 +4,10 @@ Consumes the business dev.txt JSONL case file (one teacher-annotated choice
 question per row) and writes the executor input pool under work/inputs/:
 
 * ``inputs.bin``   the packed per-case graph-input tensors (2 per case);
-* ``records.json`` the per-case tensor index (schema ``startlux-text-records/2``).
+* ``records.json`` the per-case tensor index (schema ``startlux-text-records/2``);
+* ``readout.json`` the per-case CPU read-out metadata for the bench decider
+  (schema ``startlux-text-readout/1``: labels = the criteria keys in prompt
+  order, letters_asked = K, temperature = the official choice temperature).
 
 Each JSONL row becomes ONE B=1 case at its TRUE length -- the B=1 contract is
 pinned by the exported graph itself (io-spec axis 0 static) and the records
@@ -63,6 +66,17 @@ def text_bounds(folder):
         raise ValueError(f"cannot read vocab_size / max_position_embeddings from "
                          f"{folder / 'config.json'}")
     return vocab, max_position_embeddings
+
+
+def choice_temperature(folder):
+    """The official choice read-out temperature from decision_config.json."""
+    decision = json.loads((Path(folder) / "decision_config.json").read_text())
+    value = (decision.get("temperature_by_type") or {}).get(QUESTION_TYPE)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) \
+            or not np.isfinite(value) or value <= 0:
+        raise ValueError(f"cannot read a positive finite {QUESTION_TYPE!r} temperature "
+                         f"from {folder / 'decision_config.json'} temperature_by_type")
+    return float(value)
 
 
 def _load_dev_rows(path):
@@ -137,7 +151,7 @@ def main():
                         help="the dev JSONL case file (default: %(default)s)")
     parser.add_argument("--output-dir", type=Path,
                         default=ADAPTER_DIR / "work" / "inputs",
-                        help="directory for inputs.bin and records.json "
+                        help="directory for inputs.bin, records.json and readout.json "
                              "(default: %(default)s)")
     args = parser.parse_args()
     if not args.cases.is_file():
@@ -149,11 +163,12 @@ def main():
 
     folder = weights_dir()
     vocab, max_position_embeddings = text_bounds(folder)
+    temperature = choice_temperature(folder)
     tokenizer = AutoTokenizer.from_pretrained(str(folder), local_files_only=True)
     rows, digest = _load_dev_rows(args.cases)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    records, query_index, variant_count = [], {}, {}
+    records, readout_cases, query_index, variant_count = [], [], {}, {}
     with (args.output_dir / "inputs.bin").open("wb") as stream:
         for row in rows:
             key = json.dumps(row["state"], ensure_ascii=False, sort_keys=True)
@@ -188,6 +203,10 @@ def main():
                                               "offset": stream.tell(), "bytes": len(data)})
                 stream.write(data)
             records.append(entry)
+            labels = list(row["spec"]["criteria"].keys())
+            readout_cases.append({"id": case_id, "labels": labels,
+                                  "letters_asked": len(labels),
+                                  "temperature": temperature})
             print(f"generate_inputs: {case_id} S={length}")
 
     (args.output_dir / "records.json").write_text(json.dumps({
@@ -195,6 +214,11 @@ def main():
         "file": str((args.output_dir / "inputs.bin").resolve()),
         "output_name": OUTPUT_NAME,
         "cases": records,
+    }, indent=1) + "\n")
+    (args.output_dir / "readout.json").write_text(json.dumps({
+        "schema": "startlux-text-readout/1",
+        "temperature_source": "decision_config.json temperature_by_type[choice]",
+        "cases": readout_cases,
     }, indent=1) + "\n")
     queries = len(query_index)
     print(f"generate_inputs: {len(records)} cases, {queries} distinct queries; source "

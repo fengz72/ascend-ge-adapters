@@ -4,7 +4,8 @@
 #
 #   export STARTLUX_MODEL_DIR=/path/to/hf-model
 #   bash run.sh [--device <chip>] [--cases <file>]
-#               [--iterations N [--warmup M] [--seed S]]
+#               [--iterations N [--warmup M] [--seed S]
+#                           [--instances K] [--aicore-num A|B] [--readout <path>]]
 #
 # Steps: inputs -> CPU golden -> dependency build -> C++ executor build -> text
 # AIR export -> infer -> compare; --iterations adds the seeded bench.
@@ -25,6 +26,9 @@ RELATIVE_L2_MAX=0.02          # 精度门限：逐行 relative L2 上限
 ITERATIONS=""                 # 空 = 不做 bench；--iterations N 开启
 WARMUP=16                     # 性能：预热请求数
 SEED=42                       # 性能：请求抽样种子
+INSTANCES=1                   # 性能：bench 并发实例数（iterations 为全实例合计）
+AICORE_NUM=""                 # 性能：每算子核上限 AIC|AIV（空 = 不限核）
+READOUT=""                    # 性能：readout.json 路径（空 = 不计时 CPU decider）
 # --------------------------------------------------------
 
 while [[ $# -gt 0 ]]; do
@@ -37,8 +41,14 @@ while [[ $# -gt 0 ]]; do
                   ITERATIONS="$2"; shift 2 ;;
         --warmup) [[ $# -ge 2 ]] || die "--warmup needs a value"
                   WARMUP="$2"; shift 2 ;;
-        --seed) [[ $# -ge 2 ]] || die "--seed needs a value"
+        --seed)   [[ $# -ge 2 ]] || die "--seed needs a value"
                   SEED="$2"; shift 2 ;;
+        --instances) [[ $# -ge 2 ]] || die "--instances needs a value"
+                  INSTANCES="$2"; shift 2 ;;
+        --aicore-num) [[ $# -ge 2 ]] || die "--aicore-num needs an AIC|AIV value"
+                  AICORE_NUM="$2"; shift 2 ;;
+        --readout) [[ $# -ge 2 ]] || die "--readout needs a path"
+                  READOUT="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown argument: $1 (see --help)" ;;
     esac
@@ -100,12 +110,16 @@ python3 ../../tools/compare.py \
 
 # ---------------------------------------------------------------- 9. 性能（可选）
 if [[ -n "$ITERATIONS" ]]; then
-    step "C++ executor 性能测试（iterations=$ITERATIONS warmup=$WARMUP seed=$SEED）"
+    step "C++ executor 性能测试（iterations=$ITERATIONS instances=$INSTANCES warmup=$WARMUP seed=$SEED aicore=$AICORE_NUM readout=$READOUT）"
+    BENCH_ARGS=(--iterations "$ITERATIONS" --warmup "$WARMUP" --seed "$SEED"
+                --instances "$INSTANCES")
+    [[ -n "$AICORE_NUM" ]] && BENCH_ARGS+=(--aicore-num "$AICORE_NUM")
+    [[ -n "$READOUT" ]] && BENCH_ARGS+=(--readout "$READOUT")
     LD_PRELOAD="$PROTO_LIB" ../../runtime/build/executor \
         --air work/build/text.air \
         --records work/inputs/records.json \
         --output-dir work/bench \
-        --iterations "$ITERATIONS" --warmup "$WARMUP" --seed "$SEED" \
+        "${BENCH_ARGS[@]}" \
         2>&1 | tee work/logs/bench.log
     [[ -s work/bench/result.json ]] || die "bench produced no result.json; see work/logs/bench.log"
 fi
