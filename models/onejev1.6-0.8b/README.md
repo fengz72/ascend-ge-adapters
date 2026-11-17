@@ -48,6 +48,7 @@ byte-identical 交叉验证）。
 | `tools/compare.py`（复用） | golden 与 infer 输出 | `work/output/comparison.json` |
 
 另含 `run.sh`（一键串联）、`scripts/prepare.sh`（依赖构建）、
+`scripts/verify/`（输入审计与 rope/prompt/契约三个交叉验证脚本）、
 `model/modeling_onejev.py`（Decision 包装 + 全部 NPU/导出补丁）、
 `native_proto/`（ChunkGatedDeltaRule GE 原型，LD_PRELOAD 契约同 -text）、
 `vendor/`（flide 节选）与 `model/model.py`（历史原型脚本，仅存档，

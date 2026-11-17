@@ -184,13 +184,16 @@ golden/输出布局沿用 `ge-compare/1`。
   WeightNzAndMatMulV3Pass 安装成功（源：`third_party/custom_development_code`）。
 - **golden 全量实跑完成**：14/14 case，CPU FP32，每 case 2.3–10.0s（总 ~2min），
   产物 `work/golden/{outputs.bin,result.json}`，日志 `work/logs/golden-run.log`。
-- **契约交叉验证通过**（`work/verify/contract_crosscheck.py onejev-00`）：
+- **契约交叉验证通过**（`scripts/verify/contract_crosscheck.py onejev-00`）：
   图路径（9 张量：预计算 vision 输入 + pooler_output + feature_index scatter +
   packed position_ids + language_model）vs 官方整模 forward vs golden：
   **cosine=1.000000000，maxabs=0**（两条路径都与 golden 逐位一致）。
   → 9 输入契约与官方语义等价已在 CPU 上闭环。
-- `work/verify/` 下还有 inputs_audit / rope_crosscheck / prompt_crosscheck /
-  contract_crosscheck 四个脚本（git-ignored，**迁移时要带**）。
+- 四个交叉验证脚本已入库 `scripts/verify/`（inputs_audit / rope_crosscheck /
+  prompt_crosscheck / contract_crosscheck，随 7 张量契约同步更新并全部重跑
+  通过）。prompt_crosscheck 需要官方 flide 0.1.16 参照安装：
+  `pip install --no-deps --target <dir> flide==0.1.16 pydantic`，路径用
+  `FLIDE_CHECK_DIR` 覆盖（默认 /tmp/opencode/flide-check）。
 
 ### 4.4 未做（新环境待办）
 
@@ -282,9 +285,8 @@ cd ascend-ge-adapters && git log --oneline -3             # 应含 feat(onejev) 
    pass 需要；上游 https://gitcode.com/CharmanderFang/custom_development_code
    main 分支，clone 到 third_party/ 下）
 2. 权重：`work/onejev-materials/model-bcd88a3…/`（1.7GB；rsync 或按 §6.1 重下）
-3. `models/onejev1.6-0.8b/work/verify/*.py`（4 个验证脚本：inputs_audit /
-   rope_crosscheck / prompt_crosscheck / contract_crosscheck；旧环境 rsync：
-   `rsync -av <旧>/models/onejev1.6-0.8b/work/verify/ <新>/models/onejev1.6-0.8b/work/verify/`）
+3. 验证脚本已入库（`scripts/verify/`），clone 即得，无需迁移；仅
+   prompt_crosscheck 的官方 flide 参照需按 §4.3 说明装一次（可选）。
 4. task-local deps 与 inputs/golden：不用带，按 §6.2/§6.3 重建
    （prepare.sh 需 pypi；generate_inputs ~1min + golden ~2min，CPU 即可）。
 
@@ -326,7 +328,7 @@ cd <ADAPTER>
 export ONEJEV_MODEL_DIR=<WEIGHTS>
 python3 model/generate_inputs.py            # → work/inputs（14 case，~1min）
 python3 model/golden.py                     # → work/golden（~2min，每 case 2–10s）
-python3 work/verify/contract_crosscheck.py onejev-00   # 期望 cosine=1.0
+python3 scripts/verify/contract_crosscheck.py onejev-00   # 期望 cosine=1.0
 ```
 
 ### 6.4 NPU 冒烟导出（门槛：5.17.0 × torch_npu/torchair 兼容 + 动态导出可行）
