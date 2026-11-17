@@ -63,40 +63,18 @@ def letter_ids(folder):
 
 
 def _load_cases(inputs):
-    """records.json + inputs.bin -> [(case_id, input_ids int64 [1, S])], loudly."""
+    """records.json + inputs.bin -> [(case_id, input_ids int64 [1, S])]."""
     records = json.loads((inputs / "records.json").read_text())
-    if records.get("schema") != "startlux-text-records/2":
-        raise SystemExit(f"golden: {inputs / 'records.json'} is not the text record "
-                         "index (startlux-text-records/2); run generate_inputs.py first")
+    if records.get("schema") != "ge-records/3":
+        raise SystemExit(f"golden: {inputs / 'records.json'} is not the record "
+                         "index (ge-records/3); run generate_inputs.py first")
     blob = (inputs / "inputs.bin").read_bytes()
     cases = []
     for case in records["cases"]:
-        tensors = {t["name"]: t for t in case["text_tensors"]}
-        try:
-            ids_ref, pos_ref = (tensors[name] for name in
-                                ("input_ids", "position_ids"))
-        except KeyError as error:
-            raise SystemExit(f"golden: case {case['id']} misses tensor {error}")
-        for ref in (ids_ref, pos_ref):
-            if ref["offset"] + ref["bytes"] > len(blob):
-                raise SystemExit(f"golden: case {case['id']} tensor {ref['name']} "
-                                 "exceeds inputs.bin; regenerate the inputs dir")
-        if ids_ref["dtype"] != "int64" or pos_ref["dtype"] != "int64":
-            raise SystemExit(f"golden: case {case['id']} carries unexpected dtypes "
-                             f"({ids_ref['dtype']}/{pos_ref['dtype']})")
-        # B=1 pinned by the graph contract: the laid-out width IS the row's
-        # true length -- the records format cannot express padding.
-        shape = tuple(ids_ref["shape"])
-        if len(shape) != 2 or shape[0] != 1 or shape[1] < 1 \
-                or tuple(pos_ref["shape"]) != (3, 1, shape[1]):
-            raise SystemExit(f"golden: case {case['id']} shapes violate the B=1 "
-                             f"true-length contract (ids {ids_ref['shape']}, "
-                             f"positions {pos_ref['shape']})")
-        length = int(shape[1])
+        ids_ref = {t["name"]: t for t in case["tensors"]}["input_ids"]
+        length = int(ids_ref["shape"][1])
         ids = np.frombuffer(blob, np.int64, count=length, offset=ids_ref["offset"])
         cases.append((case["id"], torch.from_numpy(ids.reshape(1, length))))
-    if not cases:
-        raise SystemExit(f"golden: no cases in {inputs / 'records.json'}")
     return cases
 
 
@@ -133,8 +111,7 @@ def main():
     head_rows = head.index_select(0, torch.tensor(letters)).float()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    result = {"status": "success", "mode": "infer", "backend": "cpu_golden",
-              "outputs": {}}
+    result = {"status": "success", "outputs": {}}
     with (args.output_dir / "outputs.bin").open("wb") as stream:
         for case_id, ids in cases:
             with torch.inference_mode():

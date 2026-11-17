@@ -3,8 +3,11 @@
 Consumes the business dev.txt JSONL case file (one teacher-annotated choice
 question per row) and writes the executor input pool under work/inputs/:
 
-* ``inputs.bin``   the packed per-case graph-input tensors (2 per case);
-* ``records.json`` the per-case tensor index (schema ``startlux-text-records/2``);
+* ``inputs.bin``   the packed per-case graph-input tensors (2 per case:
+  input_ids, position_ids);
+* ``records.json`` the per-case tensor index (schema ``ge-records/3``: the
+  ``tensors`` array is bound positionally to the graph inputs, ``samples`` is
+  the case's business row count);
 * ``readout.json`` the per-case CPU read-out metadata for the bench decider
   (schema ``startlux-text-readout/1``: labels = the criteria keys in prompt
   order, letters_asked = K, temperature = the official choice temperature).
@@ -195,12 +198,12 @@ def main():
                 ("position_ids", np.tile(np.arange(length, dtype=np.int64)[None, None, :],
                                           (3, 1, 1))),
             ]
-            entry = {"id": case_id, "text_tensors": []}
+            entry = {"id": case_id, "samples": 1, "tensors": []}
             for name, array in tensors:
                 data = array.tobytes(order="C")
-                entry["text_tensors"].append({"name": name, "dtype": str(array.dtype),
-                                              "shape": list(array.shape),
-                                              "offset": stream.tell(), "bytes": len(data)})
+                entry["tensors"].append({"name": name, "dtype": str(array.dtype),
+                                         "shape": list(array.shape),
+                                         "offset": stream.tell(), "bytes": len(data)})
                 stream.write(data)
             records.append(entry)
             labels = list(row["spec"]["criteria"].keys())
@@ -210,7 +213,7 @@ def main():
             print(f"generate_inputs: {case_id} S={length}")
 
     (args.output_dir / "records.json").write_text(json.dumps({
-        "schema": "startlux-text-records/2",
+        "schema": "ge-records/3",
         "file": str((args.output_dir / "inputs.bin").resolve()),
         "output_name": OUTPUT_NAME,
         "cases": records,

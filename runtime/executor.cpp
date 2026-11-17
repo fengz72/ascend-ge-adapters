@@ -1,24 +1,22 @@
-// Minimal executor for the text-only pipeline: loads the shared text AIR,
-// feeds the 2 positional inputs (input_ids, position_ids) of every case from
-// the packed pool written by generate_inputs.py, and writes the scores.
+// Minimal executor for one AIR graph: loads the AIR, feeds every case's inputs
+// from the packed pool written by generate_inputs.py (tensors[i] is bound
+// positionally to graph input i), and writes the single output.
 //
 // Usage (all paths default relative to the current directory; run from the
 // adapter root for the canonical defaults):
 //   executor [--air work/build/text.air] [--records work/inputs/records.json]
-//            [--output-dir work/output] [--case-filter <id>]...
-//            [--iterations N] [--warmup M] [--seed S]
+//            [--output-dir work/output] [--iterations N] [--warmup M] [--seed S]
 //            [--instances K] [--aicore-num A|B] [--readout <readout.json>]
 //
-// Without --iterations the run is INFER: every case (or the --case-filter
-// subset) executes once, in order, and work/output gets outputs.bin +
-// result.json (the ge-compare/1 layout tools/compare.py reads).  With
-// --iterations N the run is BENCH: closed-loop concurrency on --instances K
-// workers (default 1; K graphs are compiled, one per instance), M warmup
-// requests per instance, then N measured requests in total -- the seeded
-// request sequence is generated once before timing and split across
-// instances interleaved, every phase timed per request (h2d / exec =
-// execute+sync / d2h / decider / e2e; model_ms = h2d+exec+d2h, e2e spans
-// H2D through the read-out).  --aicore-num sets the per-operator AIC|AIV
+// Without --iterations the run is INFER: every case executes once, in order,
+// and work/output gets outputs.bin + result.json (the ge-compare/1 layout
+// tools/compare.py reads).  With --iterations N the run is BENCH: closed-loop
+// concurrency on --instances K workers (default 1; K graphs are compiled, one
+// per instance), M warmup requests per instance, then N measured requests in
+// total -- the seeded request sequence is generated once before timing and
+// split across instances interleaved, every phase timed per request (h2d /
+// exec = execute+sync / d2h / decider / e2e; e2e spans H2D through the
+// read-out).  --aicore-num sets the per-operator AIC|AIV
 // core cap via ge::ir_option::AICORE_NUM at GEInitialize: it is a
 // compile-time cap and neither reserves nor isolates cores for an
 // instance.  --readout enables the CPU read-out decider phase (official
@@ -26,15 +24,18 @@
 // temperature, the readout.json schema startlux-text-readout/1 written by
 // generate_inputs.py); without it decider_ms stays 0 and e2e ends at D2H.
 //
-// records.json (schema startlux-text-records/2): {"file": blob,
-// "cases": [{"id", "text_tensors": [input_ids, position_ids]}]}.  B=1 is
-// pinned by the graph (io-spec axis 0 static) and re-validated here; the
-// laid-out width IS the true length -- the records cannot express padding,
-// there is no actual_seq_lengths.  The text AIR carries
-// ChunkGatedDeltaRule: the compat prototype .so must be LD_PRELOADed into
-// this process (the parent adapter's work/deps artifact); the GDN causal
-// conv runs on the standard Pad -> Conv2D -> SiLU route, so no
-// causal-conv1d vendor op is involved.
+// records.json (schema ge-records/3): {"file": blob, "output_name", "cases":
+// [{"id", "samples", "tensors": [tensor...]}]}.  Each tensor is C-contiguous
+// raw bytes at "offset" for "bytes"; the tensors array is bound positionally to
+// the graph inputs (names are informational, any count/dtype/shape works) and
+// every case's tensors are packed back to back in "file".  "samples" is the
+// case's business row count (rows / samples_per_second / requests.csv).
+// "output_name" is the logical name of the graph's single output in the
+// result.json outputs index.  The startlux text AIR carries
+// ChunkGatedDeltaRule: the compat prototype .so must be LD_PRELOADed into this
+// process (the parent adapter's work/deps artifact); the GDN causal conv runs
+// on the standard Pad -> Conv2D -> SiLU route, so no causal-conv1d vendor op is
+// involved.
 //
 // Profiling: wrap the binary with msprof (it injects the PROF environment and
 // exports the analysis CSVs itself); no in-process profiling code.
@@ -46,11 +47,11 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -60,7 +61,6 @@
 #include <set>
 #include <stdexcept>
 #include <string>
-#include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -72,12 +72,6 @@ namespace {
 
 double ElapsedMs(Clock::time_point begin, Clock::time_point end) {
     return std::chrono::duration<double, std::milli>(end - begin).count();
-}
-
-void MakeDirs(const std::string &path) {
-    if (!path.empty() && mkdir(path.c_str(), 0755) != 0 && errno != EEXIST) {
-        throw std::runtime_error("cannot create directory: " + path);
-    }
 }
 
 bool ToGeDtype(const std::string &s, ge::DataType &dt) {
@@ -113,8 +107,8 @@ struct TensorRef {
 
 struct Case {
     std::string id;
-    size_t batch = 0;                    // input_ids shape[0]
-    std::vector<TensorRef> text;         // 2: input_ids, position_ids
+    size_t samples = 0;                  // business rows of this case
+    std::vector<TensorRef> tensors;      // bound positionally to the graph inputs
 };
 
 // 官方 read-out 语义的逐 case 元数据 (verify_dev._teacher_row_report 同式):
@@ -122,7 +116,6 @@ struct Case {
 struct ReadoutMeta {
     size_t lettersAsked = 0;
     double temperature = 0.0;
-    std::vector<std::string> labels;
 };
 
 TensorRef ParseTensorRef(const Json &node) {
@@ -181,22 +174,6 @@ Json PhaseStats(std::vector<double> values) {
     return out;
 }
 
-// 与 runtime/backends/gesession_backend.cpp 的 AicoreSpec 相同的 "AIC|AIV"
-// 校验 (executor 是自包含单文件目标, 不链共享后端)。
-std::string AicoreSpec(const std::string &raw) {
-    if (raw.empty()) return raw;
-    auto separator = raw.find('|');
-    if (separator == std::string::npos || separator == 0 || separator + 1 == raw.size() ||
-        raw.find('|', separator + 1) != std::string::npos ||
-        raw.substr(0, separator).find_first_not_of("0123456789") != std::string::npos ||
-        raw.substr(separator + 1).find_first_not_of("0123456789") != std::string::npos ||
-        std::stoul(raw.substr(0, separator)) == 0 ||
-        std::stoul(raw.substr(separator + 1)) == 0) {
-        throw std::runtime_error("aicore_num requires an explicit positive AIC|AIV pair");
-    }
-    return raw;
-}
-
 // ---------------------------------------------------------------- the executor
 
 // 每实例一份执行资源: 独立 stream + LoadGraph 绑定 + 输入 device 缓冲, 以及
@@ -225,13 +202,12 @@ public:
             {ge::AscendString("ge.exec.deviceId"),
              ge::AscendString(std::to_string(device).c_str())},
         };
-        std::string aicore = AicoreSpec(aicoreNum);
         std::cout << "[INFO] GEInitialize ge.graphRunMode=0" << std::endl;
-        if (!aicore.empty()) {
+        if (!aicoreNum.empty()) {
             globalOptions.emplace(ge::AscendString(ge::ir_option::AICORE_NUM),
-                                  ge::AscendString(aicore.c_str()));
+                                  ge::AscendString(aicoreNum.c_str()));
             std::cout << "[INFO] GEInitialize " << ge::ir_option::AICORE_NUM
-                      << "=" << aicore << std::endl;
+                      << "=" << aicoreNum << std::endl;
         }
         if (ge::GEInitialize(globalOptions) != ge::SUCCESS) {
             throw std::runtime_error(std::string("GEInitialize failed: ") +
@@ -307,19 +283,19 @@ public:
         }
     }
 
-    // Pre-allocate the 2 host-fed input buffers per instance at the max byte
-    // size across cases; the graph reads them in the fixed order input_ids,
-    // position_ids.
+    // Pre-allocate one host-fed input buffer per graph input position at the
+    // max byte size across cases.
     void Allocate(const std::vector<Case> &cases) {
-        inputSizes_.assign(2, 0);
+        const size_t count = cases[0].tensors.size();
+        inputSizes_.assign(count, 0);
         for (const auto &one : cases) {
-            for (size_t i = 0; i < one.text.size() && i < 2; i++) {
-                inputSizes_[i] = std::max(inputSizes_[i], one.text[i].bytes);
+            for (size_t i = 0; i < count; i++) {
+                inputSizes_[i] = std::max(inputSizes_[i], one.tensors[i].bytes);
             }
         }
         for (auto &ctx : instances_) {
             ctx.inputBuffers.clear();
-            for (size_t i = 0; i < 2; i++) {
+            for (size_t i = 0; i < count; i++) {
                 void *dev = nullptr;
                 if (inputSizes_[i] > 0 &&
                     aclrtMalloc(&dev, inputSizes_[i],
@@ -341,13 +317,13 @@ public:
         auto t0 = Clock::now();
         std::vector<gert::Tensor> &inputs = ctx.inputs;
         inputs.clear();
-        for (size_t i = 0; i < one.text.size() && i < ctx.inputBuffers.size(); i++) {
-            const TensorRef &ref = one.text[i];
+        for (size_t i = 0; i < one.tensors.size(); i++) {
+            const TensorRef &ref = one.tensors[i];
             aclError copyRet = aclrtMemcpy(ctx.inputBuffers[i], inputSizes_[i],
                                            blob.data() + ref.offset, ref.bytes,
                                            ACL_MEMCPY_HOST_TO_DEVICE);
             if (copyRet != ACL_SUCCESS) {
-                fprintf(stderr, "[ERROR] text H2D failed (input %zu, ret=%d)\n", i,
+                fprintf(stderr, "[ERROR] H2D failed (input %zu, ret=%d)\n", i,
                         static_cast<int>(copyRet));
                 return false;
             }
@@ -376,14 +352,8 @@ public:
         auto t3 = Clock::now();
         double topProbability = 0.0;
         if (meta != nullptr) {
-            // decider 契约: scores 必须是 [1,26] float32 的 letter logits。
-            if (bytes != 26 * sizeof(float) ||
-                scores.GetDataType() != ge::DT_FLOAT) {
-                fprintf(stderr, "[ERROR] decider needs [1,26] float32 scores\n");
-                return false;
-            }
             const float *row = reinterpret_cast<const float *>(host.data());
-            size_t k = std::min(meta->lettersAsked, size_t{26});
+            size_t k = meta->lettersAsked;
             double scale = 1.0 / meta->temperature;
             double top = row[0] * scale;
             for (size_t j = 1; j < k; j++) top = std::max(top, row[j] * scale);
@@ -471,22 +441,11 @@ private:
     double hbmBaseFreeMb_ = -1.0, hbmAfterFreeMb_ = -1.0;
 };
 
-void Usage() {
-    std::cout <<
-        "usage: executor [--air work/build/text.air] [--records work/inputs/records.json]\n"
-        "                [--output-dir work/output] [--case-filter <id>]...\n"
-        "                [--iterations N] [--warmup M] [--seed S]\n"
-        "                [--instances K] [--aicore-num A|B] [--readout <readout.json>]\n"
-        "  default (no --iterations): infer over every case, outputs.bin + result.json\n"
-        "  with --iterations N:        bench, N sampled requests over K closed-loop\n"
-        "                             instances, per-phase performance + requests.csv\n";
-}
-
 struct Sample {
     int instance = 0;
     size_t req = 0;               // 全局测量序列下标
     size_t caseIndex = 0;
-    double h2d = 0.0, exec = 0.0, d2h = 0.0, decider = 0.0, model = 0.0, e2e = 0.0;
+    double h2d = 0.0, exec = 0.0, d2h = 0.0, decider = 0.0, e2e = 0.0;
     double sink = 0.0;            // read-out top 概率累加项 (证明 decider 真实执行)
 };
 
@@ -498,9 +457,7 @@ int main(int argc, char **argv) {
         std::string recordsPath = "work/inputs/records.json";
         std::string outputDir = "work/output";
         std::string aicoreNum, readoutPath;
-        std::set<std::string> caseFilter;
-        bool bench = false, warmupGiven = false, seedGiven = false;
-        bool instancesGiven = false, readoutGiven = false;
+        bool bench = false;
         long iterations = 0, warmup = 0, instances = 1;
         unsigned long long seed = 42;
         for (int i = 1; i < argc; i++) {
@@ -517,114 +474,47 @@ int main(int argc, char **argv) {
                 recordsPath = value("--records");
             } else if (arg == "--output-dir") {
                 outputDir = value("--output-dir");
-            } else if (arg == "--case-filter") {
-                caseFilter.insert(value("--case-filter"));
             } else if (arg == "--iterations") {
                 iterations = std::stol(value("--iterations"));
                 bench = true;
             } else if (arg == "--warmup") {
                 warmup = std::stol(value("--warmup"));
-                warmupGiven = true;
             } else if (arg == "--seed") {
                 seed = std::stoull(value("--seed"));
-                seedGiven = true;
             } else if (arg == "--instances") {
                 instances = std::stol(value("--instances"));
-                instancesGiven = true;
             } else if (arg == "--aicore-num") {
                 aicoreNum = value("--aicore-num");
             } else if (arg == "--readout") {
                 readoutPath = value("--readout");
-                readoutGiven = true;
-            } else if (arg == "--help" || arg == "-h") {
-                Usage();
-                return 0;
             } else {
                 throw std::runtime_error("unknown argument: " + arg);
             }
         }
-        if (bench && iterations < 1) {
-            throw std::runtime_error("--iterations needs a value >= 1");
-        }
-        if (!bench && (warmupGiven || seedGiven)) {
-            throw std::runtime_error("--warmup/--seed require --iterations");
-        }
-        if (!bench && instancesGiven) {
-            throw std::runtime_error("--instances requires --iterations");
-        }
-        if (!bench && readoutGiven) {
-            throw std::runtime_error("--readout requires --iterations");
-        }
-        if (instances < 1) {
-            throw std::runtime_error("--instances needs a value >= 1");
-        }
-        AicoreSpec(aicoreNum);
 
         Json records = Json::parse(ReadFile(recordsPath));
-        if (records.at("schema").get<std::string>() != "startlux-text-records/2") {
-            throw std::runtime_error(recordsPath + " is not the text record index "
-                                     "(startlux-text-records/2; regenerate "
+        if (records.at("schema").get<std::string>() != "ge-records/3") {
+            throw std::runtime_error(recordsPath + " is not the record index "
+                                     "(ge-records/3; regenerate "
                                      "work/inputs with generate_inputs.py)");
         }
         std::vector<char> blob = ReadFile(records.at("file").get<std::string>());
-        static const char *kTensorNames[2] = {"input_ids", "position_ids"};
+        const std::string outputName = records.at("output_name").get<std::string>();
         std::vector<Case> cases;
         for (const auto &entry : records.at("cases")) {
             Case one;
             one.id = entry.at("id").get<std::string>();
-            const auto &tensors = entry.at("text_tensors");
-            if (tensors.size() != 2) {
-                throw std::runtime_error("case " + one.id + " must carry exactly "
-                                         "2 text tensors");
-            }
-            for (size_t i = 0; i < 2; i++) {
-                if (tensors[i].at("name").get<std::string>() != kTensorNames[i]) {
-                    throw std::runtime_error("case " + one.id + " tensor " +
-                                             std::to_string(i) + " must be " + kTensorNames[i]);
-                }
-                one.text.push_back(ParseTensorRef(tensors[i]));
-            }
-            if (one.text[0].geDtype != ge::DT_INT64 || one.text[1].geDtype != ge::DT_INT64) {
-                throw std::runtime_error("case " + one.id + " carries unexpected "
-                                         "dtypes (expected int64/int64)");
-            }
-            const std::vector<int64_t> &ids = one.text[0].shape;
-            const std::vector<int64_t> &pos = one.text[1].shape;
-            if (ids.size() != 2 || ids[0] != 1 || ids[1] < 1) {
-                throw std::runtime_error("case " + one.id + " input_ids must be "
-                                         "[1, S] (B is pinned to 1 by the graph)");
-            }
-            one.batch = 1;
-            if (pos.size() != 3 || pos[0] != 3 || pos[1] != 1 || pos[2] != ids[1]) {
-                throw std::runtime_error("case " + one.id + " position_ids must be "
-                                         "[3, 1, S] of the input_ids width");
-            }
-            for (const auto &ref : one.text) {
-                if (ref.offset + ref.bytes > blob.size()) {
-                    throw std::runtime_error("case " + one.id + " tensor " + ref.dtype +
-                                             " exceeds the inputs blob");
-                }
+            one.samples = entry.at("samples").get<size_t>();
+            for (const auto &tensor : entry.at("tensors")) {
+                one.tensors.push_back(ParseTensorRef(tensor));
             }
             cases.push_back(std::move(one));
         }
-        if (cases.empty()) throw std::runtime_error("no cases in the record pool");
-        if (!caseFilter.empty()) {
-            std::vector<Case> filtered;
-            for (auto &one : cases) {
-                if (caseFilter.count(one.id)) {
-                    filtered.push_back(std::move(one));
-                }
-            }
-            if (filtered.empty()) {
-                throw std::runtime_error("case_filter selected no cases");
-            }
-            cases = std::move(filtered);
-        }
 
-        // readout 元数据: 只对过滤后的 case 集合对齐, 缺失直接报错。
+        // readout 元数据: 只对 case 集合对齐, 缺失直接报错。
         bool readoutEnabled = false;
         std::vector<ReadoutMeta> readouts;
-        if (readoutGiven) {
+        if (!readoutPath.empty()) {
             Json readoutJson = Json::parse(ReadFile(readoutPath));
             if (readoutJson.at("schema").get<std::string>() != "startlux-text-readout/1") {
                 throw std::runtime_error(readoutPath + " is not the readout metadata "
@@ -636,16 +526,6 @@ int main(int argc, char **argv) {
                 ReadoutMeta meta;
                 meta.temperature = entry.at("temperature").get<double>();
                 meta.lettersAsked = entry.at("letters_asked").get<size_t>();
-                for (const auto &label : entry.at("labels")) {
-                    meta.labels.push_back(label.get<std::string>());
-                }
-                if (!(meta.temperature > 0.0) || !std::isfinite(meta.temperature) ||
-                    meta.labels.empty() || meta.labels.size() != meta.lettersAsked ||
-                    meta.lettersAsked > 26 ||
-                    meta.lettersAsked < 2) {
-                    throw std::runtime_error("invalid readout metadata for case " +
-                                             entry.at("id").get<std::string>());
-                }
                 byId[entry.at("id").get<std::string>()] = std::move(meta);
             }
             for (const auto &one : cases) {
@@ -660,14 +540,13 @@ int main(int argc, char **argv) {
                       << " (" << cases.size() << " cases)" << std::endl;
         }
 
-        MakeDirs(outputDir);
+        std::filesystem::create_directories(outputDir);
         Executor executor;
         executor.Init(0, airPath, static_cast<int>(instances), aicoreNum);
         executor.Allocate(cases);
 
-        Json result = {{"status", "success"}, {"backend", "executor"}};
+        Json result = {{"status", "success"}};
         if (!bench) {
-            result["mode"] = "infer";
             std::ofstream binary(outputDir + "/outputs.bin", std::ios::binary);
             if (!binary) throw std::runtime_error("cannot open output binary");
             Json outputs = Json::object();
@@ -688,7 +567,7 @@ int main(int argc, char **argv) {
                 binary.write(host.data(), host.size());
                 outputs[one.id] = Json::array({Json({
                     {"instance", 0},
-                    {"tensors", Json::array({{{"name", "scores"},
+                    {"tensors", Json::array({{{"name", outputName},
                                               {"dtype", FromGeDtype(scores.GetDataType())},
                                               {"shape", dims},
                                               {"offset", offset},
@@ -696,20 +575,19 @@ int main(int argc, char **argv) {
                 })});
                 std::cout << "[INFO] case " << one.id << " scores shape=["
                           << (dims.size() > 0 ? std::to_string(dims[0]) : "") << ","
-                          << (dims.size() > 1 ? std::to_string(dims[1]) : "") << "] text "
+                          << (dims.size() > 1 ? std::to_string(dims[1]) : "") << "] "
                           << (h2dMs + execMs + d2hMs) << " ms" << std::endl;
             }
             binary.close();
             result["outputs"] = outputs;
         } else {
-            result["mode"] = "bench";
 
             // 全局 seed 先生成测量序列再分发; warmup 用独立同 seed 采样器,
             // 不消耗测量序列。每实例预热先覆盖全部 distinct shape 再随机补齐。
             std::vector<size_t> reps;
-            std::set<int64_t> seenShapes;
+            std::set<std::vector<int64_t>> seenShapes;
             for (size_t i = 0; i < cases.size(); i++) {
-                if (seenShapes.insert(cases[i].text[0].shape[1]).second) {
+                if (seenShapes.insert(cases[i].tensors[0].shape).second) {
                     reps.push_back(i);
                 }
             }
@@ -792,7 +670,7 @@ int main(int argc, char **argv) {
                                          &h2dMs, &execMs, &d2hMs, &deciderMs, &e2eMs,
                                          &sink)) {
                             mine.push_back({t, global, caseIndex, h2dMs, execMs, d2hMs,
-                                            deciderMs, h2dMs + execMs + d2hMs, e2eMs, sink});
+                                            deciderMs, e2eMs, sink});
                         } else {
                             errors.fetch_add(1);
                             fprintf(stderr, "[ERROR] instance=%d request %zu failed\n",
@@ -837,7 +715,7 @@ int main(int argc, char **argv) {
                 for (const auto &sample : mine) {
                     e2e.push_back(sample.e2e);
                     exec.push_back(sample.exec);
-                    rows += cases[sample.caseIndex].batch;
+                    rows += cases[sample.caseIndex].samples;
                     sinkSum += sample.sink;
                 }
                 perInstanceStats.push_back({
@@ -854,30 +732,18 @@ int main(int argc, char **argv) {
             std::sort(all.begin(), all.end(), [](const Sample &a, const Sample &b) {
                 return a.req < b.req;
             });
-            std::vector<double> e2e, model, exec, h2d, d2h, decider;
+            std::vector<double> e2e, exec, h2d, d2h, decider;
             e2e.reserve(all.size());
-            model.reserve(all.size());
             exec.reserve(all.size());
             h2d.reserve(all.size());
             d2h.reserve(all.size());
             decider.reserve(all.size());
             for (const auto &sample : all) {
                 e2e.push_back(sample.e2e);
-                model.push_back(sample.model);
                 exec.push_back(sample.exec);
                 h2d.push_back(sample.h2d);
                 d2h.push_back(sample.d2h);
                 decider.push_back(sample.decider);
-            }
-            Json perCase = Json::object();
-            std::vector<std::vector<double>> byCase(cases.size());
-            for (const auto &sample : all) byCase[sample.caseIndex].push_back(sample.e2e);
-            for (size_t i = 0; i < cases.size(); i++) {
-                if (byCase[i].empty()) continue;
-                std::sort(byCase[i].begin(), byCase[i].end());
-                perCase[cases[i].id] = {{"p50", Percentile(byCase[i], 0.5)},
-                                        {"p99", Percentile(byCase[i], 0.99)},
-                                        {"requests", byCase[i].size()}};
             }
 
             result["performance"] = {
@@ -893,14 +759,11 @@ int main(int argc, char **argv) {
                 {"warmup", warmup},
                 {"iterations", iterations},
                 {"decider", readoutEnabled},
-                {"arrival_model", "closed_loop"},
                 {"e2e_ms", PhaseStats(e2e)},
-                {"model_ms", PhaseStats(model)},
                 {"exec_ms", PhaseStats(exec)},
                 {"h2d_ms", PhaseStats(h2d)},
                 {"d2h_ms", PhaseStats(d2h)},
                 {"decider_ms", PhaseStats(decider)},
-                {"per_case", perCase},
                 {"per_instance", perInstanceStats},
                 {"hbm_base_free_mb", executor.HbmBaseFreeMb()},
                 {"hbm_after_load_free_mb", executor.HbmAfterFreeMb()},
@@ -908,13 +771,13 @@ int main(int argc, char **argv) {
             };
             std::ofstream csv(outputDir + "/requests.csv");
             csv << "instance,req,case,samples,h2d_ms,exec_ms,d2h_ms,decider_ms,"
-                   "model_ms,e2e_ms,error\n";
+                   "e2e_ms,error\n";
             for (const auto &sample : all) {
                 csv << sample.instance << "," << sample.req << ","
                     << cases[sample.caseIndex].id << ","
-                    << cases[sample.caseIndex].batch << ","
+                    << cases[sample.caseIndex].samples << ","
                     << sample.h2d << "," << sample.exec << "," << sample.d2h << ","
-                    << sample.decider << "," << sample.model << "," << sample.e2e
+                    << sample.decider << "," << sample.e2e
                     << ",0\n";
             }
             csv.close();
