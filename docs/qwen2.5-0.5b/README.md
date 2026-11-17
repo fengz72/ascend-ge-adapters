@@ -1,12 +1,12 @@
 # Qwen2.5-0.5B 文档索引
 
-安装、命令与使用限制见[模型 README](../../models/qwen2.5-0.5b/README.md)。实际运行参数以 [model.yaml](../../models/qwen2.5-0.5b/config/model.yaml) 的公共配置与所选 platforms 合并结果为准。
+安装、命令与使用限制见[模型 README](../../models/qwen2.5-0.5b/README.md)。自包含流程的入口是 [run.sh](../../models/qwen2.5-0.5b/run.sh)，各部件与参数说明见模型 README 的文件契约表。
 
 ## 使用与验证
 
 | 文档 | 内容 |
 |---|---|
-| [适配说明](adaptation.md) | Patch、计算路径、共享编码、输入池与 Prefix 接入 |
+| [适配说明](adaptation.md) | 计算路径、共享 prefix 输入池、CPU golden 与 AIR 导出 |
 | [验证记录](validation.md) | Qwen 正确性、历史阈值、版本及实际验证范围 |
 | [维护记录](maintenance.md) | 依赖统一与迁移分支的维护历史 |
 | [框架验证](../validation.md) | 框架契约、Tiny 和 ONNX 回归 |

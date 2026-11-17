@@ -6,7 +6,7 @@ Python 脚本和 Skills 直接调用 execute(stage, config, *, device=None, targ
 
 模型 YAML 只合并公共段和所选 `platforms.<family>`，核数、batch、实例数及依赖均在这一层配置；精确 SoC 用于硬件身份与容量校验，不再覆盖模型参数。配置只读当前 YAML，不生成额外的 resolved、lock 或配置快照文件；实际运行结果记录本次配置以解释测量。execute 接收单个 YAML 路径，在内存中覆盖实例数、精度 case、profiling。source 路径环境变量只在读取原始模型的阶段展开；纯 GE 运行与比较不依赖原始权重路径。自动硬件识别用于选择平台配置，不形成一个检查步骤。
 
-数据脚本实现 generate(config) 和 load(config)，分别负责持久化输入与读取已有 case。case 包含 id、payload、samples，payload 由模型定义。Qwen 用共享 prefix 的三个 int64 NPY 输入保存一组 case，读取时恢复相同业务请求。没有独立脚本的示例提供 generate_cases(params)、input_arrays(case, config)、case_from_inputs(id, arrays, config)，框架保存并读取各输入 NPY。数据池按 case ID 的自然顺序读取，不保存清单。张量名是非空且不含 NUL 的逻辑字符串，允许冒号、斜杠等 ONNX 原始名称。通用 NPY 存储对文件名做可逆 URL 转义，读取时恢复原名；case ID 仍使用安全目录名。
+数据脚本实现 generate(config) 和 load(config)，分别负责持久化输入与读取已有 case。case 包含 id、payload、samples，payload 由模型定义。没有独立脚本的示例提供 generate_cases(params)、input_arrays(case, config)、case_from_inputs(id, arrays, config)，框架保存并读取各输入 NPY。数据池按 case ID 的自然顺序读取，不保存清单。张量名是非空且不含 NUL 的逻辑字符串，允许冒号、斜杠等 ONNX 原始名称。通用 NPY 存储对文件名做可逆 URL 转义，读取时恢复原名；case ID 仍使用安全目录名。
 
 模型适配模块提供 prepare_reference(source, config)、prepare_candidate(source, config)、prepare_runtime(config, io)。reference 负责 encode/run/decode；candidate 负责模型适配和 export_spec；runtime recipe 只负责 encode/decode/output_capacities，不加载权重、不 patch HF、不创建 NPU 模型。模型文件不导入 core，运行配方和适配修改同文件交付。动态输出的容量规则属于模型。
 

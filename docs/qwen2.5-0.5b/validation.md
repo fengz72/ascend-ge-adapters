@@ -407,3 +407,64 @@ Qwen 本轮只验证默认单组精度，不能宣称全 100 组已通过。历�
 A3 没有实机，12|24 预算、算子和 GE pass 未验证。当前 A5 958b 以外的 SKU 也未验证。ATC 按要求本轮未测；其独立执行仍保留导出图作为 IO 来源，需要后续专项验证。GE Session dump 尚不支持。
 
 早期 A5 Prefix 记录另有 ATC 双实例 profiling 超时；后续记录未给出该项复验结论，本次文档整理也未复测，不能视为已解决。
+
+## 自包含改造（2026-11-16）
+
+Qwen2.5-0.5B 改造为自包含交付，不再经过 `core/pipeline.py` 七步。旧的 core 路径产物
+（`qwen_npu_adapter.py`、`generate_cases.py`、`config/model.yaml`、`scripts/env_a3.sh`）
+及依赖它们的测试已删除；新形态为 `run.sh` + `model/{modeling_qwen,generate_inputs,golden,export_air}.py`
++ `scripts/prepare.sh` + `config/target_tokens.json`，
+入口是 [`models/qwen2.5-0.5b/run.sh`](../../models/qwen2.5-0.5b/run.sh)。GE 执行走
+`runtime/build/executor`，精度门禁用 `tools/compare.py`。
+
+`scripts/prepare.sh` 不再经由 `GE_SRC_DIR`/`GE_BUILD_DIR`/`GE_INSTALL_DIR`/`GE_PYTHON`
+环境变量契约（那是 `core/dependencies.py` 按 YAML 通用派发依赖构建时用的；改造后
+`prepare.sh` 是唯一调用者，源路径与产出路径都由它自己确定，变量不携带信息）。原
+`scripts/build_prefix_910.sh`、`build_prefix_a5.sh`、`build_nz_pass.sh` 三个脚本因此
+并入 `prepare.sh`。合并后从零重建依赖 53 s，导出 AIR 字节数、NZ pass 命中数
+（`matmul_match num is 169`）与全量 100 case 精度（worst cosine 0.999439462、
+relative L2 0.033784056）与合并前逐项一致。A5 分支按原脚本逐字搬移，本机无 A5
+实机，未实测。
+
+算法（历史 RNG 输入分布、共享 prefix packed 布局、8 列评分头）逐字搬移，旧记录中的
+batch10/batch16 输入统计与数值结论不变。本节不改写也不替代上述历史验证结论。
+
+### A3 实测（2026-11-16）
+
+环境：本机容器 CANN 9.0.0（V100R001C10SPC001B250，aarch64-linux）、npu-smi
+25.5.t6.b001、Ascend910_9382、Chip Logic ID 2、Python 3.11.15、torch 2.9.0+cpu、
+torch_npu 2.9.0.post2、transformers 5.10.1、numpy 1.26.4；Prefix 算子与
+WeightNzAndMatMulV3Pass 由 `scripts/prepare.sh` 从子模块提交
+`8e08d0d20275558aefac1bbb35019e6b52f1073a` 构建（NZ pass 生效证据：编译日志
+`matmul_match num is 169 / matmul_effect num is 169`）。共享机器，他人在跑多卡
+任务，绝对值受整机负载影响。
+
+| 项目 | 配置 | 结果 |
+|---|---|---|
+| 输入池 | 100 case × batch16，历史 lognormal | 1600 业务样本，pool sha256 前 12 位 `cfeed98ec4a6`（精简前后一致） |
+| 导出 | `--platform a3`，dynamic axis 0 | `work/build/packed.air` 993754309 字节；3 个 Data 节点（index 0/1/2，`DT_INT64 [-1]`），0 个 Pack |
+| 精度 | 全量 100 case，门限 cosine ≥ 0.998 / relative L2 ≤ 0.05 | PASS，1600 行，worst cosine 0.999439462、worst relative L2 0.033784056（精简前后逐位一致） |
+| 精度推理时延 | 单实例、不限核、100 case 各一次 | 首 case 29.458 ms；稳态 99 case min 11.4034 / p50 12.0479 / avg 12.0863 / max 13.4046 ms |
+| 图冷启动 | 单份图 | CompileGraph 480103 ms（TBE 冷缓存、不限核）／232853 ms（冷缓存、`8\|16`）／4.7–7.0 s（缓存命中）；LoadGraph 1.28–1.97 s |
+| bench | `8\|16`、5 实例、3000 请求 × 3 轮（seed 42/43/44），预热覆盖全部 100 个 distinct shape | 3 轮全 0 错误；业务 QPS 中位 2186.262（三轮 2186.262/2193.346/2186.153）；模型调用 QPS 中位 136.641；e2e avg 中位 36.5565 ms、p50 中位 36.2325 ms、p99 中位 40.7956 ms、三轮最差 40.9928 ms；逐实例 QPS 均匀 27.327；H2D/D2H avg ~0.041/~0.026 ms |
+| HBM | 5 份图 | free 62340.4 → 57599.4 MB，增量 4741 MB（948 MB/实例） |
+| 一键流程 | `bash run.sh --platform a3 --device 2 --iterations 3000 --seed 42` | 21:16:34→21:33:25 全程通过（依赖构建 108 s、输入 <1 s、golden 11.4 min、runtime 构建 1 s、导出 2.2 min、精度推理 18 s、比较 <1 s、bench 69 s）；该轮 bench 业务 QPS 2199.581、e2e p99 40.5825 ms、0 错误，落在上表三轮的同一分布内 |
+
+与本文「A3 Ascend910_9382 验证（2026-10-20 至 2026-10-21）」节的旧 core 路径记录
+对照：业务 QPS 中位 2172.093 → 2186.262，最差 P99 41.266 → 40.9928 ms，最小
+cosine 0.998909550002 → 0.999439462，最大 relative L2 0.046848644966 →
+0.033784056（评分头改在 FP32 中计算，门限未变）。性能与精度均未回退。
+
+上表全部数据取自**精简后**的代码与二进制（`runtime/executor.cpp` 删掉
+`--case-filter`/`--help`/`AicoreSpec`/交叉校验/`per_case`/`model_ms`/`arrival_model`
+/`backend`/`mode`，executor 目标只链 6 个 CANN 库，`model/` 四个脚本删掉路径参数与
+导出侧冗余开关）。精简前后各跑过一次完整流程，pool sha256、AIR 字节数、worst
+cosine/relative L2 三项完全一致；删除项的逐条实测依据见[适配说明](adaptation.md)。
+
+未验证范围：A5（`--platform a5`，需 CANN ≥ 9.3.0 辅流接口，本机无 A5 实机）；ATC/OM 路径（本流程不产出 OM）；profiling（用外部 `msprof` 包裹 executor）。
+
+A5 分支只做过**结构性**验证（桩算子，非真实 kernel）：按真实 schema 注册 `ascendc_ops::prefix_attention` 并桩掉其 PrivateUse1 实现后，`QwenPackedModel(config, "a5")` 构造成功，buffer 只有 `cos`/`sin`/`score_head`（**没有** `compressed_mask`，即 4 MB 压缩掩码确实只在 a3 注册），int32 bounds 原样透传到算子（`bounds=(3,) torch.int32`、`scale=0.125`、24 层各调用一次），`forward` 返回 `(2, 8) float32` 且有限。数值正确性、GE 交付件加载与 CANN 9.3.0 辅流接口仍未验证。
+
+同期对 `modeling_qwen.py` 的三处精简（`compressed_mask` 改由 a3 工厂注册、去掉只为喂闭包而存在的 `self.config`、补上「mask 必须惰性读，因为 `nn.Module.to()` 会重绑 buffer」的注释）已复验：eager 全 100 case 对照 CPU golden 得 worst cosine 0.999098718 / relative L2 0.045386977（图路径更优，见上表），重导出 AIR 仍为 993754309 字节，全量精度门禁 PASS 且 worst 值与改动前逐位一致（0.999439462 / 0.033784056）。
+原始数据在 `models/qwen2.5-0.5b/work/{golden,output,bench,bench-43,bench-44,logs}`
+（Git 忽略）。

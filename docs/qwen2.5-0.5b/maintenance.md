@@ -29,8 +29,10 @@ A5 验证沿用[验证记录](validation.md)中的进程级输出扩容修复库
 | Runtime CTest | 1/1 通过 | 1/1 通过 |
 | 上游 WeightNZ host 回归 | 开启 `NZ_WEIGHT_PASS_BUILD_TESTS` 构建，CTest 1/1 通过 | 同左 |
 
-两处测试日志均位于各自工作区的 `work/custom-upstream-20261027/`；
-prepare 的正式运行记录位于 `work/qwen2.5-0.5b/results/`。
+两处测试日志均位于各自工作区的 `work/custom-upstream-20261027/`。
+自包含流程不再经过 core 七步，运行产物按阶段落在模型目录的 `work/`：
+`work/deps/`（Prefix 算子与 NZ pass）、`work/inputs/`、`work/golden/`、
+`work/build/`、`work/output/`、`work/bench/`、`work/logs/`。
 本次未重新执行完整模型精度或性能测试；此前设备验证范围及 GE 环境限制仍按[验证记录](validation.md)记录。
 
 ## 迁移分支整理（2026-10-27）

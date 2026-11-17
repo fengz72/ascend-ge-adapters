@@ -10,6 +10,8 @@
 
 一个模型一份 YAML，模型改动集中在独立适配文件。框架提供运行能力，优化策略交给 Skills。
 
+`models/qwen2.5-0.5b` 与 `models/startlux-decision-v1.1-0.8b-instant-text` 一样是自包含交付：入口是各自目录的 `run.sh`，不经过 `core/` 七步，详见各自的 README。
+
 ## 环境
 
 在 CANN 容器的项目根目录执行，使用容器 Python：
@@ -18,17 +20,12 @@
 source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
 python3 -m pip install -r requirements.txt
 bash runtime/build.sh
-export QWEN_MODEL_DIR=/path/to/Qwen2.5-0.5B
 export OPENBLAS_NUM_THREADS=8 OMP_NUM_THREADS=8 MKL_NUM_THREADS=8
 mkdir -p work/tmp
 export TMPDIR="$PWD/work/tmp"
 ```
 
-A3 原生GE执行前，在CANN环境之后加载容器Python环境：
-
-```bash
-source models/qwen2.5-0.5b/scripts/env_a3.sh
-```
+自包含交付（如 `models/qwen2.5-0.5b`、`models/startlux-decision-v1.1-0.8b-instant-text`）的 `run.sh` 会自行加载 CANN 与算子环境；下面的 core 七步继续使用上面的 CANN 环境。
 
 ## 七个独立步骤
 
@@ -44,22 +41,22 @@ source models/qwen2.5-0.5b/scripts/env_a3.sh
 | 6 | compare | 已有 golden、output、YAML 阈值 | 精度结果 |
 | 7 | bench | 已有图、完整输入池、性能参数 | 吞吐、延迟、逐次调用记录，可采集 profiling |
 
-Qwen 依次执行：
+以 Tiny 为例依次执行：
 
 ```bash
-python3 -m core.pipeline data --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b
-python3 -m core.pipeline baseline --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b
-python3 -m core.pipeline prepare --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b
-python3 -m core.pipeline build --config models/qwen2.5-0.5b/config/model.yaml --device 6
-python3 -m core.pipeline infer --config models/qwen2.5-0.5b/config/model.yaml --device 6
-python3 -m core.pipeline compare --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b
-python3 -m core.pipeline bench --config models/qwen2.5-0.5b/config/model.yaml --device 6 --instances 1
+python3 -m core.pipeline data --config models/tiny/config.yaml --target Ascend950PR_958b
+python3 -m core.pipeline baseline --config models/tiny/config.yaml --target Ascend950PR_958b
+python3 -m core.pipeline prepare --config models/tiny/config.yaml --target Ascend950PR_958b
+python3 -m core.pipeline build --config models/tiny/config.yaml --device 6
+python3 -m core.pipeline infer --config models/tiny/config.yaml --device 6
+python3 -m core.pipeline compare --config models/tiny/config.yaml --target Ascend950PR_958b
+python3 -m core.pipeline bench --config models/tiny/config.yaml --device 6 --instances 1
 ```
 
 run 只按上述顺序调用同一套步骤函数。比较不通过时汇总选定 case 的精度错误并停止，独立 bench 仍可以运行。
 
 ```bash
-python3 -m core.pipeline run --config models/qwen2.5-0.5b/config/model.yaml --device 6
+python3 -m core.pipeline run --config models/tiny/config.yaml --device 6
 ```
 
 ## Python 调用
@@ -71,7 +68,7 @@ from core.pipeline import execute
 
 result = execute(
     "bench",
-    "models/qwen2.5-0.5b/config/model.yaml",
+    "models/tiny/config.yaml",
     device=6,
     instances=4,
 )
@@ -84,20 +81,20 @@ execute(stage, config, *, device=None, target=None, targets=None, case_ids=None,
 
 ## 精度与性能范围
 
-Qwen 默认 verification.case_ids 为 case-0000。baseline、infer、compare 都只处理所选 case；日常只计算一组 golden，最终验收可以各步传 --case-ids all，或 run --case-ids all。精度默认单实例，与 benchmark.instances 分开。主流程没有候选 eager 精度门禁；候选融合算子替换仍在 build 导出前应用。
+示例配置默认只处理所选 case。baseline、infer、compare 都只处理所选 case；日常只计算一组 golden，最终验收可以各步传 --case-ids all，或 run --case-ids all。精度默认单实例，与 benchmark.instances 分开。主流程没有候选 eager 精度门禁；候选融合算子替换仍在 build 导出前应用。
 
-bench 始终读取完整输入池，不需要 golden、output 或精度证据，也不读取原始权重。infer/bench/compare/prepare 不要求 QWEN_MODEL_DIR；该变量供 data/baseline/build/run 读取原始模型使用。
+bench 始终读取完整输入池，不需要 golden、output 或精度证据，也不读取原始权重。infer/bench/compare/prepare 不要求 source.ref 的权重环境变量；该变量只在 data/baseline/build/run 读取原始模型时展开。
 
 ```bash
-python3 -m core.pipeline bench --config models/qwen2.5-0.5b/config/model.yaml --device 6 --instances 1
-python3 -m core.pipeline bench --config models/qwen2.5-0.5b/config/model.yaml --device 6 --instances 8
+python3 -m core.pipeline bench --config models/tiny/config.yaml --device 6 --instances 1
+python3 -m core.pipeline bench --config models/tiny/config.yaml --device 6 --instances 8
 ```
 
---instances 只在本次调用覆盖 YAML，不改 YAML，不生成临时 YAML。iterations 是所有实例合计的模型调用次数。Qwen 当前默认 batch=16，1000 次调用对应 16000 个业务样本。按 seed 生成全局有放回抽样序列，实例数只改变分工；每实例至少预热所有输入 shape。导出、GE 编译、加载、预热不计入性能时间。
+--instances 只在本次调用覆盖 YAML，不改 YAML，不生成临时 YAML。iterations 是所有实例合计的模型调用次数，业务样本数由模型的 batch 决定。按 seed 生成全局有放回抽样序列，实例数只改变分工；每实例至少预热所有输入 shape。导出、GE 编译、加载、预热不计入性能时间。
 
 ## 图、数据和运行结果
 
-Qwen 原始输入位于 models/qwen2.5-0.5b/io/inputs，每个 case 一个目录，包含 input_ids.npy、position_ids.npy、actual_seq_lengths.npy。当前默认 100 组、batch16；保留历史 batch10 的生成方法并确定性扩展请求。data 负责生成/更新；其余步骤只读取已有文件，不调用生成脚本的 generate。
+模型输入由各自的 data 脚本生成并保存在配置的目录中。data 负责生成/更新；其余步骤只读取已有文件，不调用生成脚本的 generate。
 
 图位于 work/<模型名>/build。具名 IO 信息直接写入 AIR 图属性或 ONNX metadata，GE 运行从图读取，不生成 cases.json、build.json、lock.json、io.json 或交付清单。ATC 路径保留导出图和 model.om；运行 OM 时从旁边的导出图读取相同 IO。原始模型、模型参数或输入编码改变后显式重跑 data/build；框架不自动判断旧图是否可复用。
 
@@ -119,7 +116,9 @@ GE Session 默认使用推理模式（`graph_run_mode=0`），模型 YAML 无需
 
 infer、bench 或 run 可传 --profiling，也可使用 YAML 的 observability.profiling。采集复用当前图，普通 bench 的随机负载也支持采集；性能结果会标明 profiling_enabled，带采集开销的结果单独看待。GE Session dump 尚不支持。
 
---device 指定本次设备；识别精确 SoC 后，按平台选择模型 YAML 的 platforms。离线步骤用 --target 指定精确 SoC。核数预算、batch 和实例数统一由模型 YAML 的公共段及 platforms 定义，实测依据见[模型文档索引](docs/qwen2.5-0.5b/README.md)。核预算不表示独占绑核。依赖由所选模型配置声明。`custom_development_code` 子模块跟踪[上游仓库](https://gitcode.com/CharmanderFang/custom_development_code)的 `main` 分支；Prefix Attention 算子与 WeightNZ/MatMulV3 pass 均使用该子模块的固定提交，由模型 YAML 的 revision 记录。Prefix Attention 的 A3/A5 源码位于 `third_party/custom_development_code/custom_op/prefix-attention/`，使用说明见[算子文档](third_party/custom_development_code/custom_op/prefix-attention/README.md)。原 `ascend-ops` 子模块暂时保留用于迁移对照。依赖脚本接收 GE_SRC_DIR、GE_BUILD_DIR、GE_INSTALL_DIR、GE_PYTHON；依赖交付件保存在 work 下，NZ Pass 同时安装到 ${ASCEND_OPP_PATH}/vendors/custom_nz_pass/custom_fusion_passes/，由 GE 自动加载。
+--device 指定本次设备；识别精确 SoC 后，按平台选择模型 YAML 的 platforms。离线步骤用 --target 指定精确 SoC。核数预算、batch 和实例数统一由模型 YAML 的公共段及 platforms 定义，实测依据见[模型文档索引](docs/qwen2.5-0.5b/README.md)。核预算不表示独占绑核。
+
+`custom_development_code` 子模块跟踪[上游仓库](https://gitcode.com/CharmanderFang/custom_development_code)的 `main` 分支，Prefix Attention 算子与 WeightNZ/MatMulV3 pass 均使用该子模块的固定提交；A3/A5 源码位于 `third_party/custom_development_code/custom_op/prefix-attention/`，使用说明见[算子文档](third_party/custom_development_code/custom_op/prefix-attention/README.md)。原 `ascend-ops` 子模块暂时保留用于迁移对照。这些依赖现在只由自包含交付自己的构建脚本安装：`models/qwen2.5-0.5b/scripts/prepare.sh` 把 Prefix 算子装进模型目录的 `work/deps/`、把 NZ Pass 装进 `${ASCEND_OPP_PATH}/vendors/custom_nz_pass/custom_fusion_passes/`（由 GE 自动加载），并生成 `work/deps/env.sh` 供 `run.sh` source。core 侧通用的依赖派发机制（`core/dependencies.py`，用 GE_SRC_DIR/GE_BUILD_DIR/GE_INSTALL_DIR/GE_PYTHON 把 YAML 声明的 `dependencies` 交给构建脚本）仍在，但当前没有任何模型 YAML 声明 `dependencies`。
 
 ```text
 models/       模型适配、数据脚本、唯一模型 YAML、构建脚本和原始输入
@@ -135,7 +134,7 @@ work/         本机生成的图、依赖、golden、output 和结果，Git 忽�
 ```
 
 ```bash
-python3 -m core.pipeline report work/qwen2.5-0.5b/results/<run>/result.json
+python3 -m core.pipeline report work/tiny-ranker/results/<run>/result.json
 python3 -m unittest discover -s tests -p 'test_*.py'
 ctest --test-dir runtime/build --output-on-failure
 ```
