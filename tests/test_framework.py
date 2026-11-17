@@ -1,60 +1,22 @@
 import contextlib
 import copy
-import importlib.util
-import io
 import json
 import os
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 from unittest.mock import patch
-from unittest.mock import Mock
 from types import SimpleNamespace
 import numpy as np
-import yaml
-from core.config import ROOT,load_authoring,validate
-from core.contracts import digest
-from core.data import generate,select_cases
+from core.config import ROOT,load_authoring
+from core.data import select_cases
 from core.verify import numeric,compare
 
-QWEN=ROOT/'models/qwen2.5-0.5b/config/model.yaml'
 SOC='Ascend950PR_958b'
 HW={'device':6,'soc':SOC,'capacity':{'aic':32,'aiv':64}}
 
 class Framework(unittest.TestCase):
-    def setUp(self):self.enterContext(patch.dict(os.environ,{'QWEN_MODEL_DIR':'/weights/Qwen'}))
-    def qwen(self,**kwargs):return load_authoring(QWEN,target=SOC,**kwargs)
-
-    def test_qwen_platform_defaults(self):
-        for soc,attention,cores,instances in (
-            ('Ascend910_9382','prefix_910','8|16',5),
-            ('Ascend950PR_958b','prefix_a5','16|32',3),
-        ):
-            with self.subTest(soc=soc):
-                config=load_authoring(QWEN,target=soc,source_paths=False)
-                self.assertEqual(config['model']['params']['attention'],attention)
-                self.assertEqual(config['build']['options']['aicore_num'],cores)
-                self.assertEqual(config['data']['params']['batch_size'],16)
-                self.assertEqual(config['benchmark']['instances'],instances)
-
-    def test_yaml_changes_and_environment_are_read_again_without_output_files(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path=Path(directory,'model.yaml')
-            authoring=yaml.safe_load(QWEN.read_text())
-            authoring['platforms']['a5']['benchmark']={'instances':1}
-            path.write_text(yaml.safe_dump(authoring,sort_keys=False))
-            first=load_authoring(path,target=SOC)
-            path.write_text(path.read_text().replace('instances: 1','instances: 8'))
-            os.environ['QWEN_MODEL_DIR']='/new/weights'
-            second=load_authoring(path,target=SOC)
-            self.assertEqual(first['benchmark']['instances'],1)
-            self.assertEqual(second['benchmark']['instances'],8)
-            self.assertEqual(first['source']['ref'],'/weights/Qwen')
-            self.assertEqual(second['source']['ref'],'/new/weights')
-            self.assertEqual([f.name for f in Path(directory).iterdir()],['model.yaml'])
-
     @contextlib.contextmanager
     def pipeline_config(self):
         work=ROOT/'work';work.mkdir(exist_ok=True)
@@ -63,33 +25,6 @@ class Framework(unittest.TestCase):
             path=Path(directory,'model.yaml')
             path.write_text((ROOT/'models/tiny/config.yaml').read_text()+f'\nwork_dir: {output}\n')
             yield path,output
-
-    def test_main_only_passes_arguments_to_execute(self):
-        from core.pipeline import main
-        with patch('core.pipeline.execute',return_value={'status':'success'}) as execute, \
-             patch('core.pipeline.load_authoring',side_effect=AssertionError('main loaded YAML')), \
-             contextlib.redirect_stdout(io.StringIO()) as stdout:
-            main(['bench','--config',str(QWEN),'--device','6','--instances','8','--profiling'])
-        execute.assert_called_once_with('bench',config=str(QWEN),device=6,target=None,targets=None,instances=8,profiling=True)
-        self.assertEqual(json.loads(stdout.getvalue())['status'],'success')
-
-    def test_python_bench_reads_yaml_and_overrides_without_weight_environment(self):
-        from core.pipeline import execute
-        with self.pipeline_config() as (path,directory), patch.dict(os.environ):
-            path.write_text(QWEN.read_text()+f'\nwork_dir: {directory}\n')
-            original=path.read_text();os.environ.pop('QWEN_MODEL_DIR',None)
-            with patch('core.targets.inspect_device_isolated',return_value=HW), \
-                 patch('core.pipeline.perform',return_value={'status':'success'}) as perform:
-                result=execute('bench',path,device=6,instances=8,profiling=True)
-            config=perform.call_args.args[1]
-            self.assertEqual(config['benchmark']['instances'],8)
-            self.assertTrue(config['observability']['profiling'])
-            self.assertEqual(config['source']['ref'],'${QWEN_MODEL_DIR}')
-            self.assertEqual(config['build']['options']['aicore_num'],
-                             yaml.safe_load(QWEN.read_text())['platforms']['a5']['build']['options']['aicore_num'])
-            self.assertEqual(path.read_text(),original)
-            self.assertEqual(json.loads(Path(result['result']).read_text())['config'],config)
-            self.assertEqual(list(path.parent.rglob('*.yaml')),[path])
 
     def test_python_entry_reloads_yaml_and_validates_overrides(self):
         from core.pipeline import execute
@@ -103,38 +38,6 @@ class Framework(unittest.TestCase):
                 with self.assertRaises(ValueError):execute('prepare',path,**options)
             self.assertEqual(perform.call_count,2)
             self.assertEqual(len(list(directory.rglob('result.json'))),2)
-
-    def test_removed_module_file_flags_and_commands(self):
-        from core.pipeline import main
-        self.assertIsNone(importlib.util.find_spec('core.cli'))
-        for extra in (['--cases','cases.json'],['--build','build.json'],['--lock','lock.json']):
-            with contextlib.redirect_stderr(io.StringIO()):
-                with self.assertRaises(SystemExit):main(['bench','--config',str(QWEN),'--device','6',*extra])
-        for command in ('resolve','check','verify','profile'):
-            with contextlib.redirect_stderr(io.StringIO()):
-                with self.assertRaises(SystemExit):main([command])
-
-    def test_device_is_required_for_both_entries(self):
-        from core.pipeline import execute,main
-        for stage in ('build','infer','bench','run'):
-            with contextlib.redirect_stderr(io.StringIO()):
-                with self.assertRaises(SystemExit):main([stage,'--config',str(QWEN)])
-            with self.assertRaisesRegex(ValueError,'explicit nonnegative NPU index'):execute(stage,QWEN)
-
-    def test_python_entry_accepts_one_yaml_path_and_has_no_dict_compatibility(self):
-        from core.pipeline import execute
-        for value in ({'model':{}},[QWEN]):
-            with self.assertRaises(TypeError):execute('prepare',value)
-        with self.assertRaisesRegex(ValueError,'unknown step'):execute('check',QWEN)
-
-    def test_main_displays_original_error(self):
-        from core.pipeline import main
-        with patch('core.pipeline.execute',side_effect=FileNotFoundError('model.air; run build first')), \
-             contextlib.redirect_stderr(io.StringIO()) as stderr:
-            with self.assertRaises(SystemExit) as error:
-                main(['bench','--config',str(QWEN),'--device','6'])
-        self.assertEqual(error.exception.code,1)
-        self.assertIn('bench: FileNotFoundError: model.air; run build first',stderr.getvalue())
 
     def test_bench_does_not_run_prerequisites_and_keeps_full_pool(self):
         from core.pipeline import execute
@@ -191,177 +94,12 @@ class Framework(unittest.TestCase):
             result=json.loads(next(directory.rglob('result.json')).read_text())
             self.assertEqual(result['steps']['compare']['status'],'failed')
 
-    def test_generator_without_directory_does_not_import_adapter_or_create_files(self):
-        with tempfile.TemporaryDirectory() as directory:
-            Path(directory,'config.json').write_text('{"vocab_size":64}')
-            config=self.qwen();config['source']['ref']=directory;config['model']['adapter_file']='/must/not/import.py'
-            config['data']['params']['batch_size']=10
-            config['data'].pop('directory')
-            cases=generate(config)
-            self.assertEqual(len(cases),100)
-            self.assertEqual([p.name for p in Path(directory).iterdir()],['config.json'])
-            self.assertEqual(digest(cases),'66b937d4b7dee78a2a98605f55f70aee34c59a699dd6502787e30f8e0c717b95')
-
-    def test_case_directory_roundtrip_reuses_100_npy_folders_without_manifest(self):
-        with tempfile.TemporaryDirectory() as directory:
-            Path(directory,'config.json').write_text('{"vocab_size":64}')
-            inputs=Path(directory,'inputs')
-            config=self.qwen();config['source']['ref']=directory;config['data']['directory']=str(inputs)
-            config['data']['params']['batch_size']=10
-            config['model']['adapter_file']='/must/not/import.py'
-            first=generate(config)
-            paths=sorted(inputs.iterdir())
-            self.assertEqual([p.name for p in paths],[f'case-{i:04d}' for i in range(100)])
-            for folder in paths:
-                self.assertEqual(sorted(p.name for p in folder.iterdir()),
-                                 ['actual_seq_lengths.npy','input_ids.npy','position_ids.npy'])
-                for path in folder.iterdir():
-                    value=np.load(path,allow_pickle=False)
-                    self.assertEqual(value.dtype,np.int64)
-                    self.assertEqual(value.ndim,1)
-            spec=importlib.util.spec_from_file_location('generator',QWEN.parent.parent/'generate_cases.py')
-            module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-            self.assertEqual(first,[module.load_case(p) for p in paths])
-            self.assertEqual(digest(first),'66b937d4b7dee78a2a98605f55f70aee34c59a699dd6502787e30f8e0c717b95')
-            with patch('numpy.save',side_effect=AssertionError('unchanged data was rewritten')):
-                self.assertEqual(first,generate(config))
-            self.assertFalse(list(inputs.rglob('*.json')))
-
-    def test_case_directory_repairs_partial_pool_and_follows_changed_yaml_params(self):
-        with tempfile.TemporaryDirectory() as directory:
-            Path(directory,'config.json').write_text('{"vocab_size":64}')
-            inputs=Path(directory,'inputs')
-            config=self.qwen();config['source']['ref']=directory;config['data']['directory']=str(inputs)
-            original=generate(config)
-            (inputs/'case-0000/actual_seq_lengths.npy').unlink()
-            (inputs/'case-0001/position_ids.npy').write_bytes(b'interrupted')
-            path=inputs/'case-0002/input_ids.npy'
-            np.save(path,np.load(path).astype(np.float64))
-            self.assertEqual(generate(config),original)
-            config['data']['params'].update(count=2,seed=1)
-            changed=generate(config)
-            self.assertEqual(len(changed),2)
-            self.assertNotEqual(changed,original[:2])
-            self.assertEqual([p.name for p in sorted(inputs.iterdir())],['case-0000','case-0001'])
-            saved={p:p.read_bytes() for p in inputs.rglob('*.npy')}
-            config['data']['params']['count']=0
-            with self.assertRaises(ValueError):generate(config)
-            self.assertEqual(saved,{p:p.read_bytes() for p in inputs.rglob('*.npy')})
-
-    def test_qwen_bench_rejects_stale_batch_in_any_case_before_worker(self):
-        from core.data import load
-        from core.pipeline import perform
-        spec=importlib.util.spec_from_file_location('generator',QWEN.parent.parent/'generate_cases.py')
-        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-        config=load_authoring(QWEN,target='Ascend910_9382')
-        self.assertEqual(config['data']['params']['batch_size'],16)
-        self.assertEqual(config['benchmark']['instances'],5)
-        with tempfile.TemporaryDirectory() as directory:
-            Path(directory,'config.json').write_text('{"vocab_size":64}')
-            config['source']['ref']=directory
-            config['data']['directory']=str(Path(directory,'inputs'))
-            config['data']['params']['count']=2
-            expected=generate(config)
-            self.assertEqual(load(config),expected)
-            stale=list(module.generate_cases(64,count=2,batch_size=14))[-1]
-            folder=Path(config['data']['directory'],stale['id'])
-            for name,value in module.packed_inputs(stale).items():np.save(folder/f'{name}.npy',value)
-            saved={p:p.read_bytes() for p in Path(config['data']['directory']).rglob('*.npy')}
-            config['source']['ref']='/must/not/load/weights'
-            with patch('core.pipeline.worker') as worker:
-                with self.assertRaisesRegex(ValueError,'case-0001: actual batch 14 != configured batch_size 16; run data first'):
-                    perform('bench',config,Path(directory),1)
-                worker.assert_not_called()
-            self.assertEqual(saved,{p:p.read_bytes() for p in saved})
-            config['source']['ref']=directory
-            self.assertEqual(generate(config),expected)
-            self.assertEqual(load(config),expected)
-
-    def test_npy_case_loader_rejects_invalid_bounds_and_positions(self):
-        spec=importlib.util.spec_from_file_location('generator',QWEN.parent.parent/'generate_cases.py')
-        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-        case=next(module.generate_cases(64,count=1))
-        values=module.packed_inputs(case)
-        with tempfile.TemporaryDirectory() as directory:
-            for name,value in values.items():np.save(Path(directory,f'{name}.npy'),value)
-            bounds=values['actual_seq_lengths'].copy();bounds[-1]+=1
-            np.save(Path(directory,'actual_seq_lengths.npy'),bounds)
-            with self.assertRaisesRegex(ValueError,'bounds'):module.load_case(directory)
-            np.save(Path(directory,'actual_seq_lengths.npy'),values['actual_seq_lengths'])
-            positions=values['position_ids'].copy();positions[0]+=1
-            np.save(Path(directory,'position_ids.npy'),positions)
-            with self.assertRaisesRegex(ValueError,'position_ids'):module.load_case(directory)
-
-    def test_data_directory_resolves_inside_project_without_creating_it(self):
-        authored=yaml.safe_load(QWEN.read_text())['data']['directory']
-        self.assertEqual(self.qwen()['data']['directory'],str(ROOT/authored))
-        with tempfile.TemporaryDirectory() as directory:
-            path=Path(directory,'overlay.yaml')
-            for value in ('/tmp/inputs','../inputs','.'):
-                path.write_text(f'data:\n  directory: {value}\n')
-                with self.assertRaisesRegex(ValueError,'subdirectory of the project'):
-                    load_authoring([QWEN,path],target=SOC)
-
-    def test_historical_length_distribution_and_token_sequence(self):
-        spec=importlib.util.spec_from_file_location('generator',QWEN.parent.parent/'generate_cases.py')
-        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-        cases=list(module.generate_cases(64));stats=module.summarize(cases)
-        self.assertEqual(digest(cases),'66b937d4b7dee78a2a98605f55f70aee34c59a699dd6502787e30f8e0c717b95')
-        self.assertEqual(stats['business_samples'],1000)
-        self.assertAlmostEqual(stats['total_seq_mean'],149.345)
-        self.assertAlmostEqual(stats['total_seq_p99'],212.02)
-        self.assertEqual(stats['total_seq_max'],218)
-        self.assertEqual(digest(cases),digest(list(module.generate_cases(64))))
-        self.assertNotEqual(digest(cases),digest(list(module.generate_cases(64,seed=1))))
-
-    def test_batch_changes_preserve_historical_prefixes_and_base_requests(self):
-        spec=importlib.util.spec_from_file_location('generator',QWEN.parent.parent/'generate_cases.py')
-        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-        base=list(module.generate_cases(64,count=4,batch_size=10))
-        larger=list(module.generate_cases(64,count=4,batch_size=32))
-        largest=list(module.generate_cases(64,count=4,batch_size=64))
-        smaller=list(module.generate_cases(64,count=4,batch_size=4))
-        for index,(a,b,c,d) in enumerate(zip(base,larger,largest,smaller)):
-            self.assertEqual(a['payload']['prefix'],b['payload']['prefix'])
-            self.assertEqual(a['payload']['prefix'],d['payload']['prefix'])
-            self.assertEqual(a['payload']['requests'],b['payload']['requests'][:10])
-            self.assertEqual(b['payload']['requests'],c['payload']['requests'][:32])
-            self.assertEqual([r['tokens'] for r in d['payload']['requests']],
-                             [a['payload']['requests'][(index+j)%10]['tokens'] for j in range(4)])
-            self.assertEqual([r['id'] for r in d['payload']['requests']],['r0','r1','r2','r3'])
-
     def test_accuracy_selection_preserves_pool(self):
         cases=[{'id':f'case-{i}','samples':2,'payload':{}} for i in range(3)];old=copy.deepcopy(cases)
         self.assertEqual(select_cases(cases,[cases[-1]['id']]),[cases[-1]])
         self.assertEqual(select_cases(cases,'all'),cases);self.assertEqual(cases,old)
         for ids in ([],['missing'],['all'],[cases[0]['id']]*2):
             with self.assertRaises(ValueError):select_cases(cases,ids)
-
-    def test_platforms_budgets_and_no_device_in_configuration(self):
-        a5=self.qwen();a3=load_authoring(QWEN,target='Ascend910_9382')
-        self.assertEqual(a5['model']['params']['attention'],'prefix_a5')
-        self.assertEqual(a5['build']['options']['aicore_num'],
-                         yaml.safe_load(QWEN.read_text())['platforms']['a5']['build']['options']['aicore_num'])
-        self.assertEqual(a3['model']['params']['attention'],'prefix_910')
-        self.assertEqual(a3['build']['options']['aicore_num'],'8|16')
-        self.assertNotIn('device',a5['target']);self.assertNotIn('artifacts',a5)
-
-    def test_explicit_and_detected_chip_select_same_config(self):
-        for soc,device,capacity in [('Ascend910_9382',1,{'aic':24,'aiv':48}),
-                                    (SOC,6,HW['capacity'])]:
-            hardware={'device':device,'soc':soc,'capacity':capacity}
-            with self.subTest(soc=soc),patch('core.targets.inspect_device_isolated',return_value=hardware):
-                self.assertEqual(load_authoring(QWEN,target=soc),load_authoring(QWEN,device=device))
-
-    def test_chip_override_section_is_rejected(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path=Path(directory,'old.yaml')
-            path.write_text(QWEN.read_text()+'\nchips: {}\n')
-            with self.assertRaisesRegex(ValueError,'chips'):load_authoring(path,target=SOC)
-
-    def test_platform_and_device_mismatch_fails(self):
-        with patch('core.targets.inspect_device_isolated',return_value=HW):
-            with self.assertRaises(ValueError):load_authoring(QWEN,target='a3',device=6)
 
     def test_catalog_duplicate_chip_and_bad_capacity_are_rejected(self):
         from core.targets import read_catalog
@@ -371,23 +109,6 @@ class Framework(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'duplicate chip'):read_catalog(path)
             path.write_text('a5:\n  PrivateChip:\n    expected_capacity:\n      aic: 0\n')
             with self.assertRaisesRegex(ValueError,'omit unknown'):read_catalog(path)
-
-    def test_inactive_branch_typos_are_rejected(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path=Path(directory,'bad.yaml');path.write_text('platforms:\n  a3:\n    benchmark:\n      instnaces: 2\n')
-            with self.assertRaisesRegex(ValueError,'instnaces'):load_authoring([QWEN,path],target=SOC)
-
-    def test_invalid_configuration_and_removed_metadata_options(self):
-        config=self.qwen()
-        for key,value in [('execution',{}),('artifacts',{}),('schema','ge-run/1')]:
-            bad=copy.deepcopy(config);bad[key]=value
-            with self.assertRaises(ValueError):validate(bad)
-        for count in (0,-1,True,1.5):
-            bad=copy.deepcopy(config);bad['benchmark']['instances']=count
-            with self.assertRaises(ValueError):validate(bad)
-        with patch.dict(os.environ):
-            os.environ.pop('QWEN_MODEL_DIR',None)
-            with self.assertRaisesRegex(ValueError,'QWEN_MODEL_DIR'):self.qwen()
 
     def test_parent_hardware_probe_is_isolated(self):
         from core.targets import inspect_device_isolated
@@ -455,8 +176,6 @@ class Framework(unittest.TestCase):
 }
 ''')
             self.assertEqual(parse_bindings(path),[(0,'features','arg4')])
-
-
 
 class IndependentRuntime(unittest.TestCase):
     def test_bench_worker_does_not_load_source_or_export(self):

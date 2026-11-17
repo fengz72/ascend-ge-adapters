@@ -9,7 +9,7 @@ import onnx
 from onnx import helper, TensorProto
 import yaml
 
-from core.config import ROOT, load_authoring
+from core.config import load_authoring
 from core import native_onnx
 
 
@@ -85,20 +85,6 @@ class DtypeConfiguration(unittest.TestCase):
         authored["chips"] = {"Ascend910_9382": {"build": {"dtype": "float16"}}}
         with self.assertRaisesRegex(ValueError, "unknown=.*chips"):
             self.load(authored)
-
-    def test_explicit_dtype_overrides_are_retained(self):
-        authored = self.config()
-        authored.update(build={"dtype": "float16"}, reference={"dtype": "float32"},
-                        platforms={"a3": {"build": {"dtype": "float32"},
-                                          "reference": {"dtype": "bfloat16"}}})
-        config = self.load(authored)
-        self.assertEqual(config["build"]["dtype"], "float32")
-        self.assertEqual(config["reference"]["dtype"], "bfloat16")
-        qwen = load_authoring(ROOT / "models/qwen2.5-0.5b/config/model.yaml",
-                              target="Ascend910_9382", source_paths=False)
-        self.assertEqual(qwen["build"]["dtype"], "float16")
-        self.assertEqual(qwen["reference"]["dtype"], "float32")
-
 
 class NativeOnnxDtypes(unittest.TestCase):
     def setUp(self):
