@@ -91,27 +91,37 @@ models/onejev1.6-0.8b/
 共享部件：`runtime/build/executor`（已泛化 N 输入，见 §4.1）、
 `tools/compare.py`（cosine≥0.999 / relL2≤0.02）、`runtime/build.sh`。
 
-### 3.2 图 IO 契约（9 输入，顺序=records 顺序=图 Data 顺序，不得偏离）
+### 3.2 图 IO 契约（**7 输入**，顺序=records 顺序=图 Data 顺序，不得偏离）
 
 | # | 名称 | dtype | shape | 动态轴 | 语义 |
 |--:|---|---|---|---|---|
 | 1 | input_ids | int64 | [1,S] | 1 | 展开后 prompt token（image pad ×P/4） |
 | 2 | pixel_values | bfloat16 | [P,1536] | 0 | 官方 processor fp32 产物主机侧 cast bf16 |
-| 3 | image_grid_thw | int64 | [1,3] | — | t=1,h,w |
-| 4 | position_ids | int64 | [3,1,S] | 2 | 官方 `Qwen3_5Model.get_rope_index`（MRoPE 三轴） |
-| 5 | interp_indices | int64 | [P,4] | 0 | bilinear 位置表采样 tap（side=48, align_corners=True, merge=2） |
-| 6 | interp_weights | float32 | [P,4] | 0 | 对应权重 |
-| 7 | vision_position_ids | int64 | [P,2] | 0 | vision 轴向 (h,w) id（merge-block 序） |
-| 8 | cu_seqlens | int32 | [2] | — | [0, P] |
-| 9 | feature_index | int64 | [1,S] | 1 | image token 位→merged 特征行 0..P/4-1，其余 -1 |
+| 3 | position_ids | int64 | [3,1,S] | 2 | 官方 `Qwen3_5Model.get_rope_index`（MRoPE 三轴） |
+| 4 | interp_indices | int64 | [P,4] | 0 | bilinear 位置表采样 tap（side=48, align_corners=True, merge=2） |
+| 5 | interp_weights | float32 | [P,4] | 0 | 对应权重 |
+| 6 | vision_position_ids | int64 | [P,2] | 0 | vision 轴向 (h,w) id（merge-block 序） |
+| 7 | feature_index | int64 | [1,S] | 1 | image token 位→merged 特征行 0..P/4-1，其余 -1 |
 | 出 | scores | float32 | [1,26] | — | 末 token × 26 slot 行（tied lm_head，fp32） |
+
+**`image_grid_thw` 与 `cu_seqlens` 不是图输入**（原 9 输入契约修订）：v1 补丁
+下 grid 的全部消费者都吃预计算张量（interp/vpos），单图注意力忽略 cu 分段，
+二者对图是死输入——torchair 直接 DCE（9 输入导出实测只剩 7 个 Data 节点，
+export_air 的绑定双射校验当场拦截）。真实 grid 以 records.json 每 case 的
+`grid` 元数据字段携带（executor 忽略该字段），golden 的官方整模前向用它。
+Decision.forward 内以**注册 buffer** 形式的常量 dummy（grid [[1,2,2]]、
+cu [0,4]）满足 visual() 的形参——注意两个坑：让官方代码从 dummy grid 现算
+cu 会触发 `repeat_interleave`（tensor repeats）→ unbacked symint →
+GuardOnDataDependentSymNode；在 forward 里用 `torch.tensor(...)` 现造常量会
+令 torchair 在 vision qkv permute 的 fake 调用报 GE ERR03001（buffer 则正常）。
 
 records schema `ge-records/3`（上游 executor 的唯一 schema，位置绑定）：
 `{"schema","file","output_name":"scores","slot_token_ids":[26 ids 供审计，
-executor 忽略],"cases":[{"id","samples":1,"tensors":[{name,dtype,shape,offset,bytes}×9]}]}`；
-`tensors` 顺序=图 Data 输入顺序，name 仅注记，`samples` 为业务行数（每 case
-一个 System One 请求分支 = 1）。executor 不再做 dtype/shape 校验（上游已放开），
-**严格校验全部在 generate_inputs.py 侧**（§4.2 审计断言）。
+executor 忽略],"cases":[{"id","samples":1,"grid":[1,h,w],"tensors":[{name,
+dtype,shape,offset,bytes}×7]}]}`；`tensors` 顺序=图 Data 输入顺序，name 仅
+注记，`samples` 为业务行数（每 case 一个 System One 请求分支 = 1）。
+executor 不再做 dtype/shape 校验（上游已放开），**严格校验全部在
+generate_inputs.py 侧**（§4.2 审计断言）。
 readout schema 沿用 `startlux-text-readout/1`（labels/letters_asked/temperature=1.0）。
 golden/输出布局沿用 `ge-compare/1`。
 
@@ -184,12 +194,62 @@ golden/输出布局沿用 `ge-compare/1`。
 
 ### 4.4 未做（新环境待办）
 
-- ⬜ **NPU 冒烟导出**（原型脚本，门槛，见 §6.4）——旧环境被中断未跑。
-- ⬜ Lane C 产品化部件：modeling_onejev.py / export_air.py / run.sh / README.md。
-- ⬜ 精度闭环（executor infer + compare 门禁）。
-- ⬜ 性能（单实例逐 case + 多实例扩展 + aicore 对照）与文档附录表。
-- √ git：本目录（含本文档）已 commit 并推送 origin/main（见 §5.2）；后续
-  Lane C / 精度 / 性能各自独立提交。
+- √ **NPU 冒烟导出** PASS（原型脚本，chip 5，SMOKE_EXIT=0，onejev.air
+  1,711,212,337 B，~50s，无 graph break）——但冒烟 AIR 是**降级产物**：
+  未 mark 的 dynamic=True 把 grid/cu DCE 成 7 输入且 S 被烘焙为常量，
+  executor 实跑报 `InputTensorValidate expect 7 actual 9`，仅作兼容性门槛用。
+- √ Lane C 产品化部件：modeling_onejev.py / export_air.py / run.sh / README.md
+  已实现；产品化导出 PASS（7 输入绑定双射校验通过，onejev.air ~1.71GB）。
+- √ **精度闭环 PASS**（2026-11-17 旧环境，chip 6）：产品化 AIR +
+  ge-records/3 executor 全 14 case，compare worst cosine **0.999979** /
+  worst relL2 **0.008327**（门限 0.999/0.02）；CompileGraph 27.7s、
+  LoadGraph 8.3s（TBE 缓存已热）；逐 case 模型段 40.8–113.0 ms（首 case
+  334 ms 含冷开销），表见 README §3.2。
+- ◐ 性能：单实例 bench 完成（seed 42、2000 请求、warmup 32、readout 计时、
+  不限核、chip 6）：**QPS 13.95，0 错误**，e2e avg/p50/p99 = 71.70/53.96/
+  113.87 ms，H2D avg 0.37 ms，HBM ~3.2GB（work/bench-inst1）。4 实例
+  `12|24` 对照在限核 kernel TBE 重编译期间被**外部 SIGTERM**（exit 143，
+  无有效数据；同时段主机 dmesg 有 docker veth 拆除记录——旧环境已不稳定，
+  尽快迁移）。正式多档 3-seed 扩展表在新环境按 §6.7 补。
+- √ git：本目录已随 `feat(onejev)` 提交推送 origin/main；后续 Lane C/精度/
+  性能改动需再次提交（由用户决定）。
+
+### 4.5 NPU 导出联调实录（2026-11-17，全部已修复并固化进代码）
+
+按时间序，四个连环问题与结论（细节均已写入对应源码注释）：
+
+1. **`from model import modeling_onejev` 误触发原型 model.py**：CANN set_env
+   后 ADAPTER_DIR 已在 sys.path 深处，条件式 insert(0) 被跳过，脚本目录
+   `model/`（含同名 model.py）先命中 → 原型被当作 `model` 包导入执行。
+   修复：export_air.py 顶部**确定性重排** sys.path（剔除脚本目录与 ''，
+   强制 [deps/py, ADAPTER_DIR] 在最前）。
+2. **ConstraintViolationError：S 被特化为常量 8**：torchair
+   `_ge_concrete_graph/continguous.py:164 optimize_view` 对视图做
+   `meta_shape == srcshape` 逐元素比较；全注意力层 BHSD 转置视图
+   [1,**8**,S,256] vs [1,**S**,8,256] 在示例 S=8 时命中 `Eq(s_S, 8)`=TRUE
+   → 按 hint 特化。修复：示例 S 改为 13（P=32），避开与任何具体维
+   （heads=8/2、vision heads=12、head_dim 等）相等。**规则：动态轴示例值
+   不得等于图中任何静态维**。定位手段：`TORCH_LOGS=+dynamic` 找
+   `eval Eq(sN, K) [guard added]` + `TORCHDYNAMO_EXTENDED_DEBUG_GUARD_ADDED`。
+3. **9 输入 AIR 只剩 7 个 Data 节点**：grid/cu 是死输入被 DCE（见 §3.2），
+   parse_bindings 双射校验拦截（non-bijective）。修复：契约收敛为 7 输入，
+   grid 走 records 元数据；generate_inputs/golden/verify 脚本同步改。
+4. **GuardOnDataDependentSymNode**：去掉 cu 输入后官方
+   `get_vision_cu_seqlens` 在图内现算 `repeat_interleave(x, repeats=tensor)`
+   → unbacked symint。修复：Decision 以常量 dummy cu 走 precomputed-pop 路径。
+5. **GE ERR03001 GRAPH invalid parameter**（vision qkv permute 的 fake 调用）：
+   forward 内 `torch.tensor(...)` 现造 dummy 常量触发；改为 `__init__` 注册
+   buffer（trace 前即真实张量，frozen_parameter 烘为 Const）后导出通过。
+6. **外部 SIGKILL（exit 137）**：AIR+pbtxt 完整落盘后主进程被杀（非 OOM、
+   非 cgroup 限额、dmesg 无记录；共享机器外部干扰）。恢复手段：产物完整时
+   无需重导——离线跑 parse_bindings 校验 pbtxt（3.6s）确认 7 输入双射后
+   删 pbtxt 即可继续 infer。
+
+产品化导出实测（chip 6，ASCEND_RT_VISIBLE_DEVICES 映射后 --device 0）：
+trace+GE 转换+落盘 ~6min；onejev.air 1,711,212,399…（≈1.71GB）；
+bindings = [(0,input_ids,arg1_1),(1,pixel_values,arg3_1),(2,position_ids,
+arg4_1),(3,interp_indices,arg5_1),(4,interp_weights,arg6_1),
+(5,vision_position_ids,arg8_1),(6,feature_index,arg10_1)]，双射 ✓。
 
 ## 5. 新环境要求与迁移清单
 

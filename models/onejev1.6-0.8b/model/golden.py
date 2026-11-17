@@ -3,15 +3,15 @@
 The independent reference stage: loads the SAME weights folder
 (ONEJEV_MODEL_DIR) as an official ``Qwen3_5ForConditionalGeneration`` float32
 CPU model and scores every case of ``work/inputs``.  Per case it reads exactly
-three tensors from the packed pool -- ``input_ids``, ``pixel_values``
-(bf16 -> fp32) and ``image_grid_thw`` -- and lets the official model do the
-rest itself: vision interpolation / position ids / cu_seqlens, MRoPE, the
-embedding scatter and the tied output head.  The other six tensors of the
-9-input graph contract are the graph-side precomputations of those same
-quantities; the reference deliberately does not read them, so its result stays
-independent of the input generator's math.  ``mm_token_type_ids`` is derived
-from ``input_ids`` here (it is part of the official preprocessing, not one of
-the packed inputs).
+two packed tensors -- ``input_ids`` and ``pixel_values`` (bf16 -> fp32) -- plus
+the ``grid`` metadata field ([1, h, w], kept out of the graph pool because the
+exported graph does not consume it), and lets the official model do the rest
+itself: vision interpolation / position ids / cu_seqlens, MRoPE, the embedding
+scatter and the tied output head.  The precomputed contract tensors
+(interp/vpos/feature_index/position_ids) stay unread on purpose, so the
+reference is independent of the input generator's math.
+``mm_token_type_ids`` is derived from ``input_ids`` here (it is part of the
+official preprocessing, not one of the packed inputs).
 
 ``scores`` is ``logits[0, -1, slot_token_ids]``: the final-token hidden state
 times the 26 tied lm_head rows for the A..Z answer slots (slot ids from
@@ -117,8 +117,9 @@ def _tensor_ref(case, name):
 def _load_cases(inputs):
     """records.json + inputs.bin -> [(case_id, ids, pixel_values, grid)], loudly.
 
-    Only the three official-forward inputs are materialised; the six graph-side
-    precomputations stay unread on purpose.
+    Only the two official-forward inputs are materialised from the pool; the
+    graph-side precomputations stay unread on purpose.  The grid comes from
+    the case metadata (not a packed tensor: the graph does not consume it).
     """
     records = json.loads((inputs / "records.json").read_text())
     if records.get("schema") != "ge-records/3":
@@ -133,36 +134,37 @@ def _load_cases(inputs):
     cases = []
     for case in records["cases"]:
         refs = {name: _tensor_ref(case, name)
-                for name in ("input_ids", "pixel_values", "image_grid_thw")}
+                for name in ("input_ids", "pixel_values")}
         for ref in refs.values():
             if ref["offset"] < 0 or ref["bytes"] < 0 or ref["offset"] + ref["bytes"] > len(blob):
                 raise SystemExit(f"golden: case {case['id']} tensor {ref['name']} exceeds "
                                  f"{blob_path}; regenerate the inputs dir")
-        ids_ref, pix_ref, grid_ref = (refs["input_ids"], refs["pixel_values"],
-                                      refs["image_grid_thw"])
+        ids_ref, pix_ref = refs["input_ids"], refs["pixel_values"]
         if ids_ref["dtype"] != "int64" or tuple(ids_ref["shape"][:1]) != (1,) \
                 or len(ids_ref["shape"]) != 2:
             raise SystemExit(f"golden: case {case['id']} input_ids dtype/shape "
-                             f"{ids_ref['dtype']} {ids_ref['shape']} is not int64 [1, S]")
+                             f"{ids_ref['dtype']}/{ids_ref['shape']} is not int64 [1, S]")
         if pix_ref["dtype"] != "bfloat16" or len(pix_ref["shape"]) != 2 \
                 or pix_ref["shape"][1] != 1536:
             raise SystemExit(f"golden: case {case['id']} pixel_values dtype/shape "
-                             f"{pix_ref['dtype']} {pix_ref['shape']} is not bfloat16 [P, 1536]")
-        if grid_ref["dtype"] != "int64" or tuple(grid_ref["shape"]) != (1, 3):
-            raise SystemExit(f"golden: case {case['id']} image_grid_thw dtype/shape "
-                             f"{grid_ref['dtype']} {grid_ref['shape']} is not int64 [1, 3]")
+                             f"{pix_ref['dtype']}/{pix_ref['shape']} is not bfloat16 [P, 1536]")
+        grid_meta = case.get("grid")
+        if not isinstance(grid_meta, list) or len(grid_meta) != 3 \
+                or any(not isinstance(v, int) or v < 1 for v in grid_meta) \
+                or grid_meta[0] != 1:
+            raise SystemExit(f"golden: case {case['id']} grid metadata {grid_meta!r} "
+                             "is not [1, h, w] with positive ints")
         length = int(ids_ref["shape"][1])
         patches = int(pix_ref["shape"][0])
         ids = np.frombuffer(blob, np.int64, count=length, offset=ids_ref["offset"]).copy()
         payload = blob[pix_ref["offset"]:pix_ref["offset"] + pix_ref["bytes"]]
         raw = torch.frombuffer(bytearray(payload), dtype=torch.uint8)
         pixels = raw.view(torch.bfloat16).reshape(pix_ref["shape"]).to(torch.float32)
-        grid = np.frombuffer(blob, np.int64, count=3, offset=grid_ref["offset"]).copy()
-        if int(grid.prod()) != patches or int(grid[0]) != 1:
-            raise SystemExit(f"golden: case {case['id']} grid {grid.tolist()} does not cover "
+        grid = torch.tensor([grid_meta], dtype=torch.int64)
+        if int(grid.prod()) != patches:
+            raise SystemExit(f"golden: case {case['id']} grid {grid_meta} does not cover "
                              f"{patches} pixel patches")
-        cases.append((case["id"], torch.from_numpy(ids.reshape(1, length)), pixels,
-                      torch.from_numpy(grid.reshape(1, 3))))
+        cases.append((case["id"], torch.from_numpy(ids.reshape(1, length)), pixels, grid))
     if not cases:
         raise SystemExit(f"golden: no cases in {inputs / 'records.json'}")
     return cases, records

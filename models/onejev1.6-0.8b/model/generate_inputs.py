@@ -4,25 +4,30 @@ Consumes ``fixtures/cases.jsonl`` (one System One request per row, exactly one
 typed question and exactly one image) and writes the executor input pool under
 ``work/inputs/``:
 
-* ``inputs.bin``   the packed per-case graph-input tensors (9 per case, in the
+* ``inputs.bin``   the packed per-case graph-input tensors (7 per case, in the
                    shared order below);
 * ``records.json`` the per-case tensor index (schema ``ge-records/3``: the
   ``tensors`` array is bound positionally to the graph inputs, ``samples`` is
   the case's business row count) plus the derived A..Z answer-slot token ids;
+  each case also carries its ``grid`` ([1, h, w]) as METADATA -- the graph
+  does not consume it (dead under the v1 patches, see modeling_onejev), but
+  the golden reference needs it for the official whole-model forward;
 * ``readout.json`` the per-case read-out metadata (schema
   ``startlux-text-readout/1``: slot labels, letters_asked = K, temperature).
 
-The 9-tensor contract, in order and without padding:
+The 7-tensor contract, in order and without padding:
 
 1. ``input_ids``            int64     [1,S]   prompt tokens, image pad expanded
 2. ``pixel_values``         bfloat16  [P,1536] official image processor output
-3. ``image_grid_thw``       int64     [1,3]   t=1, h, w patch grid
-4. ``position_ids``         int64     [3,1,S] official Qwen3_5Model.get_rope_index
-5. ``interp_indices``       int64     [P,4]   bilinear pos-embed taps
-6. ``interp_weights``       float32   [P,4]   the matching weights
-7. ``vision_position_ids``  int64     [P,2]   (h, w) axial ids
-8. ``cu_seqlens``           int32     [2]     [0, P]
-9. ``feature_index``        int64     [1,S]   merged feature row per image token
+3. ``position_ids``         int64     [3,1,S] official Qwen3_5Model.get_rope_index
+4. ``interp_indices``       int64     [P,4]   bilinear pos-embed taps
+5. ``interp_weights``       float32   [P,4]   the matching weights
+6. ``vision_position_ids``  int64     [P,2]   (h, w) axial ids
+7. ``feature_index``        int64     [1,S]   merged feature row per image token
+
+(``image_grid_thw`` and ``cu_seqlens`` are computed and audited here but stay
+OUT of the packed pool: every graph-side consumer is fed by the precomputed
+tensors above, so torchair DCEs both out of the exported graph.)
 
 Each row becomes ONE B=1 case at its TRUE length.  The prompt is rendered by the
 vendored official ``onejev-labels-v2`` renderer (``build_messages`` +
@@ -88,9 +93,9 @@ from flide_onejev.prompt import build_messages, render_question
 from flide_onejev.slots import verify_slot_token_ids
 
 OUTPUT_NAME = "scores"
-TENSOR_ORDER = ("input_ids", "pixel_values", "image_grid_thw", "position_ids",
+TENSOR_ORDER = ("input_ids", "pixel_values", "position_ids",
                 "interp_indices", "interp_weights", "vision_position_ids",
-                "cu_seqlens", "feature_index")
+                "feature_index")
 
 
 def weights_dir():
@@ -372,8 +377,6 @@ def main():
                     input_ids.numpy().tobytes(order="C"))
             _append(stream, tensors, "pixel_values", "bfloat16",
                     (patches, pixel_bf16.shape[1]), _bf16_bytes(pixel_bf16))
-            _append(stream, tensors, "image_grid_thw", "int64", (1, 3),
-                    grid.numpy().astype(np.int64).tobytes(order="C"))
             _append(stream, tensors, "position_ids", "int64", (3, 1, length),
                     position_ids.numpy().tobytes(order="C"))
             _append(stream, tensors, "interp_indices", "int64", (patches, 4),
@@ -382,15 +385,16 @@ def main():
                     interp_weights.numpy().astype(np.float32).tobytes(order="C"))
             _append(stream, tensors, "vision_position_ids", "int64", (patches, 2),
                     vision_position_ids.numpy().astype(np.int64).tobytes(order="C"))
-            _append(stream, tensors, "cu_seqlens", "int32", (2,),
-                    cu_seqlens.numpy().astype(np.int32).tobytes(order="C"))
             _append(stream, tensors, "feature_index", "int64", (1, length),
                     feature_index.tobytes(order="C"))
             if tuple(t["name"] for t in tensors) != TENSOR_ORDER:
-                raise AssertionError("the emitted tensor order drifted from the 9-tensor contract")
+                raise AssertionError("the emitted tensor order drifted from the 7-tensor contract")
 
             # samples = 1: one System One request row == one branch == one case.
-            records.append({"id": case_id, "samples": 1, "tensors": tensors})
+            # grid rides as metadata: the graph does not consume it (dead under
+            # the v1 patches), the golden reference does.
+            records.append({"id": case_id, "samples": 1,
+                            "grid": grid.reshape(3).tolist(), "tensors": tensors})
             readout_cases.append({"id": case_id, "labels": list(rendered.labels),
                                   "letters_asked": len(rendered.labels),
                                   "temperature": calibration.temperature(rendered.kind,
