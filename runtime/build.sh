@@ -8,4 +8,4 @@ mkdir -p "${BUILD_DIR}"
 cmake -S "${SCRIPT_DIR}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release
 cmake --build "${BUILD_DIR}" -j"$(nproc)"
 
-echo "Build complete. Binary: ${BUILD_DIR}/ge_runtime"
+echo "Build complete. Binary: ${BUILD_DIR}/ge_execute"

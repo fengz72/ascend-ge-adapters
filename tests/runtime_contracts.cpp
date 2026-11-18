@@ -1,189 +1,582 @@
-#include <stdexcept>
-#include <atomic>
-#include <thread>
+// CPU 契约测试: npy 读写 / cases.json 解析 / 抽样与计时聚合。
+// 只依赖 runtime/{npy,cases,stats}.{h,cpp} + vendored nlohmann, 不需要 GE / ACL。
+#include <cstdint>
+#include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
-#include "io_spec.h"
-#include "bench.h"
-using namespace ge_runtime;
-#define CHECK(condition) do { if(!(condition)) throw std::runtime_error("check failed: " #condition); } while(false)
+#include <stdexcept>
+#include <string>
+#include <vector>
 
-int main(int argc,char **argv) {
-    CHECK(argc==2);
-    std::string dir=argv[1];MakeDirs(dir);
-    IoNode a;a.logical="encoder/output:0";a.dtype="float32";a.shape={-1};a.dynamic_dims={0};
-    CHECK(SameDtype("float", "float32") && SameDtype("double", "float64"));
-    CHECK(SameDtype("int64", "int64") && !SameDtype("float16", "float32"));
-    CHECK(!SameDtype("unknown", "unknown"));
-    {
-        IoSpec packedSpec;IoNode input;input.logical="features";input.node="graph_data_2";
-        input.dtype="float32";input.shape={-1,2};packedSpec.inputs={input};packedSpec.outputs={a};
-        float values[]={1,2,3,4,5,6};
-        {std::ofstream file(dir+"/packed.bin",std::ios::binary);file.write(reinterpret_cast<const char*>(values),sizeof(values));CHECK(file.good());}
-        nlohmann::json inputs={{"file",dir+"/packed.bin"},{"cases",nlohmann::json::array({
-            {{"id","first"},{"samples",1},{"tensors",nlohmann::json::array({
-                {{"name","features"},{"dtype","float32"},{"shape",{1,2}},{"offset",0},{"bytes",8}}
-            })},{"output_capacities",{{a.logical,8}}}},
-            {{"id","second"},{"samples",2},{"tensors",nlohmann::json::array({
-                {{"name","features"},{"dtype","float32"},{"shape",{2,2}},{"offset",8},{"bytes",16}}
-            })},{"output_capacities",{{a.logical,16}}}}
-        })}};
-        auto packed=LoadPool(packedSpec,inputs);
-        CHECK(packed.requests.size()==2 && packed.distinctShapes==2);
-        CHECK(packed.maxBytes[0]==16 && packed.maxOutputBytes[0]==16);
-        CHECK(packed.requests[0].plans[0].node=="graph_data_2");
-        CHECK(packed.requests[1].data[0].size()==16);
-        auto invalid=inputs;invalid["cases"][1]["tensors"][0]["offset"]=999;
-        bool rejected=false;try{LoadPool(packedSpec,invalid);}catch(...){rejected=true;}
-        CHECK(rejected);
-        invalid=inputs;invalid["cases"][0]["tensors"][0]["name"]="wrong";
-        rejected=false;try{LoadPool(packedSpec,invalid);}catch(...){rejected=true;}
-        CHECK(rejected);
+#include <nlohmann/json.hpp>
+
+#include "cases.h"
+#include "npy.h"
+#include "stats.h"
+
+namespace fs = std::filesystem;
+using namespace ge_execute;
+
+#define CHECK(condition)                                                          \
+    do {                                                                          \
+        if (!(condition)) {                                                       \
+            throw std::runtime_error(std::string("check failed: ") + #condition + \
+                                     " (line " + std::to_string(__LINE__) + ")"); \
+        }                                                                         \
+    } while (false)
+
+namespace {
+
+constexpr char kMagic[6] = {'\x93', 'N', 'U', 'M', 'P', 'Y'};
+
+void WriteBytes(const std::string &path, const void *data, size_t bytes) {
+    const fs::path target(path);
+    if (target.has_parent_path()) {
+        fs::create_directories(target.parent_path());
     }
-    RequestPool pool;pool.distinctShapes=1;
-    for(int i=0;i<100;i++) { Request r;r.name="case-"+std::to_string(i);r.shapeKey="fixed";r.samples=2;pool.requests.push_back(r); }
-    PoolResources resources;
-    resources.setup=[](int){return true;};
-    resources.setInputs=[](int,const Request &,PhaseTime &){return true;};
-    resources.execute=[](int){return true;};
-    resources.release=[](int){};
-    PerfResult one,two,again,different;
-    CHECK(BenchPool(1,1003,2,42,pool,resources,one));
-    CHECK(BenchPool(2,1003,5,42,pool,resources,two));
-    CHECK(BenchPool(2,1003,0,42,pool,resources,again));
-    CHECK(BenchPool(2,1003,0,43,pool,resources,different));
-    CHECK(two.requests==1003 && two.samples==2006 && two.errors==0);
-    CHECK(two.instances[0].requests==502 && two.instances[1].requests==501);
-    bool changed=false;
-    for(size_t i=0;i<one.records.size();i++) {
-        CHECK(one.records[i].req==i && two.records[i].req==i);
-        CHECK(one.records[i].inputSet==two.records[i].inputSet);
-        CHECK(two.records[i].inputSet==again.records[i].inputSet);
-        changed=changed || two.records[i].inputSet!=different.records[i].inputSet;
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        throw std::runtime_error("cannot write " + path);
     }
-    CHECK(changed);
-    std::vector<std::vector<std::string>> captures(2);
-    CHECK(CapturePool(2,pool,resources,[&](int tid,const Request &request) { captures[tid].push_back(request.name);return true; }));
-    CHECK(captures[0].size()==100 && captures[0]==captures[1]);
-    CHECK(!CapturePool(2,pool,resources,[](int,const Request &){return false;}));
-    // Warmup succeeds, then the fourth measured call fails. Keep all completed records.
-    size_t calls=0,released=0;
-    resources.execute=[&](int){return ++calls!=5;};
-    resources.release=[&](int){++released;};
-    PerfResult partial;
-    CHECK(!BenchPool(1,10,0,42,pool,resources,partial));
-    CHECK(partial.requests==3 && partial.samples==6 && partial.errors==1);
-    CHECK(partial.records.size()==4 && partial.records.back().error==1 && released==1);
-    CHECK(PerfToJson(partial)["errors"]==1);
-    CHECK(WriteRequestsCsv(dir+"/partial.csv",partial));
-    {std::ifstream file(dir+"/partial.csv");size_t lines=0;std::string line;while(std::getline(file,line))++lines;CHECK(lines==5);}
-    // Warmup and measurement must share each instance's entered worker thread.
-    // A slow worker must finish warming before any worker measures a request.
-    {
-        PoolResources sameWorker;
-        std::thread::id owners[2];
-        std::atomic<size_t> completed[2]{};
-        size_t releasedWorkers=0;
-        sameWorker.setup=[](int){return true;};
-        sameWorker.threadEnter=[&](int tid){owners[tid]=std::this_thread::get_id();};
-        sameWorker.setInputs=[&](int tid,const Request &,PhaseTime &) {
-            if(owners[tid]!=std::this_thread::get_id()) return false;
-            if(completed[tid].load()>=5 && completed[1-tid].load()<5) return false;
-            return true;
-        };
-        sameWorker.execute=[&](int tid) {
-            if(owners[tid]!=std::this_thread::get_id()) return false;
-            if(tid==1 && completed[tid].load()==0)
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
-            ++completed[tid];
-            return true;
-        };
-        sameWorker.release=[&](int){++releasedWorkers;};
-        PerfResult warmed;
-        CHECK(BenchPool(2,7,5,42,pool,sameWorker,warmed));
-        CHECK(warmed.warmupRuns==10 && warmed.requests==7 && warmed.errors==0);
-        CHECK(completed[0]==9 && completed[1]==8 && releasedWorkers==2);
-        for(const auto &rec:warmed.records) CHECK(!rec.firstHit);
+    out.write(static_cast<const char *>(data), static_cast<std::streamsize>(bytes));
+    if (!out) {
+        throw std::runtime_error("short write " + path);
     }
-    // One worker's warmup failure must release all waiting workers and resources.
-    {
-        PoolResources failWarm;
-        size_t releasedWorkers=0;
-        failWarm.setup=[](int){return true;};
-        failWarm.setInputs=[](int,const Request &,PhaseTime &){return true;};
-        failWarm.execute=[](int tid){return tid!=0;};
-        failWarm.release=[&](int){++releasedWorkers;};
-        PerfResult failedWarm;
-        CHECK(!BenchPool(2,7,5,42,pool,failWarm,failedWarm));
-        CHECK(failedWarm.records.empty() && releasedWorkers==2);
-        releasedWorkers=0;
-        failWarm.threadEnter=[](int tid){if(tid==0) throw std::runtime_error("thread enter failure");};
-        failWarm.execute=[](int){return true;};
-        PerfResult failedEnter;
-        CHECK(!BenchPool(2,7,5,42,pool,failWarm,failedEnter));
-        CHECK(failedEnter.records.empty() && releasedWorkers==2);
+}
+
+void WriteText(const std::string &path, const std::string &text) {
+    WriteBytes(path, text.data(), text.size());
+}
+
+std::vector<char> ReadBytes(const std::string &path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("cannot read " + path);
     }
-    resources.setup=[](int){return false;};
-    PerfResult unmeasured;
-    CHECK(!BenchPool(1,10,0,42,pool,resources,unmeasured));
-    CHECK(unmeasured.records.empty());
-    // Nearest rank must not move p99 up one sample at exact hundredths.
-    CHECK(NearestRankIndex(100,.99)==98 && NearestRankIndex(1000,.99)==989);
-    CHECK(NearestRankIndex(1,.99)==0);
-    {
-        RequestPool cases;cases.distinctShapes=2;
-        for(int i=0;i<5;++i){Request req;req.name="sample-"+std::to_string(i);req.shapeKey=std::to_string(i%2);req.samples=1;cases.requests.push_back(req);}
-        PoolResources fake;fake.setup=[](int){return true;};fake.release=[](int){};
-        fake.setInputs=[](int,const Request &,PhaseTime &){return true;};fake.execute=[](int){return true;};
-        std::atomic<int64_t> ticks{0};size_t finished=0,captured=0;
-        ReplayOptions options;options.runId="cpu";options.enabled=true;options.minSeconds=.010;options.maxSeconds=.100;
-        options.minRequests=3;options.maxRequests=100;options.warmupPerCase=1;options.captureOutputs=true;
-        options.now=[&](){return Clock::time_point(std::chrono::milliseconds(ticks.fetch_add(1)));};
-        fake.finishOutputs=[&](int,const Request &,RequestRecord &r){++finished;r.d2hBytes=40448;ticks.fetch_add(7);return true;};
-        fake.captureRequest=[&](int,const Request &req,const RequestRecord &r){
-            CHECK(r.inputSet==req.name && r.completedNs>r.startedNs && r.d2hBytes==40448);++captured;return true;
-        };
-        PerfResult replay;CHECK(ReplayPool(1,42,options,cases,fake,replay));
-        CHECK(replay.statisticsSufficient && replay.warmupRuns==5 && replay.requests>=3);
-        CHECK(finished==replay.requests+5 && captured==replay.requests);
-        CHECK(replay.records.size()==replay.requests && replay.windowSuccesses<=replay.requests);
-        for(size_t i=0;i<replay.records.size();++i){const auto &r=replay.records[i];CHECK(r.req==i && r.d2hMs>=7 && r.e2eMs>=r.d2hMs && !r.error);}
-        CHECK(PerfToJson(replay)["latency_scope"]=="h2d_desc_execute_sync_d2h");
-        CHECK(WriteRequestEvents(dir+"/events.jsonl",replay));
-        {std::ifstream f(dir+"/events.jsonl");std::string line;size_t lines=0;while(std::getline(f,line)){auto e=nlohmann::json::parse(line);CHECK(e["d2h_bytes"]==40448);++lines;}CHECK(lines==replay.requests+5);}
-        // Multiple independent workers must retain case/request/output association, including equal shapes.
-        {
-            ReplayOptions parallel=options;parallel.now={};parallel.minSeconds=.001;parallel.maxSeconds=1;
-            parallel.minRequests=100;parallel.maxRequests=200;
-            PoolResources isolated;std::string current[2];size_t captures[2]={0,0};
-            isolated.setup=[](int){return true;};isolated.release=[](int){};
-            isolated.setInputs=[&](int tid,const Request &req,PhaseTime &){current[tid]=req.name;return true;};
-            isolated.execute=[](int){return true;};
-            isolated.finishOutputs=[&](int tid,const Request &req,RequestRecord &r){CHECK(current[tid]==req.name);r.d2hBytes=40448;return true;};
-            isolated.captureRequest=[&](int tid,const Request &req,const RequestRecord &r){CHECK(current[tid]==req.name && r.inputSet==req.name && r.instance==tid);++captures[tid];return true;};
-            PerfResult concurrent;CHECK(ReplayPool(2,42,parallel,cases,isolated,concurrent));
-            CHECK(concurrent.requests>=100 && concurrent.requests<=200 && captures[0]+captures[1]==concurrent.requests);
-            Sampler expected(cases.requests.size(),42);
-            for(size_t i=0;i<concurrent.records.size();++i){CHECK(concurrent.records[i].req==i);CHECK(concurrent.records[i].inputSet==cases.requests[expected.Next()].name);}
+    in.seekg(0, std::ios::end);
+    const std::streamoff length = in.tellg();
+    in.seekg(0, std::ios::beg);
+    std::vector<char> out(static_cast<size_t>(length));
+    if (length > 0 && !in.read(out.data(), length)) {
+        throw std::runtime_error("short read " + path);
+    }
+    return out;
+}
+
+void WriteRawNpy(const std::string &path, const std::string &dictBody,
+                 const std::vector<char> &payload, int major = 1) {
+    std::string header = dictBody;
+    if (header.empty() || header.back() != '\n') {
+        header.push_back('\n');
+    }
+    std::vector<char> raw(kMagic, kMagic + sizeof(kMagic));
+    raw.push_back(static_cast<char>(major));
+    raw.push_back(0);
+    if (major == 1) {
+        const uint16_t len = static_cast<uint16_t>(header.size());
+        raw.push_back(static_cast<char>(len & 0xFF));
+        raw.push_back(static_cast<char>((len >> 8) & 0xFF));
+    } else {
+        const uint32_t len = static_cast<uint32_t>(header.size());
+        for (int i = 0; i < 4; ++i) {
+            raw.push_back(static_cast<char>((len >> (8 * i)) & 0xFF));
         }
-        // A copy failure must retain its stage/terminal record, stop dispatch, and never call capture.
-        captured=0;finished=0;ticks=0;
-        fake.finishOutputs=[&](int,const Request &,RequestRecord &r){r.d2hBytes=40448;return ++finished!=7;};
-        PerfResult failed;CHECK(!ReplayPool(1,42,options,cases,fake,failed));
-        CHECK(failed.requests==1 && failed.errors==1 && failed.records.size()==2 && captured==1);
-        CHECK(failed.records.back().error && failed.records.back().errorStage=="d2h");
-        CHECK(!failed.statisticsSufficient);
-        // A bounded window drains a slow request but does not count its late completion as window QPS.
-        ticks=0;options.minRequests=1;options.maxRequests=50;options.maxSeconds=.025;options.minSeconds=.010;options.captureOutputs=false;
-        fake.finishOutputs=[&](int,const Request &,RequestRecord &r){r.d2hBytes=40448;ticks.fetch_add(20);return true;};
-        PerfResult limited;CHECK(ReplayPool(1,42,options,cases,fake,limited));
-        CHECK(!limited.statisticsSufficient && limited.windowSuccesses==0 && limited.requests==1 && limited.inFlightAtEnd==1 && limited.drainMs>0);
-        CHECK(PerfToJson(limited)["samples_per_second"]==0 && PerfToJson(limited)["cohort_qps"].get<double>()>0);
-        // Sink failures stay terminal failures, rather than a successful D2H turning into a claimed successful response.
-        ticks=0;options.captureOutputs=true;options.minRequests=1;options.maxRequests=10;
-        fake.captureRequest=[](int,const Request &,const RequestRecord &){throw std::runtime_error("sink failure");return true;};
-        PerfResult sinkFailed;CHECK(!ReplayPool(1,42,options,cases,fake,sinkFailed));
-        CHECK(sinkFailed.errors==1 && sinkFailed.records.size()==1 && sinkFailed.records[0].errorStage=="capture");
     }
-    std::cout<<"runtime contract checks passed\n";
+    raw.insert(raw.end(), header.begin(), header.end());
+    raw.insert(raw.end(), payload.begin(), payload.end());
+    WriteBytes(path, raw.data(), raw.size());
+}
+
+template <typename Fn>
+bool ThrowsRuntime(Fn fn) {
+    try {
+        fn();
+    } catch (const std::runtime_error &) {
+        return true;
+    }
+    return false;
+}
+
+template <typename Fn>
+bool ThrowsInvalidArgument(Fn fn) {
+    try {
+        fn();
+    } catch (const std::invalid_argument &) {
+        return true;
+    }
+    return false;
+}
+
+void TestNpyRoundTrip(const fs::path &dir) {
+    const fs::path root = dir / "npy";
+    fs::create_directories(root);
+
+    {
+        const std::string path = (root / "f32_2d.npy").string();
+        const float values[6] = {1.0f, -2.5f, 3.25f, 4.0f, 5.5f, 6.125f};
+        WriteNpy(path, "float32", {2, 3}, values, sizeof(values));
+        const NpyArray array = ReadNpy(path);
+        CHECK(array.dtype == "float32");
+        CHECK(array.shape == (std::vector<int64_t>{2, 3}));
+        CHECK(array.data.size() == sizeof(values));
+        CHECK(std::memcmp(array.data.data(), values, sizeof(values)) == 0);
+    }
+    {
+        const std::string path = (root / "i64_1d.npy").string();
+        const int64_t values[3] = {-1, 0, 9000000000LL};
+        WriteNpy(path, "int64", {3}, values, sizeof(values));
+        const NpyArray array = ReadNpy(path);
+        CHECK(array.dtype == "int64");
+        CHECK(array.shape == (std::vector<int64_t>{3}));
+        CHECK(array.data.size() == sizeof(values));
+        CHECK(std::memcmp(array.data.data(), values, sizeof(values)) == 0);
+    }
+    {
+        const std::string path = (root / "bool_1d.npy").string();
+        const unsigned char values[3] = {0, 1, 1};
+        WriteNpy(path, "bool", {3}, values, sizeof(values));
+        const NpyArray array = ReadNpy(path);
+        CHECK(array.dtype == "bool");
+        CHECK(array.shape == (std::vector<int64_t>{3}));
+        CHECK(array.data.size() == sizeof(values));
+        CHECK(std::memcmp(array.data.data(), values, sizeof(values)) == 0);
+    }
+    {
+        const std::string path = (root / "scalar.npy").string();
+        const int32_t value = 42;
+        WriteNpy(path, "int32", {}, &value, sizeof(value));
+        const NpyArray array = ReadNpy(path);
+        CHECK(array.dtype == "int32");
+        CHECK(array.shape.empty());
+        CHECK(array.data.size() == sizeof(value));
+        CHECK(std::memcmp(array.data.data(), &value, sizeof(value)) == 0);
+    }
+    {
+        const std::string path = (root / "u8_1d.npy").string();
+        const uint8_t values[4] = {0, 255, 1, 2};
+        WriteNpy(path, "uint8", {4}, values, sizeof(values));
+        const NpyArray array = ReadNpy(path);
+        CHECK(array.dtype == "uint8");
+        CHECK(array.shape == (std::vector<int64_t>{4}));
+        CHECK(array.data.size() == sizeof(values));
+        CHECK(std::memcmp(array.data.data(), values, sizeof(values)) == 0);
+    }
+    // dtype <-> descr 表
+    CHECK(DtypeBytes("bfloat16") == 2 && DtypeBytes("float32") == 4 &&
+          DtypeBytes("bool") == 1 && DtypeBytes("nope") == 0);
+    CHECK(DtypeToDescr("float32") == "<f4" && DtypeToDescr("uint8") == "|u1" &&
+          DtypeToDescr("bfloat16") == "|u2" && DtypeToDescr("nope").empty());
+    CHECK(DescrToDtype("<f4") == "float32" && DescrToDtype("|b1") == "bool" &&
+          DescrToDtype("|u2") == "bfloat16" && DescrToDtype("<u2") == "uint16" &&
+          DescrToDtype(">f4").empty() && DescrToDtype("|O").empty() &&
+          DescrToDtype("|U2").empty());
+}
+
+void TestNpyRejects(const fs::path &dir) {
+    const fs::path root = dir / "npy_rejects";
+    fs::create_directories(root);
+    const std::vector<char> payload8(8, '\x01');
+
+    {
+        const std::string path = (root / "fortran.npy").string();
+        WriteRawNpy(path, "{'descr': '<f4', 'fortran_order': True, 'shape': (2,), }",
+                    payload8);
+        CHECK(ThrowsRuntime([&] { ReadNpy(path); }));
+    }
+    {
+        const std::string path = (root / "big_endian.npy").string();
+        WriteRawNpy(path, "{'descr': '>f4', 'fortran_order': False, 'shape': (2,), }",
+                    payload8);
+        CHECK(ThrowsRuntime([&] { ReadNpy(path); }));
+    }
+    {
+        const std::string objectPath = (root / "object.npy").string();
+        WriteRawNpy(objectPath,
+                    "{'descr': '|O', 'fortran_order': False, 'shape': (1,), }", payload8);
+        CHECK(ThrowsRuntime([&] { ReadNpy(objectPath); }));
+        const std::string unicodePath = (root / "unicode.npy").string();
+        WriteRawNpy(unicodePath,
+                    "{'descr': '|U2', 'fortran_order': False, 'shape': (2,), }", payload8);
+        CHECK(ThrowsRuntime([&] { ReadNpy(unicodePath); }));
+    }
+    {
+        // 先写合法文件, 再截断 2 字节。
+        const std::string valid = (root / "valid.npy").string();
+        const int32_t values[2] = {1, 2};
+        WriteNpy(valid, "int32", {2}, values, sizeof(values));
+        std::vector<char> raw = ReadBytes(valid);
+        raw.resize(raw.size() - 2);
+        const std::string truncated = (root / "truncated.npy").string();
+        WriteBytes(truncated, raw.data(), raw.size());
+        CHECK(ThrowsRuntime([&] { ReadNpy(truncated); }));
+    }
+    {
+        const std::string path = (root / "bad_magic.npy").string();
+        std::vector<char> raw(kMagic, kMagic + sizeof(kMagic));
+        raw[0] = 'X';
+        raw.push_back(1);
+        raw.push_back(0);
+        raw.push_back(0);
+        raw.push_back(0);
+        WriteBytes(path, raw.data(), raw.size());
+        CHECK(ThrowsRuntime([&] { ReadNpy(path); }));
+    }
+    {
+        const std::string path = (root / "short_data.npy").string();
+        WriteRawNpy(path, "{'descr': '<f4', 'fortran_order': False, 'shape': (2, 3), }",
+                    payload8);
+        CHECK(ThrowsRuntime([&] { ReadNpy(path); }));
+    }
+    {
+        // bfloat16 以 '|u2' 存储; override 只做标注, 字节数必须一致。
+        const std::string path = (root / "bf16.npy").string();
+        WriteRawNpy(path, "{'descr': '|u2', 'fortran_order': False, 'shape': (2,), }",
+                    std::vector<char>{'\x80', '\x3f', '\x00', '\x40'});
+        const NpyArray native = ReadNpy(path);
+        CHECK(native.dtype == "bfloat16" && native.shape.size() == 1 &&
+              native.shape[0] == 2 && native.data.size() == 4);
+        const NpyArray overridden = ReadNpy(path, "bfloat16");
+        CHECK(overridden.dtype == "bfloat16" && overridden.data == native.data);
+    }
+    {
+        const std::string path = (root / "override_mismatch.npy").string();
+        WriteRawNpy(path, "{'descr': '<f4', 'fortran_order': False, 'shape': (2,), }",
+                    payload8);
+        CHECK(ThrowsRuntime([&] { ReadNpy(path, "float16"); }));
+        CHECK(ThrowsRuntime([&] { ReadNpy(path, "not_a_dtype"); }));
+    }
+    {
+        // v2.0 头 (4 字节 header_len) 应能读取。
+        const std::string path = (root / "v2.npy").string();
+        const float values[2] = {1.5f, 2.5f};
+        std::vector<char> payload(sizeof(values));
+        std::memcpy(payload.data(), values, sizeof(values));
+        WriteRawNpy(path, "{'descr': '<f4', 'fortran_order': False, 'shape': (2,), }",
+                    payload, 2);
+        const NpyArray array = ReadNpy(path);
+        CHECK(array.dtype == "float32" && array.shape == (std::vector<int64_t>{2}));
+        CHECK(std::memcmp(array.data.data(), values, sizeof(values)) == 0);
+    }
+}
+
+nlohmann::json GoodCases() {
+    return nlohmann::json::parse(R"json({
+        "cases": [
+            {"id": "case-0000",
+             "inputs": [
+                 {"name": "x", "path": "a/x.npy"},
+                 {"name": "y", "path": "a/y.npy"}]},
+            {"id": "case-0001",
+             "samples": 3,
+             "inputs": [
+                 {"name": "x", "path": "b/x.npy"},
+                 {"name": "y", "path": "a/y.npy"}]}
+        ]
+    })json");
+}
+
+void WriteJson(const std::string &path, const nlohmann::json &value) {
+    WriteText(path, value.dump(2));
+}
+
+void TestCases(const fs::path &dir) {
+    const fs::path root = dir / "cases";
+    fs::create_directories(root / "a");
+    fs::create_directories(root / "b");
+
+    const float xA[6] = {1, 2, 3, 4, 5, 6};
+    const float xB[15] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+    const int64_t yA[4] = {7, 8, 9, 10};
+    WriteNpy((root / "a" / "x.npy").string(), "float32", {2, 3}, xA, sizeof(xA));
+    WriteNpy((root / "b" / "x.npy").string(), "float32", {5, 3}, xB, sizeof(xB));
+    WriteNpy((root / "a" / "y.npy").string(), "int64", {4}, yA, sizeof(yA));
+
+    const std::string casesPath = (root / "cases.json").string();
+    const nlohmann::json good = GoodCases();
+    WriteJson(casesPath, good);
+
+    const CasePool pool = LoadCases(casesPath);
+    CHECK(pool.cases.size() == 2);
+    CHECK(!pool.empty());
+    CHECK(pool.cases[0].id == "case-0000");
+    CHECK(pool.cases[0].samples == 1);  // 缺省 samples
+    CHECK(pool.cases[1].samples == 3);
+    CHECK(pool.cases[0].inputs.size() == 2 && pool.cases[1].inputs.size() == 2);
+    CHECK(pool.cases[0].inputs[0].name == "x");
+    CHECK(pool.cases[0].inputs[0].dtype == "float32");
+    CHECK(pool.cases[0].inputs[0].shape == (std::vector<int64_t>{2, 3}));
+    CHECK(pool.cases[0].inputs[0].data.size() == sizeof(xA));
+    CHECK(std::memcmp(pool.cases[0].inputs[0].data.data(), xA, sizeof(xA)) == 0);
+    CHECK(pool.cases[0].inputs[1].dtype == "int64");
+    CHECK(pool.cases[0].inputs[1].data.size() == sizeof(yA));
+    CHECK(pool.cases[1].inputs[0].shape == (std::vector<int64_t>{5, 3}));
+    CHECK(pool.cases[0].shapeKey == "[2, 3];[4];");
+    CHECK(pool.cases[1].shapeKey == "[5, 3];[4];");
+    CHECK(pool.distinctShapes == 2);
+    CHECK(pool.maxBytes.size() == 2);
+    CHECK(pool.maxBytes[0] == sizeof(xB));
+    CHECK(pool.maxBytes[1] == sizeof(yA));
+    const std::vector<std::string> keys = pool.shapeKeys();
+    CHECK(keys == (std::vector<std::string>{"[2, 3];[4];", "[5, 3];[4];"}));
+
+    // 每个拒绝路径各写一份坏 JSON。
+    const auto expectReject = [&](const nlohmann::json &bad, const std::string &name) {
+        const std::string path = (root / ("bad_" + name + ".json")).string();
+        WriteJson(path, bad);
+        CHECK(ThrowsRuntime([&] { LoadCases(path); }));
+    };
+
+    {
+        nlohmann::json bad = good;
+        bad["cases"][1]["id"] = bad["cases"][0]["id"];
+        expectReject(bad, "duplicate_id");
+    }
+    {
+        nlohmann::json bad = good;
+        bad["cases"] = nlohmann::json::array();
+        expectReject(bad, "empty_cases");
+    }
+    {
+        nlohmann::json bad = good;
+        bad["cases"][0]["inputs"] = nlohmann::json::array();
+        expectReject(bad, "empty_inputs");
+    }
+    {
+        nlohmann::json bad = good;
+        bad["cases"][1]["inputs"].erase(bad["cases"][1]["inputs"].begin());
+        expectReject(bad, "input_count_mismatch");
+    }
+    {
+        nlohmann::json bad = good;
+        bad["cases"][0]["samples"] = 0;
+        expectReject(bad, "samples_zero");
+    }
+    {
+        nlohmann::json bad = good;
+        bad["cases"][0]["inputs"][0]["path"] = "a/missing.npy";
+        expectReject(bad, "missing_npy");
+    }
+    {
+        nlohmann::json bad = good;
+        bad["cases"][0].erase("id");
+        expectReject(bad, "missing_id");
+    }
+    {
+        const std::string missing = (root / "does-not-exist.json").string();
+        CHECK(ThrowsRuntime([&] { LoadCases(missing); }));
+    }
+}
+
+void TestStats() {
+    // Nearest-rank 边界。
+    CHECK(NearestRankIndex(1, 0.5) == 0);
+    CHECK(NearestRankIndex(1, 0.99) == 0);
+    CHECK(NearestRankIndex(1, 1.0) == 0);
+    CHECK(NearestRankIndex(100, 0.99) == 98);
+    CHECK(NearestRankIndex(1000, 0.99) == 989);
+    CHECK(NearestRankIndex(4, 0.5) == 1);
+    CHECK(NearestRankIndex(10, 1.0) == 9);
+    CHECK(ThrowsInvalidArgument([] { return NearestRankIndex(0, 0.5); }));
+    CHECK(ThrowsInvalidArgument([] { return NearestRankIndex(5, 0.0); }));
+    CHECK(ThrowsInvalidArgument([] { return NearestRankIndex(5, 1.5); }));
+    CHECK(ThrowsInvalidArgument([] { return NearestRankIndex(5, -0.1); }));
+
+    CHECK(Percentile({}, 0.5) == 0.0);
+    const std::vector<double> sample = {5, 1, 4, 2, 3};
+    CHECK(Percentile(sample, 0.50) == 3.0);  // nearest-rank 第 3 小
+    CHECK(Percentile(sample, 0.99) == 5.0);
+
+    // DrawSequence: 可复现, 不同 seed 不同, poolSize<=1 恒 0。
+    const std::vector<size_t> drawA = DrawSequence(10, 100, 42);
+    const std::vector<size_t> drawB = DrawSequence(10, 100, 42);
+    CHECK(drawA == drawB);
+    const std::vector<size_t> drawC = DrawSequence(10, 100, 43);
+    CHECK(drawA != drawC);
+    bool inRange = true;
+    for (size_t value : drawA) {
+        inRange = inRange && value < 10;
+    }
+    CHECK(inRange);
+    CHECK(DrawSequence(1, 5, 42) == std::vector<size_t>(5, 0));
+    CHECK(DrawSequence(0, 3, 42) == std::vector<size_t>(3, 0));
+    CHECK(DrawSequence(10, 0, 42).empty());
+
+    // MeasurePlan: 全局序列交错切分。
+    const size_t requests = 101;
+    const size_t instances = 3;
+    const std::vector<size_t> global = DrawSequence(7, requests, 99);
+    const std::vector<std::vector<size_t>> plan =
+        MeasurePlan(7, requests, instances, 99);
+    CHECK(plan.size() == instances);
+    size_t total = 0;
+    for (const auto &lane : plan) {
+        total += lane.size();
+    }
+    CHECK(total == requests);
+    bool interleaved = true;
+    for (size_t t = 0; t < instances; ++t) {
+        for (size_t k = 0; k < plan[t].size(); ++k) {
+            interleaved = interleaved && plan[t][k] == global[t + k * instances];
+        }
+    }
+    CHECK(interleaved);
+    CHECK(plan[0][0] == global[0]);
+    CHECK(MeasurePlan(7, 0, 3, 99).empty());
+    CHECK(MeasurePlan(7, 4, 0, 99).size() == 1);
+
+    // WarmupPlan: 覆盖全部 distinct shape, 再补齐。
+    const std::vector<std::string> shapeKeys = {"a", "b", "a", "c", "b"};
+    const std::vector<std::vector<size_t>> warm =
+        WarmupPlan(shapeKeys, 0, 2, 42);
+    CHECK(warm.size() == 2);
+    for (const auto &lane : warm) {
+        CHECK(lane.size() == 3);
+        CHECK(lane == (std::vector<size_t>{0, 1, 3}));
+    }
+    const std::vector<std::vector<size_t>> warm2 = WarmupPlan(shapeKeys, 7, 2, 42);
+    CHECK(warm2.size() == 2);
+    for (const auto &lane : warm2) {
+        CHECK(lane.size() == 7);
+        CHECK(lane[0] == 0 && lane[1] == 1 && lane[2] == 3);
+    }
+    CHECK(WarmupPlan({}, 5, 2, 42).empty());
+    CHECK(WarmupPlan(shapeKeys, 2, 0, 42).size() == 1);
+
+    // Summarize: 只把 success 计入 requests/samples/latency, errors/perInstance 含失败。
+    RunStats stats;
+    stats.wallMs = 1000.0;
+    stats.warmupRuns = 4;
+    stats.warmupMs = 12.5;
+    stats.compileMs = 3.0;
+    stats.loadMs = {1.0, 2.0};
+
+    auto addRecord = [&stats](int instance, size_t request, const std::string &caseId,
+                              double e2e, double exec, double d2h, int64_t samples, bool error) {
+        RequestTiming record;
+        record.instance = instance;
+        record.request = request;
+        record.caseId = caseId;
+        record.shapeKey = "shape";
+        record.samples = samples;
+        record.h2dMs = 1.0;
+        record.execMs = exec;
+        record.d2hMs = d2h;
+        record.e2eMs = e2e;
+        record.error = error;
+        stats.records.push_back(record);
+    };
+    addRecord(0, 0, "case-a", 3.0, 2.0, 0.5, 16, false);
+    addRecord(0, 1, "case-b", 5.0, 4.0, 1.0, 7, false);
+    addRecord(1, 2, "case-a", 10.0, 6.0, 1.5, 5, false);
+    addRecord(1, 3, "case-a", 99.0, 90.0, 8.0, 11, true);   // 失败请求的样本/D2H 不计入
+
+    Summarize(stats);
+    CHECK(stats.requests == 3);
+    CHECK(stats.errors == 1);
+    CHECK(stats.samples == 28);   // 16 + 7 + 5, 失败那条的 11 不算
+    CHECK(stats.perInstance == (std::vector<size_t>{2, 2}));
+    CHECK(stats.e2eAvg == 6.0);
+    CHECK(stats.e2eMin == 3.0);
+    CHECK(stats.e2eMax == 10.0);
+    CHECK(stats.e2eP50 == 5.0);   // {3,5,10} 的 nearest-rank p50
+    CHECK(stats.e2eP99 == 10.0);
+    CHECK(stats.execAvg == 4.0);
+    CHECK(stats.execP99 == 6.0);
+    CHECK(stats.d2hAvg == 1.0);   // (0.5 + 1.0 + 1.5) / 3, 失败那条的 8.0 不算
+    CHECK(stats.qps == 3.0);      // 3 次成功 / 1s
+    CHECK(stats.samplesPerSecond == 28.0);
+
+    RunStats zeroWall;
+    zeroWall.wallMs = 0.0;
+    zeroWall.records = stats.records;
+    Summarize(zeroWall);
+    CHECK(zeroWall.qps == 0.0 && zeroWall.samplesPerSecond == 0.0);
+}
+
+void TestJsonOutput(const fs::path &dir) {
+    const fs::path root = dir / "json";
+    fs::create_directories(root);
+
+    RunStats stats;
+    stats.status = "success";
+    stats.mode = "bench";
+    stats.wallMs = 500.0;
+    stats.warmupRuns = 2;
+    stats.loadMs = {0.5};
+    RequestTiming record;
+    record.instance = 0;
+    record.request = 0;
+    record.caseId = "case-a";
+    record.shapeKey = "[1];";
+    record.samples = 7;
+    record.h2dMs = 0.1;
+    record.execMs = 0.2;
+    record.d2hMs = 0.05;
+    record.e2eMs = 0.35;   // h2d + exec + d2h, 与运行时口径一致
+    record.firstHit = true;
+    stats.records.push_back(record);
+    Summarize(stats);
+
+    const nlohmann::json json = StatsToJson(stats);
+    CHECK(json["status"] == "success");
+    CHECK(json["mode"] == "bench");
+    CHECK(json["requests"] == 1);
+    CHECK(json["errors"] == 0);
+    CHECK(json["samples"] == 7);
+    CHECK(json["wall_ms"] == 500.0);
+    CHECK(json["qps"] == 2.0);
+    CHECK(json["d2h_avg"] == 0.05);
+    CHECK(json["warmup_runs"] == 2);
+    CHECK(json["load_ms"].size() == 1);
+    CHECK(json["per_instance"].size() == 1);
+    CHECK(json["records"].size() == 1);
+    const nlohmann::json &entry = json["records"][0];
+    CHECK(entry["instance"] == 0);
+    CHECK(entry["request"] == 0);
+    CHECK(entry["case_id"] == "case-a");
+    CHECK(entry["shape_key"] == "[1];");
+    CHECK(entry["samples"] == 7);
+    CHECK(entry["h2d_ms"] == 0.1);
+    CHECK(entry["exec_ms"] == 0.2);
+    CHECK(entry["d2h_ms"] == 0.05);
+    CHECK(entry["e2e_ms"] == 0.35);
+    CHECK(entry["first_hit"] == true);
+    CHECK(entry["error"] == false);
+
+    // 父目录不存在时递归创建, 且落盘内容可被重新解析。
+    const std::string nested = (root / "nested" / "deeper" / "result.json").string();
+    WriteJsonFile(nested, json);
+    CHECK(fs::exists(nested));
+    std::ifstream in(nested);
+    CHECK(static_cast<bool>(in));
+    nlohmann::json parsed;
+    in >> parsed;
+    CHECK(parsed["records"].size() == 1);
+    CHECK(parsed["records"][0]["case_id"] == "case-a");
+    CHECK(parsed["requests"] == 1);
+}
+
+}  // namespace
+
+int main(int argc, char **argv) {
+    try {
+        CHECK(argc == 2);
+        const fs::path dir = argv[1];
+        fs::create_directories(dir);
+        TestNpyRoundTrip(dir);
+        TestNpyRejects(dir);
+        TestCases(dir);
+        TestStats();
+        TestJsonOutput(dir);
+        std::cout << "runtime_contracts: OK\n";
+        return 0;
+    } catch (const std::exception &ex) {
+        std::cerr << "runtime_contracts: FAILED: " << ex.what() << "\n";
+        return 1;
+    } catch (...) {
+        std::cerr << "runtime_contracts: FAILED: unknown exception\n";
+        return 1;
+    }
 }

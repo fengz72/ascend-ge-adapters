@@ -27,6 +27,26 @@ export TMPDIR="$PWD/work/tmp"
 
 自包含交付（如 `models/qwen2.5-0.5b`、`models/startlux-decision-v1.1-0.8b-instant-text`）的 `run.sh` 会自行加载 CANN 与算子环境；下面的 core 七步继续使用上面的 CANN 环境。
 
+## 独立运行时 ge_execute
+
+`runtime/` 现在只有一个二进制 `ge_execute`：加载一张 AIR 或 ONNX 图，用 GE Session 按 `cases.json` 描述的 npy 输入跑 infer 或 bench；实例数、warmup、运行次数、限核、profiling 全部由命令行指定。模型侧只提供图、`cases.json` 和 npy，不需要 io 契约文件。用法、`cases.json` 规范、计时口径、限制与验证记录见 [runtime 说明](runtime/README.md)。
+
+```bash
+bash runtime/build.sh
+runtime/build/ge_execute --graph work/build/model.onnx --cases work/inputs/cases.json \
+    --output-dir work/bench --device 0 --instances 10 --warmup 1 --iterations 1000 --aicore-num 12|24
+```
+
+> **迁移状态**：旧的 `ge_runtime`（stdin plan 协议）、`executor`、`pipeline_runtime` 已删除，下列调用方暂时没有可执行后端，下一步改为调用 `ge_execute`：
+>
+> - `core.pipeline` 的 infer/bench，以及 `core.pipeline build` 的 AIR 路径（IO 嵌入）；
+> - `models/bge/run.sh`；
+> - `models/qwen2.5-0.5b/run.sh`、`models/onejev1.6-0.8b/run.sh`、`models/startlux-decision-v1.1-0.8b-instant-text/run.sh`：仍调用 `runtime/build/executor`，后两者的 bench 还用到 `ge_execute` 尚未提供的 `--readout`；
+> - `tools/compare.py`：要求 `outputs.bin` + `result.json` 的 `outputs` 索引（ge-compare/1），而 `ge_execute` 写 `<case_id>/output_<i>.npy` + `cases` 索引；
+> - 上述三个模型的 `model/generate_inputs.py` / `model/golden.py` 仍产出并校验 `ge-records/3`，需改为 `ge-cases/1` + 每 case 独立 npy。
+>
+> 迁移时注意 `ge_execute` 的 `--precision-mode` 默认是 `force_fp16`，而旧 `executor` 固定用 `must_keep_origin_dtype`；要复现既有精度基线必须显式传参。data/baseline 等纯 Python 步骤与 ONNX 导出不受影响。
+
 ## 七个独立步骤
 
 每条命令只执行本步，缺少输入、图或依赖时直接报错，不补跑前置步骤。没有 check、resolve、verify 或 profile 命令。
@@ -125,7 +145,7 @@ models/       模型适配、数据脚本、唯一模型 YAML、构建脚本和�
 third_party/  自定义算子、GE pass、插件源码
 targets/      精确芯片目录
 core/         七步编排、源模型加载、导出、比较和原生运行边界
-runtime/      GE Session / ATC OM 执行、并发、限核、测量、采集
+runtime/      ge_execute: GE Session 单图执行 (AIR/ONNX)、并发实例、限核、测量、采集
 tools/        profiling/dump 离线分析
 tests/        行为与运行契约测试
 docs/         项目说明、验证与调优文档
