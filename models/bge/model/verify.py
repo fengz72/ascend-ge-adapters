@@ -1,15 +1,38 @@
-"""Compare GE rankings to the supplied business reference, independently of CPU golden."""
+"""BGE business Top-10 gate: compare GE rankings to the supplied reference.
+
+Used two ways, both as a **module**, never as a script:
+
+* ``core/verify.py:compare_business`` loads it from ``verification.script`` with
+  ``spec_from_file_location`` and calls ``compare(config, outputs)``;
+* ``model/compare.py`` imports it directly and calls the same ``compare``, then
+  aggregates the two gates and writes ``comparison.json``.
+
+The ``compare(config, outputs)`` signature and return shape are retained
+unchanged because ``tests/`` exercises them through ``core/verify.py``.  The
+module never imports ``core``.
+
+There is deliberately **no CLI**.  Nothing in the repository ever invoked one
+(both call sites above go through ``compare``), and the ``outputs.npz`` it read
+is no longer produced -- ``model/compare.py`` now reads ``ge_execute``'s per-case
+NPY outputs directly.  The removed ``main`` / ``load_rows`` / ``_row`` /
+``_unwrap_scores`` were 69 of this file's 168 lines.
+"""
 import json
 from pathlib import Path
 
 import numpy as np
 
 
-def compare(config, outputs):
-    params = config["verification"]["params"]
-    path = Path(params["expected_outputs"])
+def _expected_path(config):
+    path = Path(config["verification"]["params"]["expected_outputs"])
     if not path.is_absolute():
         path = Path(config["_root"]) / path
+    return path
+
+
+def compare(config, outputs):
+    params = config["verification"]["params"]
+    path = _expected_path(config)
     atol = params["atol"]
     if isinstance(atol, bool) or not isinstance(atol, (int, float)) or not np.isfinite(atol) or atol < 0:
         raise ValueError("BGE Top-10 atol must be a finite nonnegative number")
@@ -64,7 +87,7 @@ def compare(config, outputs):
             "ranks": [{"rank": rank + 1, "expected_dense_id": int(expected_ids[rank]),
                        "actual_dense_id": int(ids[rank]),
                        "expected_score": float(expected_scores[rank]),
-                       "actual_score": float(actual_scores[rank]),
-                       "abs_error": float(errors[rank])} for rank in range(10)],
+                        "actual_score": float(actual_scores[rank]),
+                        "abs_error": float(errors[rank])} for rank in range(10)],
         }
     return reports

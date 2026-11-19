@@ -16,7 +16,7 @@ class BgeInputPoolReviewRegressions(unittest.TestCase):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.samples_file = self.root / "sample_inputs.json"
         self.config = {"_root": str(self.root), "data": {
-            "script": str(ROOT / "models/bge/generate_cases.py"),
+            "script": str(ROOT / "models/bge/model/generate_cases.py"),
             "directory": str(self.root / "inputs"),
             "params": {"samples_file": "sample_inputs.json"}}}
         self.samples = [{"case_id": i, "input": {

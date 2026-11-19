@@ -122,7 +122,7 @@ python3 -m core.pipeline bench --config models/tiny/config.yaml --device 6 --ins
 
 baseline 和 infer 分别在 work/<模型名> 保存 golden.npz、outputs.npz，只包含本次选择的 case；每个 case 保留业务输出与对齐信息。compare 要求为所有实际业务输出配置策略，缺失、多余或未配置的输出直接报错；不允许空策略绕过精度比较。compare 只读取这两个数据文件，无需输入目录、NPU、原始模型或依赖安装目录。精度和性能结果、日志、requests.csv 位于 work/<模型名>/results/<run>。测量过程中执行失败时仍保存已完成调用、失败调用和部分统计，并将本次结果标为 failed；初始化失败不生成虚假的性能值。内部传输使用的 inputs.bin/outputs.bin 在执行结束删除。
 
-模型可通过 `verification.script` 增加外部业务基准校验，参数放在 `verification.params`。脚本提供 `compare(config, outputs)`，接收所选 case 的标准输出行，返回以相同 case ID 为键、包含布尔 `passed` 的报告。compare 在 CPU golden 比较后调用脚本，业务报告写入各 case 的 `business` 字段，任一检查失败都会使流程失败。此时 compare 还会读取脚本指定的外部基准文件。BGE 默认使用提供的 5 条业务样例，并直接校验 `expected_outputs.json` 的 Top-10 ID、顺序和分数。
+模型可通过 `verification.script` 增加外部业务基准校验，参数放在 `verification.params`。脚本提供 `compare(config, outputs)`，接收所选 case 的标准输出行，返回以相同 case ID 为键、包含布尔 `passed` 的报告。compare 在 CPU golden 比较后调用脚本，业务报告写入各 case 的 `business` 字段，任一检查失败都会使流程失败。此时 compare 还会读取脚本指定的外部基准文件。BGE 的 5 条业务样例与 Top-10 ID/顺序/分数校验就是这个机制的用例；不过 `models/bge/` 现已改为自包含目录、不再经本框架运行，它在自己内部完成同样的两道门禁，`models/bge/model/verify.py` 仍保留 `compare(config, outputs)` 签名供 `tests/` 的框架测试使用（夹具见 `tests/fixtures/bge_config.yaml`）。
 
 每次命令读取当前 YAML。修改实例数直接重跑 bench；GE Session 限核在加载 AIR 时设置，ATC 限核在编译 OM 时设置，因此 ATC 编译参数改变需要显式重新 build。修改依赖源码后显式 prepare。没有自动缓存命中或兼容旧接口的分支。
 

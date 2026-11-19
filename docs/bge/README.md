@@ -3,6 +3,8 @@
 当前执行项目位于 100 机器的 `hejun-cann9-bge` 容器：
 `/export/home/ext.hejun23/workspace/bge-opt-100`。100 项目以 `runner/docs/bge/` 为文档正本，项目根 `docs/bge/` 是兼容链接；本地工作区保留副本。99 机器的历史结果单独见 [acceptance.md](acceptance.md)。
 
+> **本索引描述的是 100 机器的历史形态。** 本仓库的 `models/bge/` 已改为自包含目录：不 import `core/`、没有 `config.yaml`、不经七步入口，改由 `models/bge/run.sh` 自行驱动原生运行时（原 `runtime/build/ge_runtime` 已在 `2bd6f97` 被 `ge_execute` 取代，`run.sh` 与 `model/driver.py` 待迁移，当前用法见 [ge_execute 接入说明](ge-execute-usage.md)），ONNX 图由环境变量 `BGE_MODEL_PATH` 提供，样例与参考输出随仓库提交在 `models/bge/fixtures/`。下表中的 `models/bge/config.yaml`、`models/bge/replay.py`、项目根 `materials/`、`tools/run_one.py` 等条目**在当前仓库已不存在或不再适用于 BGE**，仅作为历史交付记录保留；当前入口见 [models/bge/README.md](../../models/bge/README.md)。
+
 ## 当前状态
 
 - **2026-10-28 runner 修复**：输出 dtype 别名、材料相对路径和交付路径问题已修复；新二进制通过五例 22,274 请求全量输出校验及固定/随机各一轮 60 秒性能检查。旧三轮性能中位数与新构建单轮结果分开记录，见[修复与验证报告](analysis/100-runner-review-fix-20261028.md)。
@@ -18,6 +20,7 @@
 |用途|位置|说明|
 |---|---|---|
 |需求与设计|[brief.md](brief.md)、[design.md](design.md)|路线、输入输出、精度与测量契约|
+|新运行时用法|[ge-execute-usage.md](ge-execute-usage.md)|`ge_execute` 的 `cases.json` 规范、命令与参数、产物与计时口径、精度门禁接法、环境变量与限制|
 |交付结论|[delivery-100.md](delivery-100.md)|最终配置、正确性、固定/随机双场景性能及全部优化记录汇总|
 |当前进度|[progress.md](progress.md)|按时间追加的执行与决策记录；顶部是最新状态|
 |优化点|[experiments/](experiments/)|`OPT-001`～`OPT-017`，包括失败和未接纳候选|

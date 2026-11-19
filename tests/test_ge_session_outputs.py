@@ -15,7 +15,7 @@ class GeSessionOutputs(unittest.TestCase):
         self.device = int(os.environ["GE_TEST_DEVICE"])
         (ROOT / "work").mkdir(exist_ok=True)
         self.directory = Path(self.enterContext(tempfile.TemporaryDirectory(dir=ROOT / "work")))
-        self.config = load_authoring(ROOT / "models/bge/config.yaml",
+        self.config = load_authoring(ROOT / "tests/fixtures/bge_config.yaml",
                                      target=os.environ.get("GE_TEST_TARGET", "Ascend910_9382"),
                                      source_paths=False)
         self.config["work_dir"] = str(self.directory)

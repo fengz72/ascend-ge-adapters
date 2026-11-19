@@ -18,7 +18,7 @@ class BgeBusinessVerification(unittest.TestCase):
         (ROOT / "work").mkdir(exist_ok=True)
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory(dir=ROOT / "work")))
         self.expected_file = self.root / "expected_outputs.json"
-        self.config = load_authoring(ROOT / "models/bge/config.yaml", source_paths=False)
+        self.config = load_authoring(ROOT / "tests/fixtures/bge_config.yaml", source_paths=False)
         self.config["work_dir"] = str(self.root)
         self.config["verification"]["params"]["expected_outputs"] = str(self.expected_file)
         self.ids = [10112, 1, 5, 7, 10, 20, 30, 40, 50, 60]
@@ -128,7 +128,7 @@ source:
 target: Ascend910_9382
 work_dir: {self.root}
 verification:
-  script: models/bge/verify.py
+  script: models/bge/model/verify.py
   params:
     expected_outputs: {self.expected_file}
     atol: 0.001
