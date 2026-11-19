@@ -1,7 +1,8 @@
 """Standalone official CPU FP32 golden for the StartLux unified ONE-AIR route.
 
 The reference stage of the standalone shell flow (docs/standalone-runtime-plan.md):
-no ``core``, no modeling code on the forward path, no NPU, no LD_PRELOAD.  It loads
+no orchestration framework, no modeling code on the forward path, no NPU,
+no LD_PRELOAD.  It loads
 the SAME weights folder (STARTLUX_MODEL_DIR) as an independent CPU float32
 official model and consumes the SAVED official preprocessing results of the
 data stage (work/inputs/rows/<case>.npz, the per-row TRUE-length encodings), so

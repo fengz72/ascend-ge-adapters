@@ -1,10 +1,10 @@
 """Aggregate the two BGE accuracy gates: CPU-golden numerics and business Top-10.
 
-Standalone replacement of the ``core.worker.compare_outputs`` stage: no imports
-from ``core``.  The two sides are read in their own formats: the golden is
-``fixtures/cpu-golden.npz`` in the ``core/worker.py:save_rows`` layout
-(``<case>/outputs/scores``), and the candidate is ``ge_execute``'s infer output
-directory -- ``result.json`` plus ``<case_id>/output_<i>.npy``.  The runtime names
+Standalone accuracy gate for the standalone BGE flow.  The two sides are read
+in their own formats: the golden is ``fixtures/cpu-golden.npz`` in the
+``<case>/outputs/scores`` layout (see ``fixtures/SOURCE.md``), and the candidate
+is ``ge_execute``'s infer output directory -- ``result.json`` plus
+``<case_id>/output_<i>.npy``.  The runtime names
 outputs positionally (``output_0``), so ``OUTPUT_NAMES`` below maps them onto the
 graph's own names by position; ``verify.py`` hardcodes the same name.
 
@@ -33,12 +33,11 @@ import sys
 
 import numpy as np
 
-# The business gate is verify.py next to this file -- imported directly, not
-# through core (run.sh only needs this repository).
+# The business gate is verify.py next to this file, imported directly.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import verify as business  # noqa: E402
 
-# core/verify.py:53: an all-zero golden row is judged by absolute closeness.
+# An all-zero golden row is judged by absolute closeness.
 COSINE_ZERO_ATOL = 1e-5
 
 # The graph's output names, in graph order.  ge_execute reports outputs only
@@ -128,7 +127,7 @@ def _load_infer(infer_dir):
 
 
 def _numeric(reference, candidate, cosine_min, relative_l2_max, max_abs_error):
-    """Port of core/verify.py:numeric for the per_sample scope.
+    """Per-sample numeric comparison (the ``per_sample`` scope).
 
     Rows are the first-axis slices of the output (BGE scores are ``[1, 10112]``,
     so one row per captured sample).  A zero golden row is judged by absolute
@@ -154,7 +153,7 @@ def _numeric(reference, candidate, cosine_min, relative_l2_max, max_abs_error):
         nx, ny = np.linalg.norm(x), np.linalg.norm(y)
         diff = np.abs(x - y)
         if nx == 0:
-            # core/verify.py:53: no relative metric for an all-zero golden row.
+            # No relative metric for an all-zero golden row.
             close = bool(np.all(diff <= COSINE_ZERO_ATOL))
             cosine, l2 = (1.0, 0.0) if close else (0.0, None)
             passed = close

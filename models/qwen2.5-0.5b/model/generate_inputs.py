@@ -16,7 +16,8 @@ follows the platform: ``a3`` -> int64, ``a5`` -> int32.
 
 Steps of this pipeline (input generation -> CPU golden -> graph export ->
 runtime) never import each other; they interact only through the files under
-work/.  This stage needs no NPU, no weights beyond config.json, and no ``core``.
+work/.  This stage needs no NPU, no weights beyond config.json, and no
+orchestration framework.
 """
 
 import argparse

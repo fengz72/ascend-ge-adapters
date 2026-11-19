@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The full standalone flow of the StartLux unified ONE-AIR route
-# (docs/standalone-runtime-plan.md): shell-orchestrated, no `core`.
+# (docs/standalone-runtime-plan.md): shell-orchestrated.
 #
 #   export STARTLUX_MODEL_DIR=/path/to/hf-model
 #   bash models/startlux-decision-v1.1-0.8b-instant/run.sh [--device <chip>]

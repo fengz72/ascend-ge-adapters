@@ -13,8 +13,8 @@ GE 适配目录。
 （`decider/golden.py`）与两阶段 split AIR 导出（`model/export_air.py`，产出
 vision.air + text.air），C++ pipeline runtime
 完成推理与性能，公共工具（`tools/compare.py`）完成精度比较，业务概率门禁由
-`decider/verify_business.py` 承担。**不依赖 `core` 流程框架**，无 YAML / adapter /
-handle；固定参数集中在 `run.sh` 顶部。
+`decider/verify_business.py` 承担。无 YAML / adapter / handle；固定参数集中在
+`run.sh` 顶部。
 
 单图交付：视觉塔 + 图像特征注入 + 三轴 MRoPE + 文本 decoder + 26 列读出头整
 合在单一动态 AIR、单次 GESession 中执行。验收状态见
@@ -118,7 +118,6 @@ CPU 单测（pytest 未安装，用例基于 unittest）：
 
 ```bash
 python3 -m unittest tests.test_startlux_native_proto tests.test_startlux_unified_preprocess
-python3 -m unittest tests.test_torchair_example_inputs
 ```
 
 ### dev.txt 旁路（业务 query 意图 case，独立流程）

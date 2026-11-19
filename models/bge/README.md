@@ -150,9 +150,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 ctest --test-dir runtime/build --output-on-failure
 ```
 
-`model/generate_cases.py` 与 `model/verify.py` 都保留 core 插件函数签名（`generate(config)`/`load(config)`、`compare(config, outputs)`，收普通 dict，不 import core），因为 `tests/` 里有三个 core 框架测试拿它们当真实插件用；`tests/fixtures/bge_config.yaml` 是那些测试的夹具，属 core 框架而不属本模型。两者入口形态不同：`generate_cases.py` 有 CLI（第 2 步调它），`verify.py` **只有模块入口、没有 CLI**——`core/verify.py` 与 `model/compare.py` 都只调它的 `compare()`。
-
-五个 opt-in 设备测试（设置 `GE_TEST_DEVICE` 后运行 `tests/test_ge_session_outputs.py`）覆盖静态 rank-1 Slice、多实例复跑、混合 float32/int64 输出、动态 batch、mode-1 兼容及输出容量不足。
+`model/generate_cases.py` 与 `model/verify.py` 的函数签名（`generate(config)`/`load(config)`、`compare(config, outputs)`，收普通 dict）服务于本目录的调用方：`model/compare.py` 调 `verify.py` 的 `compare()`，`run.sh` 第 2 步调 `generate_cases.py` 的 CLI。两者入口形态不同：`generate_cases.py` 有 CLI，`verify.py` **只有模块入口、没有 CLI**。
 
 ## 4. 精度和性能
 

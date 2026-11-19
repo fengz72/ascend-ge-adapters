@@ -1,7 +1,7 @@
 """Standalone input generation for the StartLux unified ONE-AIR route.
 
 The data stage of the standalone shell flow (docs/standalone-runtime-plan.md):
-pure CPU, no weights, no NPU, no ``core``.  It runs the OFFICIAL preprocessing
+pure CPU, no weights, no NPU.  It runs the OFFICIAL preprocessing
 exactly once and persists everything the later stages consume:
 
 * ``work/inputs/inputs.bin``  -- the packed graph-input tensors of the whole

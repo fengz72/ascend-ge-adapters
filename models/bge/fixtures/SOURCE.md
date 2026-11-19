@@ -31,7 +31,7 @@ The business Top-10 reference (`top10_dense_id`, `top10_score`, `scores_len`
 ## `cpu-golden.npz` — a derived artifact
 
 The CPU full-score reference used by the numeric gate: five FP32 `[1, 10112]`
-`scores` arrays under the `core/worker.py:save_rows` layout
+`scores` arrays under the layout `model/compare.py` reads
 (`case-NNNN/outputs/scores` plus `case-NNNN/metadata/alignment`).
 
 It was produced by independent CPU inference, not by this repository: the raw
@@ -39,9 +39,9 @@ ONNX was run with **onnxruntime 1.26.0** (`CPUExecutionProvider` only,
 `intra_op_num_threads=2`, `inter_op_num_threads=1`, sequential execution,
 `graph_optimization_level=ORT_ENABLE_ALL`) over the five samples above, with
 numpy 1.26.4, and the imported NPY inputs were cross-checked tensor-by-tensor
-against the runner's pool.  This is the same path as the old `core` baseline
-stage (`core/worker.py:baseline` -> `core/native_onnx.py`, i.e. onnxruntime CPU
-FP32 inference over `case-*`).
+against the runner's pool.  This matches the baseline stage of the since-removed
+``core`` framework (its ``worker.py:baseline`` -> ``native_onnx.py`` path, also
+onnxruntime CPU FP32 inference over ``case-*``).
 
 Regenerating it requires the raw ONNX (`BGE_MODEL_PATH`) and onnxruntime.  Both
 the generating script and its per-file / per-tensor hashes **are** vendored, as
@@ -51,7 +51,6 @@ frozen acceptance evidence rather than as a runnable tool:
 |---|---|---|
 | `docs/bge/evidence/20261026/acceptance/build_cpu_golden.py` | yes | 5,730 bytes |
 | `docs/bge/evidence/20261026/acceptance/cpu-golden-manifest.json` | yes | 18,645 bytes |
-| `delivery/fixtures/cpu-golden-manifest.json` | yes | byte-identical copy (`ba2afe4a…`) |
 
 The script is **not runnable as-is**: `build_cpu_golden.py:9-10` hardcodes
 `ROOT = Path("/export/home/ext.hejun23/workspace/bge")` and

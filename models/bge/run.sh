@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# BGE standalone flow: shell-orchestrated, no `core` (see models/bge/README.md).
+# BGE standalone flow: shell-orchestrated (see models/bge/README.md).
 #
 #   export BGE_MODEL_PATH=/path/to/model.onnx
 #   bash models/bge/run.sh [--device-chip N] [--device N] [--iterations N]

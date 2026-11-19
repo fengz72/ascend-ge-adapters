@@ -1,7 +1,7 @@
 """Standalone input generation for the dev.txt bypass route.
 
 The data stage of the dev-case bypass flow (README "怎么用" -> run_dev.sh):
-pure CPU, no weights forward, no NPU, no ``core``.  It consumes an external
+pure CPU, no weights forward, no NPU.  It consumes an external
 dev.txt JSONL case file (business-provided e-commerce query-intent
 classification cases, teacher-annotated by StartLux-Decision-v1.1-4B-AutoThink)
 and persists everything the later bypass stages consume, under

@@ -3,12 +3,11 @@
 Two entry points share the same code:
 
 * the standalone CLI -- ``python3 model/generate_cases.py --samples <json>
-  --output-dir <dir>`` -- used by ``run.sh``.  Besides the NPY pool it writes
-  ``cases.json`` (schema ``ge-cases/1``) for ``ge_execute``;
-* the ``core`` data plugin -- ``generate(config)`` / ``load(config)`` over the
-  ``config["data"]`` dict -- retained unchanged (signatures and return shapes)
-  because ``tests/`` still exercises it through ``core/data.py``.  The module
-  itself never imports ``core``.  The plugin path writes no ``cases.json``:
+  --output-dir <dir>`` -- invoked by ``run.sh`` step 2.  Besides the NPY pool it
+  writes ``cases.json`` (schema ``ge-cases/1``) for ``ge_execute``;
+* the module-level ``generate(config)`` / ``load(config)`` API over the
+  ``config["data"]`` dict, retained with unchanged signatures and return shapes;
+  the CLI below calls ``generate`` directly.  This path writes no ``cases.json``:
   that file is a ``ge_execute`` artifact.
 
 ``cases.json`` lists inputs in ``DTYPES`` order, which **is** the ONNX graph's
@@ -158,7 +157,7 @@ def main(argv=None):
     if not samples.is_file():
         print(f"generate_cases: samples file is missing: {samples}", file=sys.stderr)
         return 1
-    # The plugin reads its inputs from the same data dict core/data.py passes;
+    # The plugin reads its inputs from the config dict the CLI builds here;
     # _root is the CLI cwd, and samples_file is already absolute.
     config = {
         "_root": str(Path.cwd()),

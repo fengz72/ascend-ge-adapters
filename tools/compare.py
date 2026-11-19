@@ -21,7 +21,7 @@ the runtime emits when ``--output-dir`` is relative), ``result.json`` directory
 / ``path`` (the golden convention), then ``<dir>/<case_id>/output_<i>.npy``.
 
 First-version scope (deliberate): float32 outputs only, NumPy as the only
-dependency -- no model modules, no Torch, no TorchNPU, no ``core``.  NaN/Inf are
+dependency -- no model modules, no Torch, no TorchNPU.  NaN/Inf are
 hard failures.  Rows are the first-axis slices of each output (for the StartLux
 ``[B, 26]`` scores that is one row per batch sample, so a single bad row fails
 the comparison); zero reference rows are judged by absolute closeness (atol

@@ -3,7 +3,7 @@
 本目录是 [Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) 的自包含交付：
 每个部件一个自包含脚本、部件间零 import 依赖，只通过 `work/` 下的文件契约
 交互，共用一个 3 输入动态 packed AIR（`input_ids` [T] / `position_ids` [T] /
-`actual_seq_lengths` [N+1] → `scores` [N, 8]）。流程不依赖 `core/`。
+`actual_seq_lengths` [N+1] → `scores` [N, 8]）。整个流程自包含于本目录。
 
 ## 1. 背景
 
@@ -224,7 +224,7 @@ max 13.5660 ms（首 case 31.2240）。与上表逐项同分布，无回退。�
 复测能逐位一致的前提是显式传 `--precision-mode must_keep_origin_dtype`：
 `ge_execute` 默认 `force_fp16`，而旧 `executor` 把它硬编码在 session options 里。
 
-对照历史记录：旧 core 路径 A3 全量 100 组/1600 样本的最小 cosine 为
+对照历史记录：迁移到自包含流程前的旧框架路径 A3 全量 100 组/1600 样本的最小 cosine 为
 0.998909550002、最大 relative L2 为 0.046848644966（评分头输出 FP16）；本流程
 的评分头在 FP32 中计算，同一门限下余量明显变大（0.999439 / 0.033784）。
 

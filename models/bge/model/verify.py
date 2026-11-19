@@ -1,18 +1,16 @@
 """BGE business Top-10 gate: compare GE rankings to the supplied reference.
 
-Used two ways, both as a **module**, never as a script:
+Used as a **module**, never as a script:
 
-* ``core/verify.py:compare_business`` loads it from ``verification.script`` with
-  ``spec_from_file_location`` and calls ``compare(config, outputs)``;
-* ``model/compare.py`` imports it directly and calls the same ``compare``, then
-  aggregates the two gates and writes ``comparison.json``.
+* ``model/compare.py`` imports it directly (``import verify as business``) and
+  calls ``compare(config, outputs)``, then aggregates the two gates and writes
+  ``comparison.json``.
 
 The ``compare(config, outputs)`` signature and return shape are retained
-unchanged because ``tests/`` exercises them through ``core/verify.py``.  The
-module never imports ``core``.
+unchanged because ``model/compare.py`` calls it directly.
 
-There is deliberately **no CLI**.  Nothing in the repository ever invoked one
-(both call sites above go through ``compare``), and the ``outputs.npz`` it read
+There is deliberately **no CLI**.  Nothing in the repository invokes one
+(the call site above goes through ``compare``), and the ``outputs.npz`` it read
 is no longer produced -- ``model/compare.py`` now reads ``ge_execute``'s per-case
 NPY outputs directly.  The removed ``main`` / ``load_rows`` / ``_row`` /
 ``_unwrap_scores`` were 69 of this file's 168 lines.

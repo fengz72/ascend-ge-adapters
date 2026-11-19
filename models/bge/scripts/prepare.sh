@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build and install the BGE GE fusion pass into the ACTIVE CANN vendors tree
-# (the standalone replacement of the old core dependency step).
+# (standalone; no repository framework dependency).
 #
 #   bash models/bge/scripts/prepare.sh
 #

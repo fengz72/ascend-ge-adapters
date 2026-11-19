@@ -1,7 +1,7 @@
 """Standalone business gate + teacher report for the dev.txt bypass route.
 
 The gate stage of the dev bypass flow.  Pure CPU NumPy: no weights, no HF
-forward, no NPU, no ``core``.  It runs AFTER the numeric comparison and
+forward, no NPU.  It runs AFTER the numeric comparison and
 reads exactly four independent sources:
 
 * ``STARTLUX_MODEL_DIR/decision_config.json`` -- the REAL model folder's 26
