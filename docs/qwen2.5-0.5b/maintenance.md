@@ -47,3 +47,38 @@ A5 验证沿用[验证记录](validation.md)中的进程级输出扩容修复库
 逐字节一致，模型配置中两项Prefix依赖revision已同步。[验证记录](validation.md)中的A3/A5设备验证仍按实际
 运行时的原提交记录；该时点包含独立WeightNZ提交，不能据此宣称移除该提交后的
 完整模型组合已经重新验证。WeightNZ依赖的独立版本声明本次未调整。
+
+## 运行时契约迁移到 ge_execute（2026-11-19）
+
+`runtime` 在 `28389ba` 把三个旧运行时换成单一二进制 `ge_execute`，本适配器的
+`work/` 文件契约随之改变。**依赖与图未动**：`work/deps/`（Prefix 算子 + NZ pass）
+沿用已构建产物、未重跑 `scripts/prepare.sh`，`work/build/packed.air` 沿用
+2026-11-17 的导出（993754309 字节）、未重跑 `export_air.py`；子模块固定提交仍是
+`8e08d0d20275558aefac1bbb35019e6b52f1073a`。
+
+| 阶段 | 旧产物（`ge-records/3` / `ge-compare/1`） | 新产物（`ge-cases/1` / npy 同构） |
+|---|---|---|
+| `generate_inputs.py` | `work/inputs/{inputs.bin, records.json}` | `work/inputs/cases.json` + `work/inputs/case-XXXX/{input_ids,position_ids,actual_seq_lengths}.npy` |
+| `golden.py` | `work/golden/{outputs.bin, result.json(outputs)}` | `work/golden/<case_id>/output_0.npy` + `work/golden/result.json(cases)` |
+| 运行时 infer | `work/output/{outputs.bin, result.json(outputs)}` | `work/output/<case_id>/output_0.npy` + `work/output/result.json(cases)` |
+| 运行时 bench | `work/bench*/{result.json(performance), requests.csv}` | `work/bench*/result.json`（顶层扁平统计 + `records` 逐请求） |
+
+两个脚本都会在写新产物前清掉自己那一层的旧文件（`inputs.bin`/`records.json`、
+`outputs.bin`），避免两种布局混在同一目录里让 `tools/compare.py` 猜。迁移前的旧
+运行时产物已整体挪到 `work/output-legacy-records3/` 与 `work/bench-legacy/`
+（Git 忽略）留档，没有删除。
+
+`tools/compare.py` 改为按 `result.json` 的键自动分派布局（`cases` → npy，
+`outputs` → 旧 `outputs.bin`），**旧布局的读取能力保留**，因为 onejev1.6-0.8b
+的 golden 仍在写它。本适配器是四个待迁移模型里第一个完成迁移的，
+`startlux-decision-v1.1-0.8b-instant-text` 已于同日按同一模式迁移（记录见其
+README 的「3.4 附录：迁移到 ge_execute 的验证记录」）；其余的现状：
+
+| 模型 | 阻塞点 |
+|---|---|
+| `onejev1.6-0.8b` | `run.sh` 仍调已删除的 `executor`，且 bench 传 `--readout`；`ge_execute` 尚未实现 readout decider 阶段（`startlux-…-instant-text` 迁移时的处置是直接移除该参数：decider 实测 ~0.001 ms，占 e2e 0.004%，低于共享机器噪声底） |
+| `startlux-decision-v1.1-0.8b-instant` | 两阶段（vision → text）pipeline，`ge_execute` 明确只支持单图，不在范围内 |
+| `bge`、`tiny`、`onnx-example` | 走 `core.pipeline` → `core/backends/runtime.py`，后者仍指向已删除的 `ge_runtime` 与 stdin plan 协议，需要单独迁移 core 侧 |
+
+复测数据与逐项对照见[验证记录](validation.md)的「ge_execute 迁移复测（2026-11-19）」节；
+`ge_execute` 侧的 AIR 分支验证记录见 [runtime/README.md](../../runtime/README.md) 附录。

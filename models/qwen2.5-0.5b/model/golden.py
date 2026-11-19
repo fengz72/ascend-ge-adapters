@@ -13,9 +13,10 @@ are materialized, and ``logits[i, position(len(prefix)+len(tokens_i)-1),
 token_ids]`` gives the ``[N, 8]`` score rows.  ``token_ids`` come from the
 adapter's ``config/target_tokens.json``.
 
-Output (the ge-compare/1 layout ``tools/compare.py`` reads): ``work/golden/
-outputs.bin`` (concatenated ``[N, 8]`` float32 score tensors) + ``work/golden/
-result.json`` with the outputs index.
+Output mirrors the runtime infer layout (``tools/compare.py`` reads both sides):
+``work/golden/<case_id>/output_0.npy`` with the ``[N, 8]`` float32 scores + a
+``work/golden/result.json`` case index whose output entries are position-named
+``output_0`` (the runtime never forwards GE's semantic output name).
 
 This stage needs no NPU and no LD_PRELOAD; its only inputs are the files written
 by generate_inputs.py.
@@ -38,18 +39,13 @@ ADAPTER_DIR = Path(__file__).resolve().parents[1]
 
 
 def _load_cases(inputs):
-    """records.json + inputs.bin -> [(case_id, [prefix+request_i int64 rows])]."""
-    records = json.loads((inputs / "records.json").read_text())
-    blob = (inputs / "inputs.bin").read_bytes()
+    """cases.json + per-case npy inputs -> [(case_id, [prefix+request_i rows])]."""
+    index = json.loads((inputs / "cases.json").read_text())
     cases = []
-    for case in records["cases"]:
-        tensors = {t["name"]: t for t in case["tensors"]}
-        ids_ref, bounds_ref = tensors["input_ids"], tensors["actual_seq_lengths"]
-        ids = np.frombuffer(blob, np.int64, count=ids_ref["shape"][0],
-                            offset=ids_ref["offset"])
-        bounds = np.frombuffer(blob, np.dtype(bounds_ref["dtype"]),
-                               count=bounds_ref["shape"][0],
-                               offset=bounds_ref["offset"]).astype(np.int64)
+    for case in index["cases"]:
+        paths = {item["name"]: item["path"] for item in case["inputs"]}
+        ids = np.load(inputs / paths["input_ids"]).astype(np.int64)
+        bounds = np.load(inputs / paths["actual_seq_lengths"]).astype(np.int64)
         prefix = ids[:bounds[0]]
         rows = [np.concatenate([prefix, ids[bounds[i]:bounds[i + 1]]])
                 for i in range(len(bounds) - 1)]
@@ -77,6 +73,20 @@ def _score(model, rows, ids_wanted):
                         for i, row in enumerate(rows)]).numpy()
 
 
+def write_case_scores(out, case_id, tensor):
+    """Write ``<out>/<case_id>/output_0.npy`` and return its result.json entry.
+
+    The position name ``output_0`` mirrors the runtime infer layout; the path is
+    relative to the directory holding result.json.  numpy's ``np.save`` does not
+    create parent directories, so the per-case directory is made here.
+    """
+    relative = f"{case_id}/output_0.npy"
+    (out / case_id).mkdir(parents=True, exist_ok=True)
+    np.save(out / relative, tensor)
+    return {"name": "output_0", "dtype": str(tensor.dtype),
+            "shape": list(tensor.shape), "path": relative, "bytes": tensor.nbytes}
+
+
 def main():
     inputs = ADAPTER_DIR / "work" / "inputs"
     out = ADAPTER_DIR / "work" / "golden"
@@ -91,19 +101,17 @@ def main():
         os.environ["QWEN_MODEL_DIR"], dtype=torch.float32, local_files_only=True)
 
     out.mkdir(parents=True, exist_ok=True)
-    result = {"status": "success", "outputs": {}}
-    with (out / "outputs.bin").open("wb") as stream:
-        for case_id, rows in cases:
-            tensor = _score(model, rows, ids_wanted)
-            data = tensor.tobytes(order="C")
-            result["outputs"][case_id] = [{"instance": 0, "tensors": [{
-                "name": "scores", "dtype": "float32", "shape": list(tensor.shape),
-                "offset": stream.tell(), "bytes": len(data)}]}]
-            stream.write(data)
-            print(f"golden: {case_id} N={tensor.shape[0]} scores {list(tensor.shape)}")
+    # The previous ge-compare/1 blob must not coexist with the npy layout.
+    (out / "outputs.bin").unlink(missing_ok=True)
+    result = {"status": "success", "cases": []}
+    for case_id, rows in cases:
+        tensor = _score(model, rows, ids_wanted)
+        entry = write_case_scores(out, case_id, tensor)
+        result["cases"].append({"id": case_id, "outputs": [entry]})
+        print(f"golden: {case_id} N={tensor.shape[0]} scores {list(tensor.shape)}")
 
     (out / "result.json").write_text(json.dumps(result, indent=1) + "\n")
-    print(f"golden: {len(result['outputs'])} cases; output: {out}")
+    print(f"golden: {len(result['cases'])} cases; output: {out}")
 
 
 if __name__ == "__main__":

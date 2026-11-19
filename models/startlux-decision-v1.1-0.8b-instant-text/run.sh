@@ -5,9 +5,9 @@
 #   export STARTLUX_MODEL_DIR=/path/to/hf-model
 #   bash run.sh [--device <chip>] [--cases <file>]
 #               [--iterations N [--warmup M] [--seed S]
-#                           [--instances K] [--aicore-num A|B] [--readout <path>]]
+#                           [--instances K] [--aicore-num A|B]]
 #
-# Steps: inputs -> CPU golden -> dependency build -> C++ executor build -> text
+# Steps: inputs -> CPU golden -> dependency build -> ge_execute build -> text
 # AIR export -> infer -> compare; --iterations adds the seeded bench.
 set -euo pipefail
 
@@ -28,7 +28,6 @@ WARMUP=16                     # 性能：预热请求数
 SEED=42                       # 性能：请求抽样种子
 INSTANCES=1                   # 性能：bench 并发实例数（iterations 为全实例合计）
 AICORE_NUM=""                 # 性能：每算子核上限 AIC|AIV（空 = 不限核）
-READOUT=""                    # 性能：readout.json 路径（空 = 不计时 CPU decider）
 # --------------------------------------------------------
 
 while [[ $# -gt 0 ]]; do
@@ -47,8 +46,6 @@ while [[ $# -gt 0 ]]; do
                   INSTANCES="$2"; shift 2 ;;
         --aicore-num) [[ $# -ge 2 ]] || die "--aicore-num needs an AIC|AIV value"
                   AICORE_NUM="$2"; shift 2 ;;
-        --readout) [[ $# -ge 2 ]] || die "--readout needs a path"
-                  READOUT="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown argument: $1 (see --help)" ;;
     esac
@@ -81,7 +78,7 @@ bash scripts/prepare.sh 2>&1 | tee work/logs/prepare.log
 [[ -f "$PROTO_LIB" ]] || die "chunk proto missing after prepare: $PROTO_LIB"
 
 # ---------------------------------------------------------------- 5. runtime
-step "构建 C++ executor"
+step "构建 ge_execute"
 bash ../../runtime/build.sh 2>&1 | tee work/logs/runtime-build.log
 
 # ---------------------------------------------------------------- 6. 导出
@@ -93,11 +90,16 @@ LD_PRELOAD="$PROTO_LIB" python3 model/export_air.py \
 [[ -f work/build/text.air ]] || die "export produced no text.air"
 
 # ---------------------------------------------------------------- 7. 精度推理
-step "C++ executor 精度推理"
-LD_PRELOAD="$PROTO_LIB" ../../runtime/build/executor \
-    --air work/build/text.air \
-    --records work/inputs/records.json \
-    --output-dir work/output 2>&1 | tee work/logs/infer.log
+step "ge_execute 精度推理"
+# 旧 executor 硬编码 must_keep_origin_dtype，ge_execute 默认 force_fp16：
+# 不显式传精度基线不可复现。--device 是进程内设备号（$DEVICE），
+# 不是 npu-smi 的 Chip Logic ID（--device flag 设的是 $DEVICE_CHIP）。
+LD_PRELOAD="$PROTO_LIB" ../../runtime/build/ge_execute \
+    --graph work/build/text.air \
+    --cases work/inputs/cases.json \
+    --output-dir work/output \
+    --device "$DEVICE" \
+    --precision-mode must_keep_origin_dtype 2>&1 | tee work/logs/infer.log
 [[ -s work/output/result.json ]] || die "infer produced no result.json; see work/logs/infer.log"
 
 # ---------------------------------------------------------------- 8. 数值比较
@@ -110,15 +112,16 @@ python3 ../../tools/compare.py \
 
 # ---------------------------------------------------------------- 9. 性能（可选）
 if [[ -n "$ITERATIONS" ]]; then
-    step "C++ executor 性能测试（iterations=$ITERATIONS instances=$INSTANCES warmup=$WARMUP seed=$SEED aicore=$AICORE_NUM readout=$READOUT）"
+    step "ge_execute 性能测试（iterations=$ITERATIONS instances=$INSTANCES warmup=$WARMUP seed=$SEED aicore=$AICORE_NUM）"
     BENCH_ARGS=(--iterations "$ITERATIONS" --warmup "$WARMUP" --seed "$SEED"
                 --instances "$INSTANCES")
     [[ -n "$AICORE_NUM" ]] && BENCH_ARGS+=(--aicore-num "$AICORE_NUM")
-    [[ -n "$READOUT" ]] && BENCH_ARGS+=(--readout "$READOUT")
-    LD_PRELOAD="$PROTO_LIB" ../../runtime/build/executor \
-        --air work/build/text.air \
-        --records work/inputs/records.json \
+    LD_PRELOAD="$PROTO_LIB" ../../runtime/build/ge_execute \
+        --graph work/build/text.air \
+        --cases work/inputs/cases.json \
         --output-dir work/bench \
+        --device "$DEVICE" \
+        --precision-mode must_keep_origin_dtype \
         "${BENCH_ARGS[@]}" \
         2>&1 | tee work/logs/bench.log
     [[ -s work/bench/result.json ]] || die "bench produced no result.json; see work/logs/bench.log"
@@ -127,6 +130,6 @@ fi
 step "完成"
 echo "精度: work/output/comparison.json"
 if [[ -n "$ITERATIONS" ]]; then
-    echo "性能: work/bench/result.json + work/bench/requests.csv"
+    echo "性能: work/bench/result.json（逐请求记录见 result.json.records）"
 fi
 echo "日志: work/logs/"

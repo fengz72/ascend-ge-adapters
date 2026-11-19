@@ -3,10 +3,10 @@
 Draws the historical 100-case lognormal request pool (case -> shared prefix +
 BATCH_SIZE private requests) with the EXACT NumPy RNG sequence of the old
 generate_cases.py, so all historical workload records stay valid, and writes
-the packed per-case graph inputs under work/inputs/:
+the per-case graph inputs under work/inputs/:
 
-* ``inputs.bin``   the packed per-case graph-input tensors (3 per case);
-* ``records.json`` the per-case tensor index (schema ``ge-records/3``).
+* ``cases.json``           the case index (schema ``ge-cases/1``);
+* ``case-XXXX/<name>.npy`` one npy per graph input (3 per case).
 
 The layout is the shared-prefix one both platform prefix operators consume:
 ``segments = [prefix] + requests``, ``input_ids = concat(segments)``,
@@ -15,7 +15,7 @@ The layout is the shared-prefix one both platform prefix operators consume:
 follows the platform: ``a3`` -> int64, ``a5`` -> int32.
 
 Steps of this pipeline (input generation -> CPU golden -> graph export ->
-executor) never import each other; they interact only through the files under
+runtime) never import each other; they interact only through the files under
 work/.  This stage needs no NPU, no weights beyond config.json, and no ``core``.
 """
 
@@ -42,6 +42,8 @@ PREFIX_MAX = 25
 SEED = 0
 
 BOUNDS_DTYPE = {"a3": np.int64, "a5": np.int32}
+
+INPUT_NAMES = ("input_ids", "position_ids", "actual_seq_lengths")
 
 
 def extra_rng(index, kind):
@@ -86,6 +88,38 @@ def packed_inputs(prefix, requests, dtype):
             np.cumsum([len(tokens) for tokens in segments], dtype=np.int64).astype(dtype))
 
 
+def write_pool(out_dir, vocab, platform):
+    """Write cases.json + per-case npy inputs under ``out_dir``.
+
+    Returns ``(case_count, business_samples, sha256_hexdigest)``.  The digest is
+    the historical pool fingerprint: per case, in case order, update with the
+    C-order bytes of (input_ids, position_ids, actual_seq_lengths) in turn.
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    # Old ge-records/3 artifacts must not coexist with the ge-cases/1 layout.
+    for stale in ("inputs.bin", "records.json"):
+        (out / stale).unlink(missing_ok=True)
+
+    bounds_dtype = BOUNDS_DTYPE[platform]
+    cases, digest, total = [], hashlib.sha256(), 0
+    for case_id, prefix, requests in generate_cases(vocab):
+        arrays = packed_inputs(prefix, requests, bounds_dtype)
+        case_dir = out / case_id
+        case_dir.mkdir(parents=True, exist_ok=True)
+        inputs = []
+        for name, array in zip(INPUT_NAMES, arrays):
+            np.save(case_dir / f"{name}.npy", array)
+            digest.update(array.tobytes(order="C"))
+            inputs.append({"name": name, "path": f"{case_id}/{name}.npy"})
+        cases.append({"id": case_id, "samples": len(requests), "inputs": inputs})
+        total += len(requests)
+        print(f"generate_inputs: {case_id} T={len(arrays[0])} N={len(requests)}")
+
+    (out / "cases.json").write_text(json.dumps({"cases": cases}, indent=1) + "\n")
+    return len(cases), total, digest.hexdigest()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate the prefix pipeline inputs "
                                                  "(work/inputs)")
@@ -96,36 +130,11 @@ def main():
 
     config = Path(os.environ["QWEN_MODEL_DIR"], "config.json").read_text()
     vocab = json.loads(config)["vocab_size"]
-    bounds_dtype = BOUNDS_DTYPE[args.platform]
 
     out = ADAPTER_DIR / "work" / "inputs"
-    out.mkdir(parents=True, exist_ok=True)
-    records, digest, total = [], hashlib.sha256(), 0
-    with (out / "inputs.bin").open("wb") as stream:
-        for case_id, prefix, requests in generate_cases(vocab):
-            input_ids, position_ids, bounds = packed_inputs(prefix, requests, bounds_dtype)
-            tensors = [("input_ids", input_ids), ("position_ids", position_ids),
-                       ("actual_seq_lengths", bounds)]
-            entry = {"id": case_id, "samples": len(requests), "tensors": []}
-            for name, array in tensors:
-                data = array.tobytes(order="C")
-                entry["tensors"].append({"name": name, "dtype": str(array.dtype),
-                                         "shape": list(array.shape),
-                                         "offset": stream.tell(), "bytes": len(data)})
-                stream.write(data)
-                digest.update(data)
-            records.append(entry)
-            total += len(requests)
-            print(f"generate_inputs: {case_id} T={len(input_ids)} N={len(requests)}")
-
-    (out / "records.json").write_text(json.dumps({
-        "schema": "ge-records/3",
-        "file": str((out / "inputs.bin").resolve()),
-        "output_name": "scores",
-        "cases": records,
-    }, indent=1) + "\n")
-    print(f"generate_inputs: {len(records)} cases, {total} business samples; pool "
-          f"sha256 {digest.hexdigest()[:12]}; inputs: {out}")
+    count, total, sha256 = write_pool(out, vocab, args.platform)
+    print(f"generate_inputs: {count} cases, {total} business samples; pool "
+          f"sha256 {sha256[:12]}; inputs: {out}")
 
 
 if __name__ == "__main__":

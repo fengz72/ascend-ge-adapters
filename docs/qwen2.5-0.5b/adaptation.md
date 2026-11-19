@@ -7,10 +7,10 @@
 | 文件 | 职责 |
 |---|---|
 | [model/modeling_qwen.py](../../models/qwen2.5-0.5b/model/modeling_qwen.py) | NPU 可执行的 packed trunk、平台 Prefix 算子绑定和 8 列评分头 |
-| [model/generate_inputs.py](../../models/qwen2.5-0.5b/model/generate_inputs.py) | 历史 RNG 输入池与 `ge-records/3` 张量索引 |
-| [model/golden.py](../../models/qwen2.5-0.5b/model/golden.py) | 未 patch 的 CPU FP32 独立参考与 ge-compare/1 输出布局 |
+| [model/generate_inputs.py](../../models/qwen2.5-0.5b/model/generate_inputs.py) | 历史 RNG 输入池与 `ge-cases/1` case 索引（每 case 三个 npy） |
+| [model/golden.py](../../models/qwen2.5-0.5b/model/golden.py) | 未 patch 的 CPU FP32 独立参考，产物与 runtime infer 同构 |
 | [model/export_air.py](../../models/qwen2.5-0.5b/model/export_air.py) | torchair `dynamo_export` 导出动态 packed AIR |
-| [runtime/executor.cpp](../../runtime/executor.cpp) | 单 AIR 的位置绑定执行（精度/性能） |
+| [runtime/](../../runtime/) | `ge_execute`：单图（AIR 或 ONNX）的位置绑定执行（精度/性能），规格见 [runtime/README.md](../../runtime/README.md) |
 | [config/target_tokens.json](../../models/qwen2.5-0.5b/config/target_tokens.json) | 有序业务评分 token（8 列） |
 | [scripts/prepare.sh](../../models/qwen2.5-0.5b/scripts/prepare.sh) | 平台 Prefix 算子与权重 NZ Pass 构建，生成 `work/deps/env.sh` |
 
@@ -79,8 +79,8 @@ sha256 派生的 per-case RNG 补足，不改动前 10 条历史请求。
 | 历史 batch10 | 149.345 | 212.02 | 89–218 |
 | 当前 batch16 | 149.769 | 218 | 84–218 |
 
-每个 case 生成三个一维张量并写入 `work/inputs/inputs.bin`，索引写入
-`work/inputs/records.json`（schema `ge-records/3`）：
+每个 case 生成三个一维张量，各自存一个 npy（`work/inputs/case-XXXX/<name>.npy`），
+索引写入 `work/inputs/cases.json`（schema `ge-cases/1`）：
 
 | 张量 | dtype | 语义 |
 |---|---|---|
@@ -88,8 +88,14 @@ sha256 派生的 per-case RNG 补足，不改动前 10 条历史请求。
 | `position_ids` | int64 | prefix 自 0 起，每条请求自 `len(prefix)` 重新计数 |
 | `actual_seq_lengths` | int64（a3）/ int32（a5） | 各段累计结束位置，N+1 个 |
 
-`records.json` 记录每个 case 的 tensors 偏移、dtype、shape 和 `samples`；
-`input_ids`/`position_ids` 始终 int64，仅 bounds dtype 随平台变化。该阶段只需
+`cases.json` 只记 `id`、`samples`（业务行数，本池恒为 16）和 `inputs[].{name,path}`：
+`inputs` 数组顺序即图输入顺序（位置绑定），`path` 相对 `cases.json` 所在目录，
+dtype/shape 由 runtime 从 npy 头读取，不在 JSON 里重复声明。
+`input_ids`/`position_ids` 始终 int64，仅 bounds dtype 随平台变化。写盘逻辑在
+`write_pool(out_dir, vocab, platform)` 里，输出目录可注入（单测据此在临时目录里跑，
+不往仓库写文件）；生成前会清掉旧的 `inputs.bin`/`records.json`，避免两种布局混在一个目录。
+pool sha256 摘要按 case 顺序对三个数组的 C-order 字节依次 update，与 `ge-records/3`
+时代同一算法，历史指纹 `cfeed98ec4a6` 因此继续有效。该阶段只需
 `QWEN_MODEL_DIR` 下 `config.json` 的 `vocab_size`，不加载权重、不需要 NPU。
 
 ## CPU golden
@@ -101,10 +107,17 @@ sha256 派生的 per-case RNG 补足，不改动前 10 条历史请求。
 `(attention_mask.sum(1) - 1).unique(sorted=True)`，只物化这些位置的 logits，
 再按 `config/target_tokens.json` 的 8 个 token 取列得到 `[N, 8]`。
 
-输出为 `tools/compare.py` 读取的 ge-compare/1 布局：`work/golden/outputs.bin`
-（拼接的 `[N, 8]` float32）+ `work/golden/result.json`
-（`outputs[case_id] = [{instance: 0, tensors: [...]}]`）。该阶段不需要 NPU 或
+输出与 runtime infer 产物**同构**，`tools/compare.py` 两侧用同一个 npy loader：
+`work/golden/<case_id>/output_0.npy`（`[N, 8]` float32）+ `work/golden/result.json`
+（`cases[] = {id, outputs: [{name, dtype, shape, path, bytes}]}`，`path` 相对
+`result.json` 所在目录）。输出名必须是位置名 `output_0`——GE 的语义张量名不透传，
+runtime 侧写的就是 `output_<i>`，两侧名字对不上 compare 会直接失败；`scores`
+这个语义名只存在于本文与模型侧代码里。写盘在 `write_case_scores(out, case_id, tensor)`
+里，由它负责建 case 目录（`np.save` 不创建父目录）。该阶段不需要 NPU 或
 `LD_PRELOAD`，`OMP_NUM_THREADS`/`MKL_NUM_THREADS` 在导入 torch 前固定为 8。
+
+`tools/compare.py` 按 `result.json` 的键自动分派布局：`cases` → npy，`outputs` →
+旧 `outputs.bin`（保留给尚未迁移的 onejev / startlux-text golden），两侧可以混比。
 
 ## AIR 导出
 
@@ -145,22 +158,42 @@ torchair 2.9.0（torch 2.9.0+cpu / torch_npu 2.9.0.post2）实测结论，逐条
 
 ## 执行
 
-`runtime/executor.cpp` 加载一个 AIR，按 `records.json` 将 `tensors[i]` 位置绑定到
-图输入 i（张量名仅作信息），逐 case 写入 `work/output/outputs.bin` 与
-`result.json`，布局与 golden 一致，交由 `tools/compare.py` 比较。带
-`--iterations N` 时进入 bench：`--instances K` 个实例闭环并发、每实例预热、
-seed 抽样、`--aicore-num A|B` 设每算子核上限，输出延迟与 `requests.csv`。
-executor 只保留 `tools/compare.py` 与人工阅读需要的字段：`result.json` 顶层为
-`status` + `outputs`（infer）或 `status` + `performance`（bench），逐请求明细在
-`requests.csv`（`per_case`、`model_ms` 等可由它推导的字段已删除）。
-`--aicore-num` 不做格式校验，非法值由 GE 自己拒绝（实测
-`Invalid_Argument(E10001): Value garbage for parameter ge.aicoreNum is invalid`）。
+`runtime/build/ge_execute`（源码 `runtime/`）加载一个 AIR，按 `work/inputs/cases.json`
+（schema `ge-cases/1`）把每个 case 的 `inputs[i]` 位置绑定到图输入 i（`name` 只用于日志，
+不做名字匹配；dtype/shape 一律从 npy 头读，JSON 里不重复声明），逐 case 写
+`work/output/<case_id>/output_<i>.npy` 与 `result.json` 的 `cases` 索引。golden 侧产出
+**同构**布局（`work/golden/<case_id>/output_0.npy` + `result.json.cases`），交由
+`tools/compare.py` 比较。输出名是位置名 `output_<i>`：GE 的语义张量名不透传
+（`runtime/main.cpp:245`），所以 golden 侧也必须用 `output_0`，两侧才按名字对得上。
+
+带 `--iterations N`（N>0）时进入 bench：`--instances K` 个实例闭环并发（K 份
+AddGraph+CompileGraph，串行，全部在 `aclrtSetDevice` 之前）、每实例预热
+`--warmup M` 次（池内 distinct shape 多于 M 时自动补齐到覆盖全部 shape，本池 89 个 →
+5 实例共 445 次）、seed 抽样（`--iterations` 是所有实例合计）、`--aicore-num A|B`
+设每算子核上限；逐请求明细在 `result.json.records`（含 `h2d_ms`/`exec_ms`/`d2h_ms`/
+`e2e_ms`/`first_hit`），不再有 `requests.csv`。
+
+两个必须显式给的参数：
+
+- `--device 0` 是**进程内**设备号。`run.sh` 导出 `ASCEND_RT_VISIBLE_DEVICES=$DEVICE_CHIP`
+  之后可见设备从 0 开始，故恒为 0；它与 `--device <chip>`（npu-smi 的 Chip Logic ID）
+  是两个概念。旧 `executor` 把 0 硬编码在 `Init(0, ...)` 里。
+- `--precision-mode must_keep_origin_dtype`。旧 `executor` 在 session options 里硬编码它，
+  `ge_execute` 默认 `force_fp16`，不显式传则精度基线（worst cosine 0.999439462）不可复现。
+
+`--graph` 的格式按后缀推断（`.air`/`.onnx`），也可用 `--format` 显式指定。
+`--aicore-num` 由 `ge_execute` 自己校验格式（必须是 `正整数|正整数` 或空，非法值 exit 2），
+不再交给 GE 拒绝。`ge_execute` 不支持 ATC 产出的 OM，也不支持两阶段 pipeline；本流程
+只有一张图，不受影响。
 
 `GEInitialize` 会拉起 CANN 内嵌 Python（AOE/TE）并 `import numpy`，而
 `set_env.sh` 只把 CANN 自带的 site-packages 放进 `PYTHONPATH`；容器 Python 装在
 别处时必须补上它的那一份，否则报
 `Environment_Error_Import_Python_Module_Failed: No module named 'numpy'`。
 `run.sh` 在 source CANN 环境后做这件事（旧 `scripts/env_a3.sh` 的同类职责）。
+`ge_execute` 另外要求 `PYTHONHOME` 指向调用解释器、`LD_LIBRARY_PATH` 含其 `LIBDIR`、
+`TMPDIR` 足够短（GEInitialize 起的 `multiprocessing.Manager` 在 `$TMPDIR/pymp-*/listener-*`
+上 bind AF_UNIX socket，`sun_path` 上限 107 字节），见 `runtime/README.md` 的构建一节。
 
 ## 平台与限制
 

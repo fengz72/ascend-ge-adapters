@@ -105,7 +105,8 @@ runtime/build/ge_execute --graph work/build/model.onnx --cases work/inputs/cases
 - **npy 只接受 C-order 与 13 个白名单 dtype**（float16/bfloat16/float32/float64、int8/16/32/64、uint8/16/32/64、bool）；`fortran_order=True`、大端、object/字符串/复数一律报错，不转置不兜底。
 - **启动时间随实例数线性增长**：每实例一份 AddGraph+CompileGraph 且必须串行（同一 graphId 只能 LoadGraph 一次）。实测 1.35GB BGE ONNX 约 8s/份，tiny 图约 0.5s/份。逐份耗时打在 `[INFO] CompileGraph ok (gid=i/K), cost ...` 与 `result.json` 的 `compile_ms`/`load_ms`。
 - `graph_run_mode`、`aicore_num`、profiling 都是 GEInitialize 的全局选项，进程内只生效一次，改了要重跑进程。
-- **AIR 分支尚未在本机实测**：仓库内没有 AIR 图，容器也没有 torchair/aclgraph 可合成。已验证的是格式分派与错误路径（`cannot load graph '...' as air`）；`Graph::LoadFromFile` 与旧运行时完全同一调用。首次接 AIR 模型时补一次下面的冒烟。
+- **AIR 分支已实测**（2026-11-19，Qwen2.5-0.5B 的 993754309 字节动态 `packed.air`，带自定义 Prefix 算子与 WeightNZ/MatMulV3 融合 pass）：infer / bench / profiling 三种用法均 exit 0，精度与性能与旧 `executor` 记录一致，见下方 AIR 附录。
+- **infer 模式不回填 `compile_ms` / `load_ms`**：这两个字段只在 bench 路径写进 `result.json`（`main.cpp:435-437`），infer 下恒为 `0.0` / `[]`，编译与加载耗时只在 stdout 的 `[INFO] CompileGraph ok ... cost` / `[INFO] LoadGraph ok ... cost` 行里。属记录缺口，不影响执行。
 
 ## 附录：验证记录（2026-11-18，本机 Chip Logic ID 3，CANN 9.0.0）
 
@@ -125,9 +126,34 @@ runtime/build/ge_execute --graph work/build/model.onnx --cases work/inputs/cases
 
 | 场景 | 图 | 已有结果（旧构建） |
 |---|---|---|
-| profiling | 动态图 | `--profiling --iterations 4`：`profiling/PROF_000001_*/{host,device_3}` 共 256K，含 `sample.json` + `.done` |
-| 静态图护栏 | 静态图 + 3 种 shape 的池 | `compiles to a static shape but the case pool has 3 distinct shapes`，exit 1 |
+| profiling | 动态图 | `--profiling --iterations 4`：`profiling/PROF_000001_*/{host,device_3}` 共 256K，含 `sample.json` + `.done`。**已于 2026-11-19 在当前构建上按 AIR 图补跑通过**，见下节 |
+| 静态图护栏 | 静态图 + 3 种 shape 的池 | `compiles to a static shape but the case pool has 3 distinct shapes`，exit 1。**仍待补跑**：需要一张静态编译图，下节的 qwen AIR 是动态图，走不到这条分支 |
 
 2026-11-18 16:52 起本机 chip 3 被其他作业接管（HBM 从 2.9GB 涨到 56409/65536MB），此后两次运行在启动约 8 秒时被外部 SIGTERM（exit 143，TBE 报 `main process disappeared`），不是本运行时的缺陷；设备验证随即停止，上表两行留待补跑。
 
 复现用的图、cases.json 与产物在 `work/ge-execute-smoke/`（Git 忽略）。
+
+## 附录：AIR 分支验证记录（2026-11-19，本机 Chip Logic ID 2，CANN 9.0.0）
+
+首次接 AIR 模型：`models/qwen2.5-0.5b` 迁移到 ge_execute 的复测（迁移背景与逐阶段记录见
+[`docs/qwen2.5-0.5b/validation.md`](../docs/qwen2.5-0.5b/validation.md)）。图是 torchair
+`dynamo_export` 产出的 993754309 字节动态 AIR（每个输入仅第 0 轴动态，3 个 `DT_INT64 [-1]`
+Data 节点），带自定义 Prefix Attention 算子（经 `ASCEND_CUSTOM_OPP_PATH`）与 WeightNZ/MatMulV3
+融合 pass（编译日志 `matmul_match num is 169 / matmul_effect num is 169`）。全部运行都显式传
+`--precision-mode must_keep_origin_dtype`（旧 `executor` 的硬编码值；ge_execute 默认 `force_fp16`）。
+环境：Python 3.11.15、numpy 1.26.4、torch 2.9.0+cpu、torch_npu 2.9.0.post2、transformers 5.10.1；
+整机 16 张卡全空闲（AICore 0%、HBM ~3.1/65 GB），比 2026-11-18 的 chip 3 干净。
+
+| 场景 | 命令要点 | 结果 |
+|---|---|---|
+| AIR 冒烟 infer | 3 case、单实例 | exit 0；`Graph::LoadFromFile` 正常，`allocation=GE (dynamic compiled)`，CompileGraph 5490 ms（TBE 缓存命中）、LoadGraph 1261 ms、3 个输入缓冲；每 case 写 `output_0.npy` float32 `[16,8]` 512 字节；e2e avg 18.961 / p50 12.222 / max 32.528 ms（首 case 含冷启动）、d2h avg 0.023 ms |
+| AIR 全量 infer | 100 case、单实例 | exit 0；100 个 `<case_id>/output_0.npy` + `result.json.cases`；e2e avg 12.4437 / p50 12.1730 / min 11.5780 / max 31.2240 ms，剔除首 case 的稳态 99 例 p50 12.1460 / avg 12.2540 / max 13.5660；d2h avg 0.0285 ms。对 CPU FP32 golden 走 `tools/compare.py`（门限 cosine ≥ 0.998 / rel L2 ≤ 0.05）：100 case / 1600 行全 PASS，worst cosine `0.9994394615744572`、worst rel L2 `0.033784056043048426`，与旧 `executor` 的记录**逐位一致** |
+| AIR bench | `--instances 5 --warmup 10 --iterations 3000 --aicore-num 8\|16`，seed 42/43/44 三轮 | 三轮各 3000 请求 **0 错误**、`status=success`；warmup 自动补齐到 445 次（5 实例 × 池内 89 个 distinct shape）；compile 24245–25036 ms、逐实例 LoadGraph 1268–1366 ms；业务 QPS 2181.907 / 2192.231 / 2185.282（中位 2185.282）、模型调用 QPS 中位 136.580（逐实例 27.316）；e2e avg 中位 36.5565、p50 中位 36.2920、p99 中位 40.8620、三轮最差 p99 40.8900 / max 42.2940 ms；h2d avg 0.040–0.042、d2h avg 0.025–0.028 ms；`per_instance` 均匀 600 |
+| AIR profiling | `--profiling --iterations 4 --instances 1 --warmup 1` | exit 0；`profiling/PROF_000001_*/{host,device_2}` 共 4.4 MB，`sample.json` + `.done` 齐备，`aic_metrics=PipeUtilization`；4 请求 0 错误，e2e p50 12.181 ms |
+
+与旧 `executor` 同配置记录（`docs/qwen2.5-0.5b/validation.md` 的 2026-11-16 节）对照：业务 QPS
+中位 2186.262 → 2185.282（-0.04%）、e2e p50 中位 36.2325 → 36.2920 ms、p99 三轮最差 40.9928 →
+40.8900 ms、worst cosine / rel L2 逐位相同。性能与精度均无回退。
+
+复现用的 3 case 小池与产物在 `models/qwen2.5-0.5b/work/smoke/`，全量产物在
+`work/{inputs,golden,output,bench,bench-43,bench-44,logs}`（均 Git 忽略）。

@@ -6,9 +6,9 @@ int32 on a5), so one AIR serves the whole variable-length pool and the score
 rows ``[N, 8]`` stay dynamic with it.  ``dynamic=True`` symbolizes every axis on
 its own and ``frozen_parameter`` bakes the FP16 weights into the graph, so the
 exported Data nodes are exactly the three example inputs, in positional order --
-which is how the executor binds the records.  The platform prefix operator must
-be importable, i.e. the process runs with work/deps/env.sh sourced (``run.sh``
-injects it).
+which is how ``ge_execute`` binds ``inputs[i]`` of every ``cases.json`` case to
+graph input ``i``.  The platform prefix operator must be importable, i.e. the
+process runs with work/deps/env.sh sourced (``run.sh`` injects it).
 """
 
 import argparse

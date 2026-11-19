@@ -30,13 +30,13 @@ B=1 由图钉死；
 
 目录中的五个文件契约部件：
 
-| 部件                                              | 输入                       | 输出（默认路径）                                                    |
-| ------------------------------------------------- | -------------------------- | ------------------------------------------------------------------- |
-| `model/generate_inputs.py`                        | dev.txt JSONL case 文件    | `work/inputs/{inputs.bin, records.json}`                            |
-| `model/golden.py`                                 | `work/inputs` + 权重目录   | `work/golden/{outputs.bin, result.json}`                            |
-| `model/export_air.py`                             | 权重目录                   | `work/build/text.air`                                               |
-| `runtime/build/executor`（`runtime/executor.cpp`） | `text.air` + `work/inputs` | `work/output/{outputs.bin, result.json}`，bench 另加 `requests.csv` |
-| `tools/compare.py`（复用）                        | golden 与 infer 输出       | `work/output/comparison.json`                                       |
+| 部件 | 输入 | 输出（默认路径） |
+| ---- | ---- | ---------------- |
+| `model/generate_inputs.py` | dev.txt JSONL case 文件 | `work/inputs/cases.json`（`ge-cases/1`）+ 每 case 一个 `work/inputs/<case_id>/{input_ids,position_ids}.npy` + `work/inputs/readout.json` |
+| `model/golden.py` | `work/inputs` + 权重目录 | `work/golden/<case_id>/output_0.npy` + `work/golden/result.json`（`cases` 索引） |
+| `model/export_air.py` | 权重目录 | `work/build/text.air` |
+| `runtime/build/ge_execute`（`runtime/`） | `text.air` + `work/inputs/cases.json` | `work/output/<case_id>/output_0.npy` + `work/output/result.json`；bench 只写 `work/bench/result.json`，逐请求在 `.records` |
+| `tools/compare.py`（复用） | golden 与 infer 输出 | `work/output/comparison.json` |
 
 另含 `run.sh`（一键串联）与 `scripts/prepare.sh`（依赖构建），不属于文件
 契约部件。
@@ -50,6 +50,9 @@ B=1 由图钉死；
   causal-conv1d vendor 算子不安装。
 - `work/build/text.air` 首次在新目录编译时按形状逐一 TBE 编译，首跑偏慢
   属预期。
+- `work/inputs/readout.json`（`startlux-text-readout/1`）记录每 case 的
+  labels（criteria keys 顺序）、letters_asked 与官方 choice 温度，供业务侧
+  read-out 使用；本目录的流程不消费它。
 
 ## 2. 运行
 
@@ -77,8 +80,8 @@ export STARTLUX_MODEL_DIR=/path/to/hf-model        # 权重材料，不自动下
 bash run.sh --device 0                                        # 精度全流程
 ```
 
-`run.sh` 依次执行：生成输入 → CPU golden → 依赖构建 → C++ executor 构建
-→ text AIR 导出 → 精度推理 → `tools/compare.py` 门禁
+`run.sh` 依次执行：生成输入 → CPU golden → 依赖构建 → `ge_execute` 构建
+→ text AIR 导出 → 精度推理 → `tools/compare.py` 门禁；`--iterations N` 追加 bench
 
 
 ### 2.3 怎么导出 AIR
@@ -93,19 +96,58 @@ LD_PRELOAD=work/deps/chunk_gated_delta_rule_proto/install/lib/libchunk_gated_del
 
 产物为 `work/build/text.air`（当前约 1.5 GB）。
 
+### 2.4 怎么单独跑一次推理
+
+```bash
+source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
+export ASCEND_RT_VISIBLE_DEVICES=4                  # npu-smi 的 Chip Logic ID
+LD_PRELOAD=work/deps/chunk_gated_delta_rule_proto/install/lib/libchunk_gated_delta_rule_compat_proto.so \
+    ../../runtime/build/ge_execute \
+    --graph work/build/text.air \
+    --cases work/inputs/cases.json \
+    --output-dir work/output \
+    --device 0 \
+    --precision-mode must_keep_origin_dtype
+```
+
+两个参数容易漏，后果不同：
+
+- `--device` 是**必填**项，指进程内设备号。`ASCEND_RT_VISIBLE_DEVICES` 映射后
+  可见设备从 0 开始编号，所以恒为 0，与上面的 Chip Logic ID 不是一回事
+  （`run.sh` 里分别是 `$DEVICE` 与 `$DEVICE_CHIP`）。漏传直接 exit 2。
+- `--precision-mode` 必须显式传 `must_keep_origin_dtype`：`ge_execute` 的默认
+  值是 `force_fp16`，漏传**不会报错**，但 `run.sh` 的精度门禁（cosine
+  ≥ 0.999、relative L2 ≤ 0.02）过不去。
+
+`LD_PRELOAD` 在推理阶段同样必需：图里含 `ChunkGatedDeltaRule`，`ge_execute` 的
+`CompileGraph` 也要用到 `native_proto/` 注册的算子原型。
+
 ## 3. 运行时
 
 ### 3.1 输入输出
 
-| 张量           | 方向 | dtype   | shape   | 语义与约束                        |
-| -------------- | ---- | ------- | ------- | --------------------------------- |
-| `input_ids`    | 输入 | int64   | [1, S]  | token 序列；`0 ≤ id < vocab_size` |
-| `position_ids` | 输入 | int64   | [3,1,S] | MRoPE 三轴位置；纯文本即三轴 `arange(S)` |
-| `scores`       | 输出 | float32 | [1, 26] | A–Z 26 列 letter logits           |
+| 张量 | 方向 | dtype | shape | 语义与约束 |
+| ---- | ---- | ----- | ----- | ---------- |
+| `input_ids` | 输入 | int64 | [1, S] | token 序列；`0 ≤ id < vocab_size` |
+| `position_ids` | 输入 | int64 | [3,1,S] | MRoPE 三轴位置；纯文本即三轴 `arange(S)` |
+| `output_0`（语义名 `scores`） | 输出 | float32 | [1, 26] | A–Z 26 列 letter logits |
+
+输入经 `work/inputs/cases.json` 索引：每个 case 只有 `id` / `samples` /
+`inputs[].{name,path}`，`path` 相对 `cases.json` 所在目录。**JSON 里不写
+dtype 与 shape**，`ge_execute` 一律从 npy 头读；`inputs` 数组顺序就是图输入
+顺序（位置绑定，`name` 只进日志）。
+
+输出名必须是位置名 `output_0`：`ge_execute` 按 `"output_" + 下标` 命名
+（`runtime/main.cpp:245`），GE 的语义张量名 `scores` 不透传。`golden.py` 因此
+也写 `output_0`，`tools/compare.py` 按 name 对齐两侧。infer 产物布局
+`work/output/<case_id>/output_0.npy` + `result.json` 的 `cases` 索引，与
+golden 同构。
 
 
 
 ### 3.2 性能数据
+
+口径：单实例 infer，`fixtures/dev.txt` 全池 18 case，不限核（2026-11-13）。
 
 图冷启动（不计入请求时延）：
 
@@ -148,13 +190,15 @@ LD_PRELOAD=work/deps/chunk_gated_delta_rule_proto/install/lib/libchunk_gated_del
 
 ### 3.3 并发扩展（case0 固定回放，`aicore_num=12|24`）
 
-2026-11-16 容器（CANN 9.1.0，Ascend910_9382）逻辑芯片 6，executor 多实例闭环
-bench：固定 `dev-intent-q00-r0`（S=1001）、每算子核上限 `12|24`、CPU readout
-decider 计入 e2e。每档 3 轮（seed 42/43/44），每实例预热 32 请求后测
-2000 请求；iterations 为全实例合计（=2000×N）。30 轮全部 0 错误，逐轮
-QPS 极差 ≤3.0。e2e = H2D+执行+同步+D2H+readout；exec 仅含执行+同步
-（h2d/d2h 各 ~0.026 ms、decider ~0.001 ms，均可忽略）。逐轮原始数据与
-requests.csv 在 `work/bench-scaling/inst<N>-r<r>/`。
+2026-11-16（CANN 9.1.0，Ascend910_9382，逻辑芯片 6）多实例闭环 bench：固定
+`dev-intent-q00-r0`（S=1001）、每算子核上限 `12|24`。每档 3 轮（seed
+42/43/44），每实例预热 32 请求后测 2000 请求；`--iterations` 为全实例合计
+（=2000×N）。30 轮全部 0 错误，逐轮 QPS 极差 ≤3.0。e2e = H2D+执行+同步+D2H
+（`result.json.timed_phases` 明示）；exec 仅含执行+同步，h2d/d2h 各
+~0.026 ms。逐轮原始数据在 `work/bench-scaling/inst<N>-r<r>/`；bench 的逐请求
+记录写在 `work/bench/result.json` 的 `.records` 数组（`instance` / `request` /
+`case_id` / `shape_key` / `samples` / `h2d_ms` / `exec_ms` / `d2h_ms` /
+`e2e_ms` / `first_hit` / `error`）。
 
 跨轮中位数（QPS 与延迟单位 ms）：
 
@@ -176,4 +220,3 @@ requests.csv 在 `work/bench-scaling/inst<N>-r<r>/`。
 长尾（排队抖动）；HBM 每实例 ~3.3 GB 线性增长。对照参考：单实例默认
 （不限核）bench 为 ~25.2 ms，`12|24` 限核使单实例慢 ~25%。同为共享机器
 （他人在跑多卡任务），绝对值受整机负载影响。
-
