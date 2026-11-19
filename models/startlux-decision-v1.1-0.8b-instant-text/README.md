@@ -50,6 +50,9 @@ B=1 由图钉死；
   causal-conv1d vendor 算子不安装。
 - `work/build/text.air` 首次在新目录编译时按形状逐一 TBE 编译，首跑偏慢
   属预期。
+- `work/inputs/readout.json`（`startlux-text-readout/1`）记录每 case 的
+  labels（criteria keys 顺序）、letters_asked 与官方 choice 温度，供业务侧
+  read-out 使用；本目录的流程不消费它。
 
 ## 2. 运行
 
@@ -107,14 +110,14 @@ LD_PRELOAD=work/deps/chunk_gated_delta_rule_proto/install/lib/libchunk_gated_del
     --precision-mode must_keep_origin_dtype
 ```
 
-两个参数是旧 `executor` 没有的，漏传的后果不同：
+两个参数容易漏，后果不同：
 
-- `--device` 是**必填**项，指进程内设备号。`ASCEND_RT_VISIBLE_DEVICES` 映射后可见
-  设备从 0 开始编号，所以恒为 0，与上面的 Chip Logic ID 不是一回事（`run.sh`
-  里分别是 `$DEVICE` 与 `$DEVICE_CHIP`）。漏传直接 exit 2。
-- `--precision-mode` 默认是 `force_fp16`，而旧 `executor` 把
-  `must_keep_origin_dtype` 硬编码在 session options 里。漏传**不会报错**，但
-  下面 §3.3 的精度基线不可复现。
+- `--device` 是**必填**项，指进程内设备号。`ASCEND_RT_VISIBLE_DEVICES` 映射后
+  可见设备从 0 开始编号，所以恒为 0，与上面的 Chip Logic ID 不是一回事
+  （`run.sh` 里分别是 `$DEVICE` 与 `$DEVICE_CHIP`）。漏传直接 exit 2。
+- `--precision-mode` 必须显式传 `must_keep_origin_dtype`：`ge_execute` 的默认
+  值是 `force_fp16`，漏传**不会报错**，但 `run.sh` 的精度门禁（cosine
+  ≥ 0.999、relative L2 ≤ 0.02）过不去。
 
 `LD_PRELOAD` 在推理阶段同样必需：图里含 `ChunkGatedDeltaRule`，`ge_execute` 的
 `CompileGraph` 也要用到 `native_proto/` 注册的算子原型。
@@ -144,8 +147,7 @@ golden 同构。
 
 ### 3.2 性能数据
 
-下表是 2026-11-13 旧 `executor` 的记录，保留作对照基线；迁移到 `ge_execute`
-后的复测见 §3.4，冷启动两项与首 case 时延均在同一量级。
+口径：单实例 infer，`fixtures/dev.txt` 全池 18 case，不限核（2026-11-13）。
 
 图冷启动（不计入请求时延）：
 
@@ -188,26 +190,15 @@ golden 同构。
 
 ### 3.3 并发扩展（case0 固定回放，`aicore_num=12|24`）
 
-> **口径已变（2026-11-19 迁移到 `ge_execute` 后）**：`ge_execute` 不提供
-> `--readout`，CPU decider 计时能力已移除，`run.sh` 也不再接受该参数。e2e
-> 现在是 `h2d + execute + sync + d2h`（`result.json.timed_phases` 明示），
-> 比下表少一个 readout 项。该项实测 ~0.001 ms，占单实例 e2e（31.70 ms）的
-> 0.004%，低于共享机器的噪声底（本节逐轮 QPS 极差就有 ≤3.0），因此下表的
-> e2e 列在噪声内仍可比。另外 `requests.csv` 不再产出，逐请求数据改在
-> `work/bench/result.json` 的 `.records` 数组（字段 `instance` / `request` /
-> `case_id` / `shape_key` / `samples` / `h2d_ms` / `exec_ms` / `d2h_ms` /
-> `e2e_ms` / `first_hit` / `error`）。
->
-> `readout.json` 仍由 `generate_inputs.py` 产出（labels / letters_asked /
-> temperature），但当前没有任何消费者。
-
-2026-11-16 容器（CANN 9.1.0，Ascend910_9382）逻辑芯片 6，executor 多实例闭环
-bench：固定 `dev-intent-q00-r0`（S=1001）、每算子核上限 `12|24`、CPU readout
-decider 计入 e2e。每档 3 轮（seed 42/43/44），每实例预热 32 请求后测
-2000 请求；iterations 为全实例合计（=2000×N）。30 轮全部 0 错误，逐轮
-QPS 极差 ≤3.0。e2e = H2D+执行+同步+D2H+readout；exec 仅含执行+同步
-（h2d/d2h 各 ~0.026 ms、decider ~0.001 ms，均可忽略）。逐轮原始数据与
-requests.csv 在 `work/bench-scaling/inst<N>-r<r>/`。
+2026-11-16（CANN 9.1.0，Ascend910_9382，逻辑芯片 6）多实例闭环 bench：固定
+`dev-intent-q00-r0`（S=1001）、每算子核上限 `12|24`。每档 3 轮（seed
+42/43/44），每实例预热 32 请求后测 2000 请求；`--iterations` 为全实例合计
+（=2000×N）。30 轮全部 0 错误，逐轮 QPS 极差 ≤3.0。e2e = H2D+执行+同步+D2H
+（`result.json.timed_phases` 明示）；exec 仅含执行+同步，h2d/d2h 各
+~0.026 ms。逐轮原始数据在 `work/bench-scaling/inst<N>-r<r>/`；bench 的逐请求
+记录写在 `work/bench/result.json` 的 `.records` 数组（`instance` / `request` /
+`case_id` / `shape_key` / `samples` / `h2d_ms` / `exec_ms` / `d2h_ms` /
+`e2e_ms` / `first_hit` / `error`）。
 
 跨轮中位数（QPS 与延迟单位 ms）：
 
@@ -229,56 +220,3 @@ requests.csv 在 `work/bench-scaling/inst<N>-r<r>/`。
 长尾（排队抖动）；HBM 每实例 ~3.3 GB 线性增长。对照参考：单实例默认
 （不限核）bench 为 ~25.2 ms，`12|24` 限核使单实例慢 ~25%。同为共享机器
 （他人在跑多卡任务），绝对值受整机负载影响。
-
-### 3.4 附录：迁移到 ge_execute 的验证记录（2026-11-19）
-
-`28389ba` 把三个旧运行时收敛成单个 `ge_execute`，`f210ed2` 迁移了
-`models/qwen2.5-0.5b`，本次按同一模式迁移本目录。三处契约变化：
-`ge-records/3`（`inputs.bin` + 带 offset/bytes 的 `records.json`）→
-`ge-cases/1`（`cases.json` + 每 case 独立 npy）；infer 产物
-`outputs.bin` + `result.json.outputs` → `<case_id>/output_0.npy` +
-`result.json.cases`；`requests.csv` 不再产出。`--readout` 无对应实现，已按
-§3.3 的口径说明移除。
-
-改动范围（算法与数值路径未动）：
-
-| 文件 | 改动 | 未动的部分 |
-| ---- | ---- | ---------- |
-| `model/generate_inputs.py` | 落盘改 `cases.json` + `<case_id>/{input_ids,position_ids}.npy`；删 `inputs.bin`/`records.json` 与 `OUTPUT_NAME`；新增 `INPUT_NAMES` | `_load_dev_rows()` 的 dev.txt 业务校验、case_id 编号、prompt 渲染与 tokenize、三处 `ValueError`、`readout.json`、源文件 sha256 摘要 |
-| `model/golden.py` | `_load_cases()` 改读 `cases.json` + npy；产物改 `<case_id>/output_0.npy` + `cases` 索引；`OUTPUT_NAME` → `output_0`；删掉 `ge-records/3` 的 schema 断言 | 打分数学（`bidirectional.text_forward` → `hidden[0,-1]` → `@ head_rows.T` → float32 `[1,26]`）、`letter_ids()`、线程 pin |
-| `run.sh` | infer/bench 换 `ge_execute` + `--graph`/`--cases`，补 `--device "$DEVICE"` 与 `--precision-mode must_keep_origin_dtype`；删 `--readout`/`READOUT` | 环境检查、`prepare.sh`、`export_air.py`、`compare.py` 调用、`LD_PRELOAD`、精度门限 |
-| `model/export_air.py`、`scripts/prepare.sh`、`native_proto/`、`tools/compare.py`、`runtime/` | 无改动 | — |
-
-实测（本机 Chip Logic ID 1，CANN 9.1.0，Ascend910_9382，Python 3.12.13 /
-numpy 2.5.1 / torch 2.12.0+cpu / torch_npu 2.12.0 / transformers 5.8.1，与
-§2.1 同一组合；共享机器，16 张卡 HBM 均已被他人占用 44–55 GB，AICore 0%）：
-
-| 项目 | 命令要点 | 结果 |
-| ---- | -------- | ---- |
-| runtime 重建 | `rm -rf runtime/build && bash runtime/build.sh` | 只产出 `ge_execute`（404320 B）与 `runtime_contracts`（464000 B），旧 `executor`/`ge_runtime`/`pipeline_runtime` 残留已随目录删除不再生 |
-| CPU 契约测试 | `ctest --output-on-failure` | 1/1 Passed（npy 读写与拒绝路径、cases 解析、抽样/预热计划、统计与百分位、JSON 落盘） |
-| CLI 冒烟 | `ge_execute --help` | exit 0，usage 与新参数表一致 |
-| AIR 真机 infer | 沿用 2026-11-13 的 `work/build/text.air`（1507491002 B，未重跑 `export_air.py`）；1 case、S=1001、`input_ids` 取 `[4,999]` 的随机 int64；`--device 0 --precision-mode must_keep_origin_dtype`，`LD_PRELOAD` 注入 chunk proto | exit 0；`allocation=GE (dynamic compiled)`；`CompileGraph ok (gid=1/1) cost 17449.5 ms`、`LoadGraph ok (gid=1) cost 3841.2 ms, 2 input buffer(s)`（对照 §3.2 的 17460.2 / 3676.36 ms）；融合 pass 生效 `matmul_match num is 187 / matmul_effect num is 186`；产出 `smoke-0000/output_0.npy` **float32 [1,26] 104 bytes**，C-contiguous、全有限、argmax=5；e2e 587.983 ms（首 case 冷启动，对照 §3.2 的 614.693 ms）、d2h avg 0.039 ms |
-| `result.json` 结构 | 同上 | `mode=infer`、`status=success`、`timed_phases=[h2d,execute,sync,d2h]`、`pool={cases:1,distinct_shapes:1}`、`config.precision_mode=must_keep_origin_dtype`；`cases[0].outputs[0]` = `{name:output_0, dtype:float32, shape:[1,26], bytes:104, path:...}`，`path` 为 CWD 相对（`--output-dir` 传的是相对路径） |
-| compare 管路 | 复刻 `golden.py` 迁移后的写盘逻辑造参考目录（相对 `result.json` 的 path + `cases` 索引），`tools/compare.py --cosine-min 0.999 --relative-l2-max 0.02` | exit 0，`compare: 1 cases, worst cosine 1.000000, worst relative L2 0.000000`，PASS；`comparison.json` 为 `ge-compare/1`、`rows=1`、输出键 `output_0`。**注意这是管路验证不是精度验证**——参考值取自 infer 输出自身，cosine 恒为 1.0 只证明 `compare.py` 能按 `cases` 键分派到 npy loader、能解析两种 path 拼法、能按 `output_0` 对齐、`rows` 取自 `[1,26]` 的 `shape[0]` |
-| Python 回归 | `python3 -m unittest discover -s tests -p 'test_*.py'` | Ran 154 tests，OK（skipped=5），无 failure/error |
-
-**未验证范围**（阻塞：本机 `STARTLUX_MODEL_DIR` 未设置，`generate_inputs.py`
-需要 tokenizer、`golden.py` 需要 FP32 权重）：
-
-- **精度门限（cosine ≥ 0.999 / rel-L2 ≤ 0.02）尚未在 `ge_execute` 上实测**。
-  历史基线是旧 executor 的 `work/output/comparison.json`：18 case / 18 row
-  全 PASS，worst cosine `0.9999877883685806`、worst rel-L2
-  `0.005193270205303367`。补跑 `bash run.sh` 后应与之逐位吻合；吻合即证明
-  迁移数值中性（qwen 迁移时同样逐位一致）。
-- 18 case / 5 种 distinct shape（S ∈ 1001..1005）的真实池未跑过，冒烟只有
-  1 case / 1 shape。图 S 轴动态（`export_air.py` 的 `dynamic_dims`），不触发
-  `ge_execute` 的「静态图 + 多 shape」护栏；bench `--warmup 16` ≥ 5，预热会
-  自动覆盖全部 distinct shape。
-- bench 路径（`--iterations`）未跑，§3.3 的并发扩展表未在 `ge_execute` 上复测。
-- AIR 未重新导出，沿用 2026-11-13 产物；`prepare.sh` 未重跑，沿用
-  `work/deps/` 里 2026-11-13 构建的 chunk proto `.so`。
-
-补跑后请把结果追加到本节表格，不要改写已有行。冒烟产物在
-`work/smoke-ge/`（Git 忽略）。
-
