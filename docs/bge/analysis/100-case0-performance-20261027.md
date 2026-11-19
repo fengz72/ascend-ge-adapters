@@ -24,7 +24,7 @@
 
 ## 证据与复现
 
-[本地汇总JSON](../../../delivery/supporting-evidence/work/bge-opt-100/case0-best-summary-20261027.json)保存三轮指标、原始事件与门禁文件SHA256及最终空闲检查。100项目中的原始事件、资源快照、受管作业状态和结果保留在`work/case0-best-r{1,2,3}-20261027/`、`work/jobs/case0-best-r{1,2,3}-20261027/`及同名`*-performance.json`、`*-run-identity.json`、`*-before-gate.json`、`*-after-gate.json`。复现须先确认设备可独占、预算充足，并使用全新作业名：
+100项目中的原始事件、资源快照、受管作业状态和结果保留在`work/case0-best-r{1,2,3}-20261027/`、`work/jobs/case0-best-r{1,2,3}-20261027/`及同名`*-performance.json`、`*-run-identity.json`、`*-before-gate.json`、`*-after-gate.json`。复现须先确认设备可独占、预算充足，并使用全新作业名：
 
 ```bash
 cd /export/home/ext.hejun23/workspace/bge-opt-100

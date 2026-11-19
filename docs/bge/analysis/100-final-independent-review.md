@@ -1,8 +1,8 @@
 # 100 最终独立语义审查
 
-**建议接纳 OPT-009，作为本轮五条样例、无 p99 硬上限下的推荐配置：原图 FP32、GE mode=0、8实例、每算子核上限12\|24，不加载自定义融合插件。** 正确性、正式吞吐与600秒资源增量契约通过；RSS平台和长期服务内存稳定性仍未证实，不能写成无条件生产验收通过。
+本结论只对 2026-10-26 的 FP32 阶段成立。**建议接纳 OPT-009，作为本轮五条样例、无 p99 硬上限下的推荐配置：原图 FP32、GE mode=0、8实例、每算子核上限12\|24，不加载自定义融合插件。** 正确性、正式吞吐与600秒资源增量契约通过；RSS平台和长期服务内存稳定性仍未证实，不能写成无条件生产验收通过。
 
-本次短篇审查仅依据本地 [最终比较报告](../../../delivery/supporting-evidence/work/bge-opt-100/final-independent-comparison-v2.json)、[候选详细报告](../../../delivery/supporting-evidence/work/bge-opt-100/final-independent-comparison-v2-candidate-details.json) 和 [100交付稿](../delivery-100.md)。未启动设备任务或修改运行证据。两个JSON的 `passed=null` 是刻意保留人工语义审查，本报告补充限定结论，不改写原始JSON为全面PASS。
+本次短篇审查仅依据本地最终比较报告、候选详细报告和 [100交付稿](../delivery-100.md)。未启动设备任务或修改运行证据。两个JSON的 `passed=null` 是刻意保留人工语义审查，本报告补充限定结论，不改写原始JSON为全面PASS。
 
 ## 接纳依据
 

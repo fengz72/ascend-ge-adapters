@@ -6,7 +6,7 @@
 
 ## 第一轮看到的事实
 
-来源为 [inspect-formal-r1.log](../../../delivery/supporting-evidence/work/bge-opt-100/inspect-formal-r1.log)、[formal-r1.log](../../../delivery/supporting-evidence/work/bge-opt-100/formal-r1.log)，离线提取与源文件 SHA256 见 [formal-r1-offline-review.json](../../../delivery/supporting-evidence/work/bge-opt-100/tester/formal-r1-offline-review.json)。配置保持原图 FP32 / GE mode=0；候选为八实例 `12|24`，基线为全核单实例。
+配置保持原图 FP32 / GE mode=0；候选为八实例 `12|24`，基线为全核单实例。
 
 | run | QPS | p99 / 最大延迟 ms | 窗口内资源样本 | Host CPU busy 采样范围 |
 |---|---:|---:|---:|---:|
@@ -31,7 +31,7 @@ fixed与random是不同输入场景，随机中包含更长文本和shape切换�
 | p99与最大值 | 随机八实例长尾明显高于本轮固定八实例；原始观察必须保留 | 长尾与CPU高负载已在时间上对应；确定为NPU kernel退化或外部Host干扰；235.8ms代表常态 |
 | 资源样本数 | 本轮每窗口仅4～6次实际观察，随机八实例最稀疏 | 约10秒采样间隔覆盖完整、采样未延迟、是否存在中间缺口。需要原始时间戳与命令时长 |
 
-当前采样实现见 [run_runtime.py](../../../delivery/supporting-evidence/work/bge-opt-100/legacy-tools/run_runtime.py)：CPU busy 来自相邻两次 `/proc/stat` 的全机 tick 差分，扣除 idle/iowait，未分开报告 steal；它是一个区间平均值，而不是当前时刻或单个请求的CPU占用。第一个落在测量窗口内的区间可能包含预热/加载尾部。采样先读取Host信息，再调用 `npu-smi`，完成后等待10秒，因此实际间隔可能大于10秒。没有原始时间戳时，不能把64.5%直接对齐到第一个十秒请求桶。
+当前采样实现 `run_runtime.py`：CPU busy 来自相邻两次 `/proc/stat` 的全机 tick 差分，扣除 idle/iowait，未分开报告 steal；它是一个区间平均值，而不是当前时刻或单个请求的CPU占用。第一个落在测量窗口内的区间可能包含预热/加载尾部。采样先读取Host信息，再调用 `npu-smi`，完成后等待10秒，因此实际间隔可能大于10秒。没有原始时间戳时，不能把64.5%直接对齐到第一个十秒请求桶。
 
 ## 吞吐时间桶的两个注意点
 
@@ -56,6 +56,6 @@ fixed与random是不同输入场景，随机中包含更长文本和shape切换�
 
 ## 第二轮补充的PID归属见证
 
-主控新增同次 [docker top快照](../../../delivery/supporting-evidence/work/bge-opt-100/host-pid-snapshot-r2.txt) 和 [NPU进程快照](../../../delivery/supporting-evidence/work/bge-opt-100/npu-smi-r2.txt)。前者时间为2026-10-26 22:19:47 UTC+8，显示 `final-best-random-r2` 的device_job→guarded→run_runtime调用链，native宿主PID为2478386；后者目标NPU1/Chip0的唯一PID同为2478386，Chip1无进程。这直接补强了该时点目标NPU PID属于本任务的证据。
+主控新增同次 docker top 快照和 NPU 进程快照。前者时间为2026-10-26 22:19:47 UTC+8，显示 `final-best-random-r2` 的device_job→guarded→run_runtime调用链，native宿主PID为2478386；后者目标NPU1/Chip0的唯一PID同为2478386，Chip1无进程。这直接补强了该时点目标NPU PID属于本任务的证据。
 
 该见证仅对应第二轮一个时点，不能回填第一轮PID归属，也不能证明整轮无短暂外部负载。快照中的native `%CPU=133` 是ps口径，不能当作同区间每核饥饿或与第一轮全机CPU忙碌直接相减。NPU文本前缀还含 `dcmi initialize failed` 等错误而后续打印了进程信息；最终应结合原命令与退出码及常规resources采样明确该片段的适用范围，不把整条混合输出无条件当作全部查询成功。

@@ -1,6 +1,6 @@
 # Qwen2.5-0.5B 验证记录
 
-使用方法见[模型 README](../../models/qwen2.5-0.5b/README.md)，适配原理见[适配说明](adaptation.md)，性能和 profiling 见[文档索引](README.md)。框架、Tiny 和 ONNX 的验证集中在[框架验证记录](../validation.md)。
+使用方法见[模型 README](../../models/qwen2.5-0.5b/README.md)，适配原理见[适配说明](adaptation.md)，性能和 profiling 见[文档索引](README.md)。
 
 本文按日期和输入范围保留验证结果。历史“当前”“未验证”及“尚未修复”均指所在实验时点；不同 batch、阈值、依赖版本的结论不能互相替代。依赖来源与迁移分支的维护历史见[维护记录](maintenance.md)。
 
@@ -206,15 +206,12 @@ print('loaded:', library)
 print('sha256:', hashlib.sha256(library.read_bytes()).hexdigest())
 PY
   : "${QWEN_MODEL_DIR:?请先设置模型权重目录，例如 /home/h00909914/Qwen2.5-0.5B}"
-  python3 -m core.pipeline prepare --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b
-  python3 -m core.pipeline build --config models/qwen2.5-0.5b/config/model.yaml --device 7
-  python3 -m core.pipeline infer --config models/qwen2.5-0.5b/config/model.yaml --device 7 --case-ids all
-  python3 -m core.pipeline compare --config models/qwen2.5-0.5b/config/model.yaml --target Ascend950PR_958b --case-ids all
+  bash models/qwen2.5-0.5b/run.sh --platform a5 --device 7
 )
 ```
 
 逻辑设备7按实际空闲设备调整；执行前在外层设置 `export QWEN_MODEL_DIR=/实际模型路径`。
-输入与 FP32 golden 的准备使用项目七步流程中的 data / baseline。
+输入与 FP32 golden 由 `run.sh` 的 generate_inputs / golden 阶段准备。
 只有100组全部通过才算该新环境验收通过；库成功加载不能替代精度验收。
 子 Shell 结束后，外层 Shell 的 `LD_PRELOAD` 等变量保持原值；
 若之前在外层加载过旧环境脚本，需在外层显式执行 `unset LD_PRELOAD` 才会回到默认 GE。
@@ -415,7 +412,7 @@ Qwen2.5-0.5B 改造为自包含交付，不再经过 `core/pipeline.py` 七步�
 及依赖它们的测试已删除；新形态为 `run.sh` + `model/{modeling_qwen,generate_inputs,golden,export_air}.py`
 + `scripts/prepare.sh` + `config/target_tokens.json`，
 入口是 [`models/qwen2.5-0.5b/run.sh`](../../models/qwen2.5-0.5b/run.sh)。GE 执行走
-`runtime/build/executor`，精度门禁用 `tools/compare.py`。
+`runtime/build/ge_execute`，精度门禁用 `tools/compare.py`。
 
 `scripts/prepare.sh` 不再经由 `GE_SRC_DIR`/`GE_BUILD_DIR`/`GE_INSTALL_DIR`/`GE_PYTHON`
 环境变量契约（那是 `core/dependencies.py` 按 YAML 通用派发依赖构建时用的；改造后

@@ -1,6 +1,8 @@
 # BGE 本轮优化结果与恢复交接
 
-日期：2026-10-26。**已有结果已归档；按用户选择等待设备释放，最终性能未验收。** 原始模型GE mode=0正确性、完整搬运基线及有限候选搜索已完成；最佳有效搜索点是FP32全核八实例，但尚未执行冻结后的三轮独立复测和10分钟稳定性，不能将搜索值作为正式交付收益。
+99 阶段归档（2026-10-26）；100 的最终结论见 [delivery-100.md](delivery-100.md)。
+
+日期：2026-10-26。**已有结果已归档；按用户选择等待设备释放，最终性能未验收。** 该状态只对 99 阶段成立。原始模型GE mode=0正确性、完整搬运基线及有限候选搜索已完成；最佳有效搜索点是FP32全核八实例，但尚未执行冻结后的三轮独立复测和10分钟稳定性，不能将搜索值作为正式交付收益。
 
 ## 执行范围、环境与身份
 
@@ -59,7 +61,7 @@ CANN9.0.0、Ascend910_9382、driver25.5.t6.b001、firmware7.8.0.5.216；父代�
 |[OPT-008](experiments/OPT-008.md)|FP32全核十六实例|单实例 FP32 175.321 / 6.819|未测得（运行无效）|不适用|否|5015请求精度通过；search native SIGKILL，外层125，无性能值|
 |[OPT-009](experiments/OPT-009.md)|八实例半核12\|24|八实例全核搜索 461.333 / 18.243|未运行|不适用|否（未运行）|启动前发现外部占位进程，门禁拦截，无新配置或占用计费|
 
-9个已分配OPT均有固定七节记录；包括无收益、失败、资源阻塞。原FP32基线仍为可信回退，当前没有通过全部必需项的最终优化配置；不会将各点百分比累加。
+9个已分配OPT均有固定七节记录；包括无收益、失败、资源阻塞。原FP32基线仍为可信回退；截至 99 阶段结束时没有通过全部必需项的最终优化配置，100 的结论见 [delivery-100.md](delivery-100.md)。不会将各点百分比累加。
 
 ## 失败、资源阻塞与预算
 
@@ -71,77 +73,8 @@ OPT008十六实例先通过5015个完整输出压力，随后search在图15/16�
 
 已实际执行9/12组唯一配置，保守设备占用1616.679910/7200秒，余额5583.320090秒（含编译/加载、失败、清理和所有重复任务）。半核门禁失败不新增配置或设备费用。原始完整输出、最终GE dump和完整日志保留在实际实验根；必要身份、计划、事件、独立报告、补丁和清理证据归档[evidence/20261026](evidence/20261026/)，大输出的字节数/哈希/远端位置见delivery-manifest.json。
 
-## 复现与恢复
-
-在99容器canonical仓库中，模型data/build产物已存在。下例是保留兼容的五例随机准备入口，不查询或占用设备；使用新目录。固定case调优在集成新版入口后显式添加`--case-id case-0002`，并换用新的固定场景output-dir；不传该参数仍为五例随机：
-
-```bash
-cd /export/home/ext.hejun23/workspace/bge/ascend-ge-adapters
-python3 models/bge/replay.py --prepare-only \
-  --config models/bge/config.yaml --device 10 \
-  --output-dir work/bge/replay/baseline-new --instances 1 --seed 2027 \
-  --min-seconds 60 --max-seconds 300 --min-requests 10000
-```
-
-八实例候选将instances显式设8，其它相同；核数省略表示全核，不受YAML历史4|8影响。先核查实际物理设备、外部进程及本任务旧状态，确认可独占后使用受管入口：
-
-```bash
-python3 /export/home/ext.hejun23/workspace/bge/work/bge-opt-20261026/tools/run_checked.py \
-  /export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/work/bge/replay/baseline-new/plan.json \
-  --job baseline-new --timeout 650 \
-  --binary /export/home/ext.hejun23/workspace/bge/ascend-ge-adapters/runtime/build/ge_runtime
-```
-
-恢复不重新计预算、不覆盖旧run、不跳过前置设备门禁。恢复后先补固定case原FP32单实例基线，再开展OPT009半核的固定case对照与全五例压力；有收益才考虑四分核，最多再一个最佳N/core上的融合V2组合，每个新组合先分编号并独立验数。最终冻结配置后使用seed2027/2028/2029进行三轮≥60秒且≥10000请求，与同口径单实例基线交错；专门完整输出压力每实例×case≥20，最终10分钟稳定性、≥3次加载/销毁及设备/锁释放全部通过，才更新最终接纳和收益。至少预留50分钟设备预算，不能缩短门槛换取完成状态。
+99 阶段的执行入口是 99 项目的 `models/bge/replay.py --prepare-only` 与 `tools/run_checked.py`，随该项目归档；本仓库不含这两个脚本，也不含 `models/bge/config.yaml` 与 `runtime/build/ge_runtime`。100 的复现入口见 [delivery-100.md §4](delivery-100.md#4-交付件与复现)，当前运行时用法见 [ge-execute-usage.md](ge-execute-usage.md)。
 
 本轮暂缺：半核/最佳并发融合组合、冻结后性能复验、10分钟稳定性。更大shape/生产输入分布、明确p99约束和极端数值边界不在现有五例验收范围。代码未commit/push，源模型和样例只读。
 
-## 附录：业务样例独立验证（2026-10-22，自模型 README 移入）
-
-The five supplied `../sample_inputs.json` cases were executed individually on
-GE Session device 0 in prediction mode (`graph_run_mode=0`), using FP32 and
-`must_keep_origin_dtype`. The original graph retains all 30 Slice nodes and
-zero Range nodes. Node, initializer value, interface and opset signatures match
-between the source and export; the original source file SHA-256 is unchanged.
-
-Expected results come directly from `../expected_outputs.json`. Candidate IDs
-are `argsort(-scores[0])[:10] + 1`. All 50 IDs match in order. Scores pass with
-absolute tolerance `1e-3` and zero relative tolerance; all observed errors are
-also below `1e-4`. The expected scores are supplied to six decimal places.
-
-| Case | Top-10 IDs and order | Maximum absolute score error | Mean absolute score error |
-|---|---:|---:|---:|
-| 0 | Exact match | 6.869653702e-05 | 2.606389084e-05 |
-| 1 | Exact match | 9.422024536e-05 | 3.696981087e-05 |
-| 2 | Exact match | 7.459005737e-05 | 3.298873844e-05 |
-| 3 | Exact match | 8.469063377e-05 | 4.139411488e-05 |
-| 4 | Exact match | 9.572097778e-05 | 5.397958374e-05 |
-
-Artifacts: `work/bge-provided-samples/run-20261022-gemode0/` contains
-`top10_comparison.json` (all 50 rank comparisons), `outputs.npz` (all five
-full score vectors), `graph_integrity.json`, resolved configuration, input
-mapping, and `infer-stage/infer-runtime.log`. The reusable validation script is
-`work/bge-provided-samples/validate_samples.py`. No synthetic samples were used.
-
-## 附录：七步样例流水线（2026-10-22，自模型 README 移入）
-
-The default `bash models/bge/run.sh run --device 0` completed all seven stages
-with the supplied five samples. Both CPU full-score comparison and the external
-Top-10 business checks passed. The original graph and weights are preserved
-(30 Slice, zero Range); runtime logs confirm prediction mode 0.
-
-| Case | CPU/GE cosine | CPU/GE relative L2 | CPU/GE max absolute error | Expected Top-10 max absolute error | IDs and order |
-|---|---:|---:|---:|---:|---|
-| case-0000 | 0.999999978438 | 0.000209465401 | 9.848922491e-05 | 6.869653702e-05 | Exact match |
-| case-0001 | 0.999999958158 | 0.00028989152 | 0.0001145526767 | 9.422024536e-05 | Exact match |
-| case-0002 | 0.999999952284 | 0.0003110775458 | 0.000119931995 | 7.459005737e-05 | Exact match |
-| case-0003 | 0.999999922195 | 0.0003950748066 | 0.000137783587 | 8.469063377e-05 | Exact match |
-| case-0004 | 0.999999905871 | 0.0004473723288 | 0.000215953216 | 9.572097778e-05 | Exact match |
-
-Complete stage results and all 50 rank comparisons are in
-`work/bge/results/20261022T071838-a6374be8/result.json`; the same directory
-contains `graph_integrity.json` and `infer-runtime.log`. Benchmark input pool
-size is 5 (six smoke calls, zero execution errors). The ordinary Python suite
-passed 88 tests and skipped five opt-in hardware probes; the C++ contract test
-also passed.
-
+逐 case 的业务样例独立验证与七步流水线记录（2026-10-22，含全部逐 case 误差）见 [99 逐 case 精度与流水线验证](analysis/99-per-case-accuracy-20261022.md)。

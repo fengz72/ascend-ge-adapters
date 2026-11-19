@@ -12,12 +12,12 @@
 
 2026-10-22完成算子内部完整bounds缓存，正确性与六轮关闭profiling的同卡对照见附录P：QPS中位数2686.033→2685.188，P99中位数26.515→26.476ms，本配置未见明显性能提升。
 
-原始采集的推荐配置下，A5/A3业务QPS比为 **1.229倍**。固定同一中位输入、单实例、使用各自物理全核预算时，无profiling的QPS比为 **1.482倍**。两种比较回答不同问题：部署吞吐同时受每实例核预算、并发和算子实现影响。
+按当前口径（A5 `16|32`、3 实例、NZ，2767.918；A3 `8|16`、5 实例，2185.282），A5/A3业务QPS比为 **1.267倍**；2026-10-21 原始采集的推荐配置（A5 4 实例、A3 5 实例）下为 1.229 倍，两者分母不同。固定同一中位输入、单实例、使用各自物理全核预算时，无profiling的QPS比为 **1.482倍**。两种比较回答不同问题：部署吞吐同时受每实例核预算、并发和算子实现影响。
 
 以下三点为2026-10-21原始串行版本的归因。缓存前int32提前planner版本的四实例补采和更新结论见附录O：planner约97.2%已与主流重叠，当前A5 attention kernel相对A3推荐并发快约1.76倍。
 
 - 全核、单实例下，全部169个MatMul累计耗时约 **6.601ms → 4.740ms**，加速 **1.393倍**；MLP gate/up与down占A5设备图时间约45.1%，其加速分别只有1.304与1.489倍。
-- A5 Attention计算kernel本身快 **2.540倍**；加上每层AICPU planner和metadata清零后，Attention整条设备路径只有 **1.302倍**。planner与清零占该路径48.7%。
+- A5 Attention计算kernel本身快 **2.540倍**；加上每层AICPU planner和metadata清零后，Attention整条设备路径只有 **1.302倍**（串行归因；planner 与主流重叠后的修订见附录O）。planner与清零占该路径48.7%。
 - A3推荐5实例、每实例8|16，A5推荐4实例、每实例16|32。增加实例会拉长单个图的设备任务时间；不能把单实例或某个kernel的加速比直接当作最终QPS比。
 
 ## 环境、输入与边界
@@ -58,7 +58,7 @@
 
 profiler采集PipeUtilization、设备task、runtime API与时间线；每个固定输入的单实例采集先预热10次，再测30次；16核补采为100次。推荐并发采集每实例预热10次、共测100次。分析按Model ID分组，用step_trace剔除各图实例最前面的预热步骤，不混入冷启动、编译、首次shape执行或AICPU首调初始化。
 
-设备图时间取每步FP Start至Iteration End；逐算子表为保留测量步骤内各设备task的Task Duration均值。它与无profiling的整batch延迟口径不同。各流水线PMU比率可重叠，不相加；A3 MIX kernel的AIV列为0也不能推断没有向量计算。并发下多个图可重叠，跨图task耗时之和不能当作测量墙钟时间。
+设备图时间取每步FP Start至Iteration End；逐算子表为保留测量步骤内各设备task的Task Duration均值。它与无profiling的整batch延迟口径不同。**设备task累计、PMU流水比率与跨图任务都可重叠、都不能相加为图延迟或墙钟；图内未覆盖区间包含调度与提交间隔，不等于CPU计算，也不与Host API耗时重复相加**；A3 MIX kernel的AIV列为0也不能推断没有向量计算。
 
 特别修正采集缺项：A3的op_summary每图缺少169个NZ MatMul，但task_time含`MatMulV3_ND_NZ_ND_ND_FP16_FP16_FP16_FP16_high_performance_65536`的完整时间。分析从task_time恢复，并通过时间线connection_id关联原MatMul节点；不能仅对op_summary求和。A5另有每图24条MEMCPY_ASYNC，结合源码和每层调用位置归为metadata清零，不能漏掉。
 
@@ -109,7 +109,7 @@ A3使用24|48，A5使用32|64；A5自定义Attention仍固定16个AIC。以下�
 | 设备图时间中位数 | 11.736 | 7.923 | 1.481× |
 | 图内未被设备task覆盖的区间 | 0.117 | 0.365 | — |
 
-A5图时间均值高于中位数，保留了采集中的长步骤；所有算子均值仍使用全部30个稳态步骤。图内未覆盖区间包含调度、提交间隔等未归属设备task的时间，不直接等同CPU计算，也不与Host API耗时重复相加。
+A5图时间均值高于中位数，保留了采集中的长步骤；所有算子均值仍使用全部30个稳态步骤。未覆盖区间的含义见测量口径节。
 
 ## Prefix Attention实现差异及实测影响
 
@@ -985,13 +985,15 @@ A3首次16核profiling有一次约106ms的整batch长步骤，设备图未覆盖
 两端实验目录均为各自项目根下的`work/a3-a5-profiling-20261021`。其中保留隔离configs、输入池、attempts.jsonl、environment.json、原始PROF会话、msprof导出日志、profile-analysis.json及audit.json。所有run_id均可在各自`work/qwen2.5-0.5b/results/<run_id>`找到完整配置和日志。
 
 ```bash
-# 在对应机器、容器和项目根目录中；A3还需source env_a3.sh
+# 在对应机器、容器和项目根目录中
 source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
-python3 -m core.pipeline bench --config work/a3-a5-profiling-20261021/configs/profile-median-full-i1.yaml --device 1 --profiling
+bash models/qwen2.5-0.5b/run.sh --platform a3 --device 1 --iterations 30
 msprof --export=on --output=<本次结果目录>/bench-profiling/PROF_<会话>
 python3 work/a3-a5-profiling-20261021/analyze_profile.py
 python3 work/a3-a5-profiling-20261021/audit_profile.py
 ```
+
+profiling 采集时以 `msprof` 包裹 `run.sh` 的 bench 阶段（第 9 步 `ge_execute` 调用）。
 
 本次22次运行共22570次模型调用；12组profiling保留570个测量图。逐调用QPS/P99复算、零错误、输入摘要、相同seed序列、预热剔除、每图169 MatMul/24 Attention以及A5每图24 planner/24清零检查均通过。各自默认配置与默认输入池前后摘要相同。
 
@@ -1127,54 +1129,20 @@ EVENT WAIT会与辅流planner重叠，不能将所有event任务时长与planner
 
 原始result.json与逐调用requests.jsonl位于表中对应的 `work/qwen2.5-0.5b/results/<run_id>/`。
 采集原始PROF数据、导出JSONL、环境摘要、请求序列核对和分析脚本位于
-`work/attached-stream-benchmark-20261021/` 及相应结果目录；结果表保存在本附录，不另保留CSV文件。
+`work/attached-stream-benchmark-20261021/` 及相应结果目录；
 默认模型YAML、输入池、AIR和已安装算子在本轮测量期间均未修改。
 
 ## 附录G：A5 16|32、batch16、单实例重新采集（2026-10-22）
 
 本次沿用附录F的 `profile-median-opt-concurrent.yaml` profiling 配置，仅将 `benchmark.instances` 从4改为1；限核、输入、预热、正式调用数、seed和采集选项均保持一致。未实现提前planner或跨层复用，本次仍为现有辅流版本。
 
-| 项目 | 本次配置 / 结果 |
-| --- | --- |
-| 环境 | 850-a5 / hejun-cann910-stream，CANN 9.3.0，逻辑卡1 |
-| AIC/AIV / batch / 实例 | 16/32 / 16 / 1 |
-| 固定输入 | case-0020，T=2041，prefix=24，16个业务样本 |
-| 输入摘要 | `83c64fad54daa4c6968b38f49a8df917fbb167f85bf39c398cd59aa51cd95269`（仅该固定case） |
-| 预热 / 保留正式图 | 10 / 100 |
-| seed / AIC metrics | 42 / PipeUtilization |
-| 业务QPS（开启profiling） | 1349.886 |
-| 整batch平均 / P50 / P99延迟 ms（开启profiling） | 11.847 / 11.765 / 20.469 |
-| 设备图平均 / 中位数 ms | 11.651 / 11.561 |
-| 失败调用 | 0 |
-| run_id | `20261022T082226-364fc732` |
+环境 850-a5 / hejun-cann910-stream、CANN 9.3.0、逻辑卡1，`16|32`、batch16、单实例；固定输入 case-0020（T=2041、prefix=24、16个业务样本），输入摘要 `83c64fad54daa4c6968b38f49a8df917fbb167f85bf39c398cd59aa51cd95269`（仅该固定case）；预热 10 次、保留正式图 100 个、seed 42、AIC metrics 为 PipeUtilization，失败调用 0，run_id `20261022T082226-364fc732`。QPS 与延迟指标见附录M 跨轮对照表的附录G 列。
 
 上述QPS和P99来自固定输入、开启profiling的100次采集，包含采集开销，不替代无profiling的100-case输入池性能结论。P99沿用仓库整batch H2D、执行和同步口径。
 
 ### 算子耗时
 
-下表均为剔除预热后的单次算子平均耗时；前两列比较相同限核下的并发影响，最后一列保留此前满核单实例作为背景。满核结果与本次核预算不同，不直接用于判断版本收益。
-
-| 算子 / 阶段 | 每图调用数 | 本次16/32单实例 μs | 附录F 16/32四实例 μs | 附录F 32/64单实例 μs |
-| --- | --- | --- | --- | --- |
-| Q projection | 24 | 21.533 | 65.434 | 13.053 |
-| KV projections | 48 | 6.750 | 38.742 | 7.967 |
-| O projection | 24 | 22.507 | 66.443 | 13.798 |
-| MLP gate/up | 48 | 89.106 | 144.438 | 50.871 |
-| MLP down | 24 | 99.343 | 153.796 | 52.530 |
-| Output head | 1 | 2.497 | 25.869 | 2.588 |
-| Attention kernel | 24 | 34.831 | 95.797 | 34.962 |
-| Attention planner (AICPU) | 24 | 30.964 | 37.671 | 30.727 |
-| Attention metadata memset | 24 | 0.386 | 0.415 | 0.386 |
-| AddRmsNorm | 47 | 9.753 | 17.476 | 8.118 |
-| RmsNorm | 2 | 6.129 | 10.714 | 5.897 |
-| ApplyRotaryPosEmb | 24 | 12.110 | 19.794 | 8.144 |
-| Swish | 24 | 20.331 | 43.539 | 19.272 |
-| Mul | 24 | 22.189 | 54.943 | 16.823 |
-| GatherV2 | 4 | 4.928 | —（统计不完整） | 4.659 |
-| Add | 1 | 9.319 | 16.272 | 7.242 |
-| Sub | 1 | 2.354 | 3.170 | 2.455 |
-| Cast | 1 | 1.625 | 4.090 | 1.513 |
-| StridedSliceV2 | 1 | 3.379 | 5.390 | 3.200 |
+单次算子耗时并入附录M 的跨轮对照表：该表保留本轮 16|32 单实例、附录F 的 16|32 四实例与 32|64 单实例两列（后两者为不同核预算/并发下的背景，不用于判断版本收益），以及后续 4 轮的单实例值。
 
 每图169次MatMul累计平均 8.045ms；Attention计算、planner与清零累计平均 1.588ms，其中planner为 0.743ms。每图Attention/planner/清零各24次，100个正式图对应2400次planner，AICPU子明细2400/2400完整关联。
 
@@ -1193,7 +1161,7 @@ EVENT WAIT会与辅流planner重叠，不能将所有event任务时长与planner
 - 结果与逐调用记录：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T082226-364fc732` 中的 `result.json`、`requests.jsonl`。
 - 配置、环境快照、逐算子与stream分析：`/home/h00909914/ascend-ge-adapters/work/attached-stream-single-instance-20261022`。
 
-保留原始PROF、timeline JSON与6张导出JSONL表；转换索引记录列名、行数和SHA256，不保留CSV文件。
+保留原始PROF、timeline JSON与6张导出JSONL表；转换索引记录列名、行数和SHA256。
 
 ## 附录H：int32 bounds 输入与提前 planner（2026-10-22）
 
@@ -1234,49 +1202,47 @@ RT2的原workspace由主流分配器管理，提前在辅流写入可能与其�
 
 沿用附录G：逻辑卡1、16|32、batch16、单实例、固定case-0020（T=2041、prefix=24）、预热10次、正式100次、seed42、PipeUtilization。采集关闭地址跟踪和图dump，配置与附录G一致。输入池业务内容摘要保持21defc288cc9848d6f1f71f8a8c6d900327963431e57e77125274b5f5fc8c85b。
 
-| 指标 | 附录G：原同步 | 本次：int32与提前规划 |
-| --- | --- | --- |
-| 业务样本QPS（带profiling） | 1349.886 | 1413.009（+4.68%） |
-| 整batch平均延迟 ms | 11.847 | 11.310 |
-| 整batch P99 ms | 20.469 | 29.382 |
-| 设备图平均 / 中位数 ms | 11.651 / 11.561 | 11.071 / 10.883 |
-| 各计算/清零task累计均值 ms | 11.451 | 11.449 |
-| planner与同模型主流计算重叠 μs/图 | 0.000 | 708.755 |
-| event独占覆盖 μs/图 | 46.633 | 1.780 |
-| EVENT RECORD / WAIT / RESET，每图 | 48 / 48 / 48 | 24 / 24 / 24 |
-| run_id | `20261022T082226-364fc732` | `20261022T101723-0aba6757` |
-
 本次planner与本模型主流计算的平均交集为0.709ms/图，占planner累计任务耗时约95.2%。每图仍执行24次planner，尚未进行跨层复用。重叠区间不能再与主流计算时间直接相加；任务耗时累计并非图延迟。
 
-上表为单次、固定输入、开启profiling的100次窗口，P99包含采集扰动；没有重测关闭profiling后的100-case普通吞吐，不将本表推广为生产QPS或P99收益。
+本次业务样本QPS为1413.009，相对附录G的1349.886提高4.68%。该窗口为单次、固定输入、开启profiling的100次窗口，P99包含采集扰动；没有重测关闭profiling后的100-case普通吞吐，不将本表推广为生产QPS或P99收益。
 
 ### P99与长步骤
 
 本次P99由首个正式调用req=0拉高：整batch 29.382ms，对应设备图28.854ms；其中计算/清零task覆盖10.991ms，未覆盖区间17.863ms，而正式窗口的未覆盖区间中位数为0.156ms。该图task累计11.616ms，接近全窗口均值11.449ms。P99确实高于附录G，不能声称尾延迟改善；现有数据只定位到图内长间隔，未将其直接归因为某个kernel或采集机制。
 
+### 单实例窗口指标跨轮对照（附录G–M）
+
+固定 case-0020（T=2041、prefix=24）、batch16、单实例、预热 10 次、正式 100 次、seed42；除附录J 关闭 profiling 外均开启 PipeUtilization。各列是该轮自己的窗口，不是同一时间的一次运行。
+
+| 指标 | 附录G | 附录H | 附录I | 附录J | 附录K | 附录M |
+| --- | --- | --- | --- | --- | --- | --- |
+| run_id | `20261022T082226-364fc732` | `20261022T101723-0aba6757` | `20261022T105624-5644191b` | `20261022T110204-03e09a53` | `20261022T111827-95504de4` | `20261022T114940-d157480a` |
+| 业务样本QPS（附录J 无采集开销） | 1349.886 | 1413.009 | 1426.133 | 1444.377 | 1413.554 | 1161.060 |
+| 整batch平均延迟 ms | 11.847 | 11.310 | 11.213 | 11.027 | 11.306 | 13.771 |
+| 整batch P50 ms | 11.765 | 11.132 | 11.121 | 10.844 | 11.089 | 12.775 |
+| 整batch P99 / 最大 ms | 20.469 | 29.382 | 19.786 | 30.278 | 29.552 | 32.566 |
+| 整batch最小延迟 ms | — | — | — | 10.750 | — | — |
+| 最慢正式调用 | — | — | req=0（iteration=11） | req=0 | req=0（iteration=11） | req=47（iteration=58） |
+| 最慢调用 H2D / execute+sync ms | — | — | 0.089 / 19.695 | 0.081 / 30.196 | — / 29.479 | 0.083 / 32.480 |
+| 最慢调用设备图 ms | — | — | 19.452 | — | 28.940 | 32.375 |
+| 最慢图计算/清零task覆盖 ms | — | — | 10.940 | — | 10.953 | 11.300 |
+| 最慢图 task 累计 ms | — | 11.616 | 11.616 | — | 11.607 | 11.459 |
+| 最慢图未覆盖区间 ms | — | 17.863 | 8.513 | — | 17.986 | 21.076 |
+| 正式窗口未覆盖区间中位数 ms | — | 0.156 | 0.147 | — | 0.155 | — |
+| 其余 99 次延迟范围 / 均值 ms | — | — | 11.027–11.295 / 11.126 | 10.750–10.964 / 10.833 | 10.974–12.177 / — | — |
+| 设备图平均 / 中位数 ms | 11.651 / 11.561 | 11.071 / 10.883 | 10.977 / 10.883 | — | 11.087 / 10.876 | 13.527 / 12.521 |
+| 计算/清零task累计均值 ms | 11.451 | 11.449 | 11.453 | — | 11.445 | 11.438 |
+| 计算/清零task未覆盖区间均值 ms | — | — | — | — | — | 2.619 |
+| planner与同模型主流重叠 μs/图 | 0.000 | 708.755 | 705.420 | — | 707.805 | 518.905 |
+| event独占覆盖 μs/图 | 46.633 | 1.780 | 1.860 | — | 1.863 | 6.335 |
+| EVENT RECORD / WAIT / RESET 每图 | 48 / 48 / 48 | 24 / 24 / 24 | 24 / 24 / 24 | — | 24 / 24 / 24 | 24 / 24 / 24 |
+| 正式调用 / 错误 | 100 / 0 | 100 / 0 | 100 / 0 | 100 / 0 | 100 / 0 | 100 / 0 |
+
+同一形态在 5 轮中反复出现：首个正式调用（附录M 除外，最慢点为 req=47）耗时最长，其设备图的计算/清零 task 覆盖与常态一致，差距全部落在图内未覆盖区间；其余 99 次延迟稳定。附录L 的修复把冷启动注册与首个 metadata 长任务移入预热后，该尖峰在三次独立启动中均未复现（三轮 P99 17.319/13.274/11.369ms，最慢点分别移到 req=86/50/75）。未覆盖区间不等于 CPU 计算，也不是可由某个 kernel 解释的耗时（口径见测量口径与预热过滤节）。
+
 ### 单次算子平均耗时
 
-| 算子 / 阶段 | 原同步 μs | 本次 μs | 本次每图次数 |
-| --- | --- | --- | --- |
-| Q projection | 21.533 | 21.540 | 24 |
-| KV projections | 6.750 | 6.761 | 48 |
-| O projection | 22.507 | 22.486 | 24 |
-| MLP gate/up | 89.106 | 89.102 | 48 |
-| MLP down | 99.343 | 99.345 | 24 |
-| Output head | 2.497 | 2.689 | 1 |
-| Attention kernel | 34.831 | 34.971 | 24 |
-| Attention planner (AICPU) | 30.964 | 31.024 | 24 |
-| Attention metadata memset | 0.386 | 0.540 | 24 |
-| AddRmsNorm | 9.753 | 9.892 | 47 |
-| RmsNorm | 6.129 | 6.235 | 2 |
-| ApplyRotaryPosEmb | 12.110 | 12.127 | 24 |
-| Swish | 20.331 | 20.338 | 24 |
-| Mul | 22.189 | 21.450 | 24 |
-| GatherV2 | 4.928 | 5.157 | 4 |
-| Add | 9.319 | 9.176 | 1 |
-| Sub | 2.354 | 2.794 | 1 |
-| Cast | 1.625 | — | 0 |
-| StridedSliceV2 | 3.379 | 3.426 | 1 |
+单次算子耗时并入附录M 的跨轮对照表（本轮为附录H 列）。
 
 ### 采集尝试与共享环境
 
@@ -1295,81 +1261,38 @@ RT2的原workspace由主流分配器管理，提前在辅流写入可能与其�
 - 结果和逐调用记录：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T101723-0aba6757` 中的result.json、requests.jsonl。
 - 配置、输入地址审计、正确性、逐算子和主辅流分析：`/home/h00909914/ascend-ge-adapters/work/bounds-int32-early-planner-20261022`。
 
-保留原始PROF、timeline JSON及导出JSONL表，不保留CSV。新profiling采集期间正式模型YAML、AIR、算子库和来源profiling配置的摘要均保持不变；算子与AIR相对附录G为本次修改后的版本。代码尚未提交，工作树diff和文件SHA256记录在同目录的change-audit.json。
+保留原始PROF、timeline JSON及导出JSONL表。新profiling采集期间正式模型YAML、AIR、算子库和来源profiling配置的摘要均保持不变；算子与AIR相对附录G为本次修改后的版本。代码尚未提交，工作树diff和文件SHA256记录在同目录的change-audit.json。
 
 
 ## 附录 I：空闲卡复测P99（2026-10-22）
 
 在附录H代码和产物不变的情况下，再次于逻辑卡1执行相同profiling：16|32、batch16、单实例、固定case-0020（T=2041、prefix=24）、预热10次、正式100次、seed42、PipeUtilization。采集前后npu-smi显示1号卡利用率为0且无运行进程；采集前所有卡也均无运行进程。正式模型YAML、AIR、算子库及来源配置的SHA256与附录H成功采集结束时一致，采集期间也未变化。没有修改预热次数、剔除首个正式调用或调整仓库P99算法。
 
-| 指标 | 附录H | 空闲卡复测 |
-| --- | --- | --- |
-| 业务样本QPS（带profiling） | 1413.009 | 1426.133 |
-| 整batch平均延迟 ms | 11.310 | 11.213 |
-| 整batch P50 ms | 11.132 | 11.121 |
-| 整batch P99 / 最大延迟 ms | 29.382 | 19.786 |
-| 最慢正式调用 | req=0（iteration=11） | req=0（iteration=11） |
-| 最慢调用的设备图 ms | 28.854 | 19.452 |
-| 最慢图计算/清零task覆盖 ms | 10.991 | 10.940 |
-| 最慢图未被上述task覆盖的区间 ms | 17.863 | 8.513 |
-| 设备图平均 / 中位数 ms | 11.071 / 10.883 | 10.977 / 10.883 |
-| 各计算/清零task累计均值 ms | 11.449 | 11.453 |
-| planner与同模型主流计算重叠 μs/图 | 708.755 | 705.420 |
-| event独占覆盖 μs/图 | 1.780 | 1.860 |
-| EVENT RECORD / WAIT / RESET，每图 | 24 / 24 / 24 | 24 / 24 / 24 |
-| run_id | `20261022T101723-0aba6757` | `20261022T105624-5644191b` |
+指标见上述跨轮对照表的附录H、附录I 两列。
 
-100次正式调用全部成功。首个正式调用仍是明显离群点：H2D=0.089ms、execute+sync=19.695ms、整batch=19.786ms；其余99次延迟范围11.027–11.295ms，均值11.126ms（仅用于解释分布，未从正式统计中删除）。本窗口仓库P99等于最大值。最慢图task累计11.616ms，接近全窗口均值11.453ms；正式窗口未覆盖区间中位数仅0.147ms。
+100 次正式调用全部成功；本窗口仓库 P99 等于最大值。
 
-结论：空闲卡复测后P99从29.382ms降至19.786ms，但首个正式调用的长间隔仍然复现，不能将原异常完全归因于其他任务占卡。算子平均耗时基本不变，planner仍与主流重叠约0.705ms/图；本次没有发现planner计算累计耗时足以解释该长间隔。当前证据定位到首个正式调用的图内未覆盖区间，尚不足以确定具体运行时或profiling根因。此结果仍属于开启profiling的固定输入窗口，不替代普通性能统计。
+结论：P99 从 29.382ms 降至 19.786ms，但首个正式调用的长间隔仍复现，不能把原异常完全归因于其他任务占卡；planner 仍与主流重叠约 0.705ms/图，其计算累计耗时不足以解释该间隔。证据只定位到首个正式调用的图内未覆盖区间，尚不足以确定运行时或 profiling 根因。
 
 ### 单次算子耗时复核
 
-| 算子 / 阶段 | 附录H μs | 空闲卡复测 μs |
-| --- | --- | --- |
-| Add | 9.176 | 9.194 |
-| AddRmsNorm | 9.892 | 9.938 |
-| ApplyRotaryPosEmb | 12.127 | 12.134 |
-| Attention kernel | 34.971 | 34.991 |
-| Attention metadata memset | 0.540 | 0.537 |
-| Attention planner (AICPU) | 31.024 | 30.871 |
-| GatherV2 | 5.157 | 5.168 |
-| KV projections | 6.761 | 6.761 |
-| MLP down | 99.345 | 99.350 |
-| MLP gate/up | 89.102 | 89.134 |
-| Mul | 21.450 | 21.508 |
-| O projection | 22.486 | 22.513 |
-| Output head | 2.689 | 2.421 |
-| Q projection | 21.540 | 21.546 |
-| RmsNorm | 6.235 | 6.206 |
-| StridedSliceV2 | 3.426 | 3.192 |
-| Sub | 2.794 | 2.725 |
-| Swish | 20.338 | 20.404 |
+单次算子耗时并入附录M 的跨轮对照表（本轮为附录I 列）。
 
 ### 原始数据
 
 - 配置、环境快照、摘要及分析：`/home/h00909914/ascend-ge-adapters/work/bounds-int32-p99-recheck-20261022`。
 - 结果与逐调用记录：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T105624-5644191b` 中的result.json、requests.jsonl。
 - profiling：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T105624-5644191b/bench-profiling/PROF_000001_20261022105633387_00045733DQHECHQA`。
-- 导出6张表均转存JSONL并保留列名与SHA256索引，不保留CSV。模型、算子与配置均未修改，本次仅新增复测记录。
+- 导出6张表均转存JSONL并保留列名与SHA256索引。模型、算子与配置均未修改，本次仅新增复测记录。
 
 
 ## 附录 J：关闭profiling的单实例性能复测（2026-10-22）
 
 按性能测试口径关闭profiling，继续使用逻辑卡1、16|32、batch16、单实例、固定case-0020（T=2041、prefix=24）、预热10次、正式100次、seed42。与附录I的唯一配置差异为observability.profiling=false；执行时再次显式传入profiling=False。result.json中配置profiling=false且performance.profiling_enabled=false，无profiling输出目录。采集前后1号卡无运行进程；AIR、算子库、正式模型YAML及来源配置SHA256与附录I一致，测试期间未变。
 
-| 指标 | 附录I：开启profiling | 本次：关闭profiling |
-| --- | --- | --- |
-| 业务样本QPS | 1426.133 | 1444.377 |
-| 整batch平均延迟 ms | 11.213 | 11.027 |
-| 整batch P50 ms | 11.121 | 10.844 |
-| 整batch P99 / 最大延迟 ms | 19.786 | 30.278 |
-| 整batch最小延迟 ms | 11.027 | 10.750 |
-| 正式调用数 / 错误数 | 100 / 0 | 100 / 0 |
-| 最慢正式调用 | req=0 | req=0 |
-| run_id | `20261022T105624-5644191b` | `20261022T110204-03e09a53` |
+指标见上述跨轮对照表的附录I、附录J 两列。
 
-关闭profiling后，最慢调用仍为req=0：H2D=0.081ms、execute+sync=30.196ms、整batch=30.278ms。其余99次延迟为10.750–10.964ms，均值10.833ms；该分布说明仅用于定位离群点，所有100次均保留在正式QPS和P99统计中。本窗口仓库P99等于最大值。
+所有 100 次均保留在正式 QPS 和 P99 统计中；本窗口仓库 P99 等于最大值。
 
 结论：不启用profiling时仍有首个正式调用的延迟尖峰，不能将该现象完全归因于profiling。由于本次没有设备时间线，不将附录I测得的图内间隔直接当作本轮尖峰原因。该结果是固定输入的单实例100次性能窗口；没有重跑4实例或100-case长窗口，不将其推广到那些配置。
 
@@ -1377,7 +1300,7 @@ RT2的原workspace由主流分配器管理，提前在辅流写入可能与其�
 
 - 配置、环境快照及摘要：`/home/h00909914/ascend-ge-adapters/work/bounds-int32-performance-no-profile-20261022`。
 - 结果、bench.log与逐调用记录：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T110204-03e09a53` 中的result.json、bench.log、requests.jsonl。
-- 未开启profiling，不产生PROF目录；逐调用CSV已转换为JSONL后删除，没有保留CSV。
+- 未开启profiling，不产生PROF目录；逐调用记录为JSONL。
 
 
 ## 附录 K：空闲卡3单实例profiling（2026-10-22）
@@ -1386,44 +1309,15 @@ RT2的原workspace由主流分配器管理，提前在辅流写入可能与其�
 
 本轮用于设备时间线与算子分析，开启profiling；普通性能结果仍参见关闭profiling的附录J。本次未重跑普通性能。
 
-| 指标 | 卡3本次profiling |
-| --- | --- |
-| 设备图平均 / 中位数 ms | 11.087 / 10.876 |
-| 各计算/清零task累计均值 ms | 11.445 |
-| planner与本模型主流重叠 μs/图 | 707.805 |
-| event独占覆盖 μs/图 | 1.863 |
-| EVENT RECORD / WAIT / RESET，每图 | 24 / 24 / 24 |
-| 带profiling的业务样本QPS | 1413.554 |
-| 带profiling的整batch平均 / P50 ms | 11.306 / 11.089 |
-| 带profiling的整batch P99 / 最大延迟 ms | 29.552 |
-| run_id | `20261022T111827-95504de4` |
+指标见上述跨轮对照表的附录K 列。
 
-首个正式调用req=0（iteration=11）仍是最慢调用：整batch29.552ms、execute+sync=29.479ms，设备图28.940ms。该图计算/清零task累计11.607ms，任务覆盖10.953ms，未覆盖区间17.986ms；正式窗口未覆盖区间中位数0.155ms。其余99次整batch延迟10.974–12.177ms。全部调用均计入正式统计，没有剔除离群点。
+全部调用均计入正式统计，没有剔除离群点。
 
 在另一张空闲卡上仍观察到首个正式调用的长间隔；planner与主流继续重叠。当前时间线只能定位到任务未覆盖区间，不直接断言具体运行时根因。
 
 ### 单次算子平均耗时
 
-| 算子 / 阶段 | 附录I卡1 μs | 本次卡3 μs | 本次每图次数 |
-| --- | --- | --- | --- |
-| Add | 9.194 | 9.267 | 1 |
-| AddRmsNorm | 9.938 | 9.875 | 47 |
-| ApplyRotaryPosEmb | 12.134 | 12.122 | 24 |
-| Attention kernel | 34.991 | 34.934 | 24 |
-| Attention metadata memset | 0.537 | 0.537 | 24 |
-| Attention planner (AICPU) | 30.871 | 31.046 | 24 |
-| GatherV2 | 5.168 | 5.177 | 4 |
-| KV projections | 6.761 | 6.755 | 48 |
-| MLP down | 99.350 | 99.320 | 24 |
-| MLP gate/up | 89.134 | 89.106 | 48 |
-| Mul | 21.508 | 21.461 | 24 |
-| O projection | 22.513 | 22.505 | 24 |
-| Output head | 2.421 | 2.445 | 1 |
-| Q projection | 21.546 | 21.546 | 24 |
-| RmsNorm | 6.206 | 6.213 | 2 |
-| StridedSliceV2 | 3.192 | 3.230 | 1 |
-| Sub | 2.725 | 2.728 | 1 |
-| Swish | 20.404 | 20.224 | 24 |
+单次算子耗时并入附录M 的跨轮对照表（本轮为附录K 列）。
 
 ### 路径与采集状态
 
@@ -1432,7 +1326,7 @@ RT2的原workspace由主流分配器管理，提前在辅流写入可能与其�
 - 结果与逐调用记录：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T111827-95504de4` 中的result.json、requests.jsonl。
 - 配置、SMI快照、逐算子及主辅流分析：`/home/h00909914/ascend-ge-adapters/work/bounds-int32-idle-device3-profile-20261022-111751`。
 - 之前1号卡采集启动时有xllm驻留，用户要求切换空闲卡后，该任务已自然完成，记录为superseded（run_id：20261022T111653-943f3694），不用于本轮对比，未停止其他用户进程。记录保存在`/home/h00909914/ascend-ge-adapters/work/bounds-int32-single-instance-profile-20261022-111620`。
-- 6张导出表转换为JSONL并记录列名与SHA256，不保留CSV。代码、模型和正式配置未修改。
+- 6张导出表转换为JSONL并记录列名与SHA256。代码、模型和正式配置未修改。
 
 
 ### 流58注册任务与流59首次planner长耗时
@@ -1501,7 +1395,7 @@ runtime/bench.cpp的BenchPool原先在调用线程预热，之后才创建正式
 - 第2轮：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T114229-b66fc9be`，含result.json、requests.jsonl、bench.log；run_id=`20261022T114229-b66fc9be`。
 - 第3轮：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T114357-443f8dc0`，含result.json、requests.jsonl、bench.log；run_id=`20261022T114357-443f8dc0`。
 
-配置、运行脚本、SMI快照、测试日志、修改前后源码、diff、SHA256及全部轮次摘要保存在`/home/h00909914/ascend-ge-adapters/work/same-worker-warmup-20261022-113718`。三轮各自的performance-median-16-i1.yaml位于repeat-1、repeat-2、repeat-3子目录。逐调用CSV转换为JSONL后删除；测试生成的临时CSV也已清理，未保留CSV。
+配置、运行脚本、SMI快照、测试日志、修改前后源码、diff、SHA256及全部轮次摘要保存在`/home/h00909914/ascend-ge-adapters/work/same-worker-warmup-20261022-113718`。三轮各自的performance-median-16-i1.yaml位于repeat-1、repeat-2、repeat-3子目录。逐调用记录为JSONL。
 
 本次修改了runtime/bench.cpp、runtime/bench.h及已有测试tests/runtime_contracts.cpp，并追加本文档；此前attention相关未提交修改予以保留，未提交或推送。
 
@@ -1530,20 +1424,9 @@ runtime/bench.cpp的BenchPool原先在调用线程预热，之后才创建正式
 
 ### 正式窗口摘要与剩余波动
 
-| 指标 | 本次带profiling窗口 |
-| --- | --- |
-| 业务样本QPS | 1161.060 |
-| 整batch平均 / P50 ms | 13.771 / 12.775 |
-| 整batch P99 / 最大值 ms | 32.566 |
-| 最慢正式调用 | req=47，iteration=58 |
-| 设备图平均 / 中位数 ms | 13.527 / 12.521 |
-| 各计算/清零task累计均值 ms | 11.438 |
-| 计算/清零task未覆盖区间均值 ms | 2.619 |
-| planner与同模型主流重叠 μs/图 | 518.905 |
-| event独占覆盖 μs/图 | 6.335 |
-| EVENT RECORD / WAIT / RESET，每图 | 24 / 24 / 24 |
+指标见上述跨轮对照表的附录M 列。
 
-本次没有删除任何正式样本，100次窗口中仓库P99仍等于最大值。最慢的是req=47：H2D=0.083ms、execute+sync=32.480ms、整batch32.566ms；设备图32.375ms，其中计算/清零task累计11.459ms、任务覆盖11.300ms、未覆盖区间21.076ms。该调用的24次planner累计0.756ms，第1层planner为31.423μs，没有正式阶段重新注册/加载的证据。
+本次没有删除任何正式样本。该调用的 24 次 planner 累计 0.756ms，第 1 层 planner 为 31.423μs，没有正式阶段重新注册/加载的证据。
 
 时间线显示该图存在多段约0.5–1.5ms的计算空闲区间，同时有若干Host launch区间拉长；不能将总延迟解释为某个metadata kernel计算了二十多毫秒。全窗口task累计均值与附录K接近（11.445ms→11.438ms），但图未覆盖区间增加，planner与主流重叠也从707.805μs/图降至518.905μs/图。该变化说明本轮执行/发射节奏有较大波动，尚不足以从这份trace确定是主机调度、运行时还是采集开销造成；不直接归因于其他任务，也不将带profiling的QPS/P99替代普通性能结果。
 
@@ -1551,26 +1434,29 @@ runtime/bench.cpp的BenchPool原先在调用线程预热，之后才创建正式
 
 ### 单次算子平均耗时
 
-| 算子 / 阶段 | 附录K μs | 本次 μs | 本次每图次数 |
-| --- | --- | --- | --- |
-| Add | 9.267 | 9.144 | 1 |
-| AddRmsNorm | 9.875 | 9.903 | 47 |
-| ApplyRotaryPosEmb | 12.122 | 12.105 | 24 |
-| Attention kernel | 34.934 | 34.888 | 24 |
-| Attention metadata memset | 0.537 | 0.524 | 24 |
-| Attention planner (AICPU) | 31.046 | 30.924 | 24 |
-| GatherV2 | 5.177 | 5.107 | 4 |
-| KV projections | 6.755 | 6.752 | 48 |
-| MLP down | 99.320 | 99.331 | 24 |
-| MLP gate/up | 89.106 | 89.090 | 48 |
-| Mul | 21.461 | 21.398 | 24 |
-| O projection | 22.505 | 22.503 | 24 |
-| Output head | 2.445 | 2.569 | 1 |
-| Q projection | 21.546 | 21.536 | 24 |
-| RmsNorm | 6.213 | 6.213 | 2 |
-| StridedSliceV2 | 3.230 | 3.199 | 1 |
-| Sub | 2.728 | 2.755 | 1 |
-| Swish | 20.224 | 20.174 | 24 |
+单次算子平均耗时见下表（附录G/H/I/K/M 各轮，16|32、batch16、单实例）。
+
+| 算子 / 阶段 | 每图次数 | 附录G 16\|32 单实例 μs | 附录G 16\|32 四实例 μs | 附录F 32\|64 单实例 μs | 附录H μs | 附录I μs | 附录K μs | 附录M μs | 5 轮单实例极差 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Q projection | 24 | 21.533 | 65.434 | 13.053 | 21.540 | 21.546 | 21.546 | 21.536 | 0.013 |
+| KV projections | 48 | 6.750 | 38.742 | 7.967 | 6.761 | 6.761 | 6.755 | 6.752 | 0.011 |
+| O projection | 24 | 22.507 | 66.443 | 13.798 | 22.486 | 22.513 | 22.505 | 22.503 | 0.027 |
+| MLP gate/up | 48 | 89.106 | 144.438 | 50.871 | 89.102 | 89.134 | 89.106 | 89.090 | 0.044 |
+| MLP down | 24 | 99.343 | 153.796 | 52.530 | 99.345 | 99.350 | 99.320 | 99.331 | 0.030 |
+| Output head | 1 | 2.497 | 25.869 | 2.588 | 2.689 | 2.421 | 2.445 | 2.569 | 0.268 |
+| Attention kernel | 24 | 34.831 | 95.797 | 34.962 | 34.971 | 34.991 | 34.934 | 34.888 | 0.160 |
+| Attention planner (AICPU) | 24 | 30.964 | 37.671 | 30.727 | 31.024 | 30.871 | 31.046 | 30.924 | 0.175 |
+| Attention metadata memset | 24 | 0.386 | 0.415 | 0.386 | 0.540 | 0.537 | 0.537 | 0.524 | 0.154 |
+| AddRmsNorm | 47 | 9.753 | 17.476 | 8.118 | 9.892 | 9.938 | 9.875 | 9.903 | 0.185 |
+| RmsNorm | 2 | 6.129 | 10.714 | 5.897 | 6.235 | 6.206 | 6.213 | 6.213 | 0.106 |
+| ApplyRotaryPosEmb | 24 | 12.110 | 19.794 | 8.144 | 12.127 | 12.134 | 12.122 | 12.105 | 0.029 |
+| Swish | 24 | 20.331 | 43.539 | 19.272 | 20.338 | 20.404 | 20.224 | 20.174 | 0.230 |
+| Mul | 24 | 22.189 | 54.943 | 16.823 | 21.450 | 21.508 | 21.461 | 21.398 | 0.791 |
+| GatherV2 | 4 | 4.928 | —（统计不完整） | 4.659 | 5.157 | 5.168 | 5.177 | 5.107 | 0.249 |
+| Add | 1 | 9.319 | 16.272 | 7.242 | 9.176 | 9.194 | 9.267 | 9.144 | 0.175 |
+| Sub | 1 | 2.354 | 3.170 | 2.455 | 2.794 | 2.725 | 2.728 | 2.755 | 0.440 |
+| Cast | 1 | 1.625 | 4.090 | 1.513 | — | — | — | — | — |
+| StridedSliceV2 | 1 | 3.379 | 5.390 | 3.200 | 3.426 | 3.192 | 3.230 | 3.199 | 0.234 |
 
 ### 原始数据
 
@@ -1579,7 +1465,7 @@ runtime/bench.cpp的BenchPool原先在调用线程预热，之后才创建正式
 - 原始PROF：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T114940-d157480a/bench-profiling/PROF_000001_20261022114950711_00085454JDLNPRBR`。
 - 结果和逐调用数据：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T114940-d157480a` 中的result.json、requests.jsonl。
 - 配置、环境快照、算子/主辅流分析及聚焦时间线证据：`/home/h00909914/ascend-ge-adapters/work/same-worker-profiling-20261022-114920`，其中focused-trace-analysis.json记录注册线程、流58任务、流59样例、最慢步骤及Host长任务。
-- 保留原始PROF、timeline JSON、6张导出JSONL表及其列名/SHA256索引，不保留CSV。
+- 保留原始PROF、timeline JSON、6张导出JSONL表及其列名/SHA256索引。
 
 
 ## 附录 N：A5默认参数性能验证（2026-10-22）
@@ -1617,7 +1503,7 @@ result.json核实profiling=false、performance.profiling_enabled=false，无prof
 
 - 结果与逐调用记录：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T115820-b644b307` 中的result.json、requests.jsonl及bench.log。
 - 默认YAML快照、运行脚本、SMI快照、摘要与前后SHA256：`/home/h00909914/ascend-ge-adapters/work/default-a5-performance-20261022-115756`。
-- requests.csv已转换为JSONL后删除，不保留CSV。
+- 逐调用记录为JSONL。
 
 
 ## 附录 O：当前A5与A3吞吐差距及Attention重点分析（2026-10-22）
@@ -1626,7 +1512,7 @@ result.json核实profiling=false、performance.profiling_enabled=false，无prof
 
 当前A5使用附录N的普通性能：16|32、batch16、4实例、默认100-case输入池、1000次请求、关闭profiling，QPS=2681.175。A3复用2026-10-21的推荐配置8|16、batch16、5实例，3×3000次普通测量中最高QPS=2180.259（seed44，run_id=20261021T080316-ecbe54b0）；其中位数为2168.494。本轮未登录A3重跑，当前A5也未重新穷举参数，因此比较的是“当前A5预设”与“A3历史推荐配置最佳测量值”，不能宣称已经找到新版本A5的全局峰值。
 
-两端普通性能使用相同100-case输入池，摘要21defc288cc9848d6f1f71f8a8c6d900327963431e57e77125274b5f5fc8c85b；但测量日期、seed、窗口长度和运行时版本有差别。本次比值为1.2298倍；若以1.6倍为目标，则A5需达到3488.414业务样本/秒，比当前还需约30.1%吞吐提升。这里将1.6作为目标，不将其视为已经验证的所有算子、所有输入的硬件必达比例。
+两端普通性能使用相同100-case输入池，摘要21defc288cc9848d6f1f71f8a8c6d900327963431e57e77125274b5f5fc8c85b；但测量日期、seed、窗口长度和运行时版本有差别。按本节分母（A5 2681.175 / A3 2026-10-21 最高 2180.259）算得比值为 1.2298 倍；当前口径（2767.918 / 2185.282）为 1.267 倍，两者分母与日期不同。若以1.6倍为目标，则A5需在此节分母上达到3488.414业务样本/秒，比2681.175还需约30.1%吞吐提升。这里将1.6作为目标，不将其视为已经验证的所有算子、所有输入的硬件必达比例。
 
 为避免沿用旧同步版本的Attention归因，本轮在空闲逻辑卡1补采当前4实例profiling：16|32、batch16、固定case-0020（T=2041、prefix=24）、每实例预热10次、正式总共100次、seed42、PipeUtilization。全部成功；运行前后及启动快照均显示卡1无进程，运行前利用率为0。模型、算子库、运行时及配置在采集前后摘要一致。新增run_id=20261022T120752-b0b1c926，使用附录L的同线程预热与int32 bounds提前planner版本。此固定输入profiling仅用于逐算子分析，不替代附录N的变长输入普通QPS。
 
@@ -1685,7 +1571,7 @@ A5 kernel本身没有随实例数改变，同一输入从约35μs增至98μs，�
 
 ### 优化顺序建议
 
-先以当前版本重新验证3–5实例和配套限核的吞吐，确认A5新峰值；Attention侧优先验证每请求一次planner及显式可调核数/有效owner数，再做prefix合并、GQA复用和tile变体。要补齐整网约30%吞吐差额，同时需要处理当前占比约70%、仅快1.42倍的MatMul路径，特别是MLP与A3 NZ/A5 ND布局差异；没有关闭NZ pass的对照，不估算NZ单独带来的收益。
+先以当前版本重新验证3–5实例和配套限核的吞吐，确认A5新峰值；Attention侧优先验证每请求一次planner及显式可调核数/有效owner数，再做prefix合并、GQA复用和tile变体。要补齐整网约30%吞吐差额，同时需要处理当前占比约70%、仅快1.42倍的MatMul路径，特别是MLP与当时的A3 NZ×NZ、A5 ND×ND布局差异；NZ 的独立收益见[A5 NZ 权重排布与调优](qwen2.5-0.5b-a5-nz.md)。具体候选与优先级见正文"可以优先验证的优化方向"及[A3/A5复测与无缓存调优](qwen2.5-0.5b-a3-a5-retuning.md)。
 
 ### 原始证据与新增采集记录
 
@@ -1694,7 +1580,7 @@ A5 kernel本身没有随实例数改变，同一输入从约35μs增至98μs，�
 - 本次4实例profiling：`/home/h00909914/ascend-ge-adapters/work/qwen2.5-0.5b/results/20261022T120752-b0b1c926/bench-profiling/PROF_000001_20261022120800479_00105597CGEHJOFG`。
 - 本次带profiling固定输入窗口：业务QPS=2731.042、P99=25.563ms、100次正式请求、0错误；此数值不与变长输入普通QPS混用。
 - 配置、环境快照、完整逐算子/主辅流分析、shape计算、源码快照及历史差异审计：`/home/h00909914/ascend-ge-adapters/work/attention-a3-a5-analysis-20261022-120732`。
-- comparison-summary.json与a3-baseline-evidence.json保存比值计算与历史基线，6张导出表已转为JSONL并保存列名/SHA256，不保留CSV。本轮仅采集和分析，没有修改运行时代码或算子实现。
+- comparison-summary.json与a3-baseline-evidence.json保存比值计算与历史基线，6张导出表已转为JSONL并保存列名/SHA256。本轮仅采集和分析，没有修改运行时代码或算子实现。
 
 ## 附录 P：完整 bounds 的算子内部缓存与四实例性能（2026-10-22）
 
@@ -1791,7 +1677,7 @@ profiling=false、dump=false，无 LD_PRELOAD/地址跟踪。QPS 为业务样本
 过程与完整数据：`work/bounds-cache-20261022/`，包括 correctness-result.json、launch-trace.jsonl、
 source-checks.json、comparison-summary.json、final-artifact-sha256.json、operator-tracked.patch、
 operator-new-files.json、operator-complete.patch（含新增文件）、各 window/control 子目录的原生 result、请求 JSONL、配置及测试前后 npu-smi。
-本次生成的请求 CSV 已转为 JSONL 并删除；摘要及全部性能结果记录在本附录表格。
+摘要及全部性能结果记录在本附录表格。
 
 本次直接构建当前 ascend-ops 工作区，默认 model.yaml 中的 dependency revision 仍为原来的 `0d59d480`；
 它不能代表本次未提交缓存源码。恢复与复现应使用上述检查点、工作区改动及实际交付件摘要。
@@ -1804,33 +1690,3 @@ operator-new-files.json、operator-complete.patch（含新增文件）、各 win
 | libcust_opapi.so | `fa27965ad3bfe28e4866538eb753754979e880fa5ba5a5ff3955dfa07c49fc25` |
 | aicpu_metadata.so | `a3bafdbb20d3db36d363e11219c2970583f142d4f67e518e550e7886d4aaf118` |
 | kernel_fp16.so | `5760970b68f7bd162d88c15d199b7b742e9bdbb48ab5bd699bd6cb40d83315ef` |
-
-## 附录Q：2026-10-22 A3复测与A5无缓存重新调优
-
-A3使用99/hejun-cann9-qwen25，默认8|16、batch16、5实例，最终性能改用当时空闲逻辑卡复验（逐run记录设备）。
-初测中的设备占用风险已标记；以下仅使用空闲卡复验。
-三轮3000调用的业务QPS为2094.122/2126.997/2170.244，P99为42.101/41.440/40.913ms；
-QPS中位数与原文档2168.494相差-1.914%。
-
-A5使用850-a5/hejun-cann910-stream、CANN9.3.0、空闲逻辑卡3，先恢复无缓存算子检查点fbf0400。
-本次64次扫描与确认运行后，16|32、batch16、3实例的三轮长窗口QPS中位数为2712.967，最差轮P99为20.021ms。
-标准默认入口再次验证QPS=2714.666、P99=19.880ms；100case/12800评分与原基线逐位一致，FP32参考通过。
-A5精确SoC的默认配置和依赖版本记录已同步；此前附录中的4实例与缓存版本是历史试验状态。
-
-两端分别重新采集推荐核预算单实例、不限核单实例及推荐并发profiling。
-本次不限核A5 attention实际启动32个block，旧“全核”记录实际上只有16个，不能直接混为同一kernel配置。
-关闭profiling的不限核单实例QPS比为1.676倍，推荐配置峰值比为1.275倍；
-不限核单实例attention每层耗时85.485→22.136µs（3.862倍），MLP累计仅加速1.360倍。
-优化应优先检查MLP/MatMul和激活读写，再评估attention的GQA分块、流水尾部与核预算。
-
-详细口径、全部性能表（含失败）、24层attention及169个MatMul逐算子表、原始profiling目录、
-正确性和交付件摘要见 [A3/A5复测与无缓存调优](qwen2.5-0.5b-a3-a5-retuning.md)。
-两端过程目录均为项目根下`work/a3-a5-retuning-20261022/`，导出CSV已转为JSONL并删除。
-
-## 附录R：A5 MatMulV3权重NZ对照（2026-10-23）
-
-已在现有WeightNzAndMatMulV3Pass中适配已有MatMulV3：编译期重排常量权重，并重建节点清除ND实现选择缓存。
-同卡三轮业务QPS中位数2711.228→2767.918（+2.091%），最差轮P99 20.096→19.799ms；
-全量100case/12800评分逐位一致。并发MLP的MTE2开销降低，单实例基本不变。
-本节实验采用进程局部启用，A5默认配置保持ND；最终Pass已提交到个人fork的main。全部记录与逐算子指标见
-[A5权重NZ实验](qwen2.5-0.5b-a5-weight-nz.md)。

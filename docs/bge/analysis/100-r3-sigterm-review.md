@@ -2,9 +2,7 @@
 
 结论：`final-best-fixed-r3` 的native runtime以SIGTERM退出，未形成有效完整性能轮；**信号的发送者和触发条件仍未知**。保留失败作业并计费，使用明确新名称的同配置补测接受独立验收。不能将这次失败改写为已确认的OOM、GE编译器崩溃或supervisor超时，也不能因补测成功而宣称整次流程零失败。
 
-本报告只读取主控提供的本地文件：[失败作业及gate](../../../delivery/supporting-evidence/work/bge-opt-100/final-best-fixed-r3-failure.txt)、[runtime日志与结果](../../../delivery/supporting-evidence/work/bge-opt-100/final-best-fixed-r3-runtime.txt)、[事后容器状态](../../../delivery/supporting-evidence/work/bge-opt-100/r3-failure-host-state.txt)。未连接100、启动设备任务或修改正在运行的作业。
-
-结构化提取、门禁时序和原始来源SHA见 [r3-failure-offline-review.json](../../../delivery/supporting-evidence/work/bge-opt-100/tester/r3-failure-offline-review.json)。
+本报告只读取主控提供的本地失败作业及 gate、runtime 日志与结果、事后容器状态文件。未连接100、启动设备任务或修改正在运行的作业。
 
 ## 可以确认
 

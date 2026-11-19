@@ -78,7 +78,6 @@ README 的「3.4 附录：迁移到 ge_execute 的验证记录」）；其余的
 |---|---|
 | `onejev1.6-0.8b` | `run.sh` 仍调已删除的 `executor`，且 bench 传 `--readout`；`ge_execute` 尚未实现 readout decider 阶段（`startlux-…-instant-text` 迁移时的处置是直接移除该参数：decider 实测 ~0.001 ms，占 e2e 0.004%，低于共享机器噪声底） |
 | `startlux-decision-v1.1-0.8b-instant` | 两阶段（vision → text）pipeline，`ge_execute` 明确只支持单图，不在范围内 |
-| `bge`、`tiny`、`onnx-example` | 走 `core.pipeline` → `core/backends/runtime.py`，后者仍指向已删除的 `ge_runtime` 与 stdin plan 协议，需要单独迁移 core 侧 |
 
 复测数据与逐项对照见[验证记录](validation.md)的「ge_execute 迁移复测（2026-11-19）」节；
 `ge_execute` 侧的 AIR 分支验证记录见 [runtime/README.md](../../runtime/README.md) 附录。

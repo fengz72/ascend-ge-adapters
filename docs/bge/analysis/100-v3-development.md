@@ -24,7 +24,7 @@ CPU 验证通过：
 - preload filter **11 项**；native 映射、native 子 Python 不映射、其它程序保留 preload **3 项集成**；`ldd -r` 无未解析符号/缺库。
 - 100 NumPy1.26.4 的 FP32 残差加法/LN 语义参考，在 S6/S8/S13、普通/低方差/较大输入三组对 FP64 参考最大误差分别 `5.297e-7 / 2.191e-7 / 5.363e-7`；错误 epsilon 可被区分。该检查不执行 CANN AddLayerNorm 或完整 BGE，不能替代设备精度。
 
-100 原始构建/执行日志与每条 CPU 命令退出码：`candidates-v3/v3-cpu-validation.json`；部署/源 SHA/保护文件前后 SHA：`candidates-v3/deployment-cpu-result.json`；数值结果：`candidates-v3/numeric-semantics-result.json`。本地完整拷贝：[remote-build](../../../delivery/supporting-evidence/work/bge-opt-100/fusion-v3/remote-build/)。源码与 diff：[fusion-v3](../../../delivery/supporting-evidence/work/bge-opt-100/fusion-v3/README.md)。
+100 原始构建/执行日志与每条 CPU 命令退出码：`candidates-v3/v3-cpu-validation.json`；部署/源 SHA/保护文件前后 SHA：`candidates-v3/deployment-cpu-result.json`；数值结果：`candidates-v3/numeric-semantics-result.json`。
 
 后续必须先更新冻结 identity 和独立配置登记，仅给 native runtime 加载该 so（保留 tcmalloc，不同时加载 V2），再验证命中/全五例 full-score、Top10、请求输出关联压力，最后用无 profiling/capture 的同场景对照判断收益。当前没有 V3 NPU 精度或性能结论。
 

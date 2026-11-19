@@ -1,6 +1,6 @@
 # Qwen2.5-0.5B 适配说明
 
-安装和快速上手见[模型 README](../../models/qwen2.5-0.5b/README.md)，实验与验证入口见[文档索引](README.md)。本文说明自包含流程的计算路径和部件间文件契约；流程只通过 `work/` 下的文件交互，不导入 `core/`。
+安装和快速上手见[模型 README](../../models/qwen2.5-0.5b/README.md)，实验与验证入口见[文档索引](README.md)。本文说明自包含流程的计算路径和部件间文件契约；流程只通过 `work/` 下的文件交互。
 
 ## 源码分工
 
@@ -171,15 +171,15 @@ AddGraph+CompileGraph，串行，全部在 `aclrtSetDevice` 之前）、每实�
 `--warmup M` 次（池内 distinct shape 多于 M 时自动补齐到覆盖全部 shape，本池 89 个 →
 5 实例共 445 次）、seed 抽样（`--iterations` 是所有实例合计）、`--aicore-num A|B`
 设每算子核上限；逐请求明细在 `result.json.records`（含 `h2d_ms`/`exec_ms`/`d2h_ms`/
-`e2e_ms`/`first_hit`），不再有 `requests.csv`。
+`e2e_ms`/`first_hit`）。
 
 两个必须显式给的参数：
 
 - `--device 0` 是**进程内**设备号。`run.sh` 导出 `ASCEND_RT_VISIBLE_DEVICES=$DEVICE_CHIP`
   之后可见设备从 0 开始，故恒为 0；它与 `--device <chip>`（npu-smi 的 Chip Logic ID）
-  是两个概念。旧 `executor` 把 0 硬编码在 `Init(0, ...)` 里。
-- `--precision-mode must_keep_origin_dtype`。旧 `executor` 在 session options 里硬编码它，
-  `ge_execute` 默认 `force_fp16`，不显式传则精度基线（worst cosine 0.999439462）不可复现。
+  是两个概念。
+- `--precision-mode must_keep_origin_dtype`。`ge_execute` 默认 `force_fp16`，
+  不显式传则精度基线（worst cosine 0.999439462）不可复现。
 
 `--graph` 的格式按后缀推断（`.air`/`.onnx`），也可用 `--format` 显式指定。
 `--aicore-num` 由 `ge_execute` 自己校验格式（必须是 `正整数|正整数` 或空，非法值 exit 2），
@@ -190,7 +190,7 @@ AddGraph+CompileGraph，串行，全部在 `aclrtSetDevice` 之前）、每实�
 `set_env.sh` 只把 CANN 自带的 site-packages 放进 `PYTHONPATH`；容器 Python 装在
 别处时必须补上它的那一份，否则报
 `Environment_Error_Import_Python_Module_Failed: No module named 'numpy'`。
-`run.sh` 在 source CANN 环境后做这件事（旧 `scripts/env_a3.sh` 的同类职责）。
+`run.sh` 在 source CANN 环境后做这件事。
 `ge_execute` 另外要求 `PYTHONHOME` 指向调用解释器、`LD_LIBRARY_PATH` 含其 `LIBDIR`、
 `TMPDIR` 足够短（GEInitialize 起的 `multiprocessing.Manager` 在 `$TMPDIR/pymp-*/listener-*`
 上 bind AF_UNIX socket，`sun_path` 上限 107 字节），见 `runtime/README.md` 的构建一节。
@@ -198,7 +198,5 @@ AddGraph+CompileGraph，串行，全部在 `aclrtSetDevice` 之前）、每实�
 ## 平台与限制
 
 A5 Prefix 需要 CANN ≥ 9.3.0 的辅流接口；当前 A3（CANN 9.0.0）实测，A5 路径未在
-本机验证。交付 dtype 为 FP16，CPU golden 为 FP32。CANN 辅流接口核验分别见
-[9.1.0](../cann-9.1.0-eager-attached-stream-support.md)、
-[9.2.0](../cann-9.2.0-eager-attached-stream-support.md)、
-[9.3.0](../cann-9.3.0-eager-attached-stream-support.md)。
+本机验证。交付 dtype 为 FP16，CPU golden 为 FP32。CANN 辅流接口的分版本核验见
+[CANN 辅流接口核验](../cann-eager-attached-stream-support.md)。

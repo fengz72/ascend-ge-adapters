@@ -4,7 +4,7 @@
 
 2026-10-20至2026-10-21，在 99 机器的 `hejun-cann9-qwen25` 容器、逻辑设备1、Ascend910_9382（物理24 AIC / 48 AIV）上，已测范围内推荐 **限核 8|16、batch=16、并发实例=5**。三轮各10000次模型调用的业务QPS中位数为 **2172.093**，最差轮整batch P99为 **41.266ms**，低于60ms；三轮完成测量均零执行错误。
 
-上述参数现统一维护在 `models/qwen2.5-0.5b/config/model.yaml` 的 `platforms.a3`，原公共参数与A5参数保留。该平台配置自动选中 `prefix_910` 与 `weight_nz`，使用FP16和 `force_fp16`。
+该组参数现由 [`run.sh`](../../models/qwen2.5-0.5b/run.sh) 的平台默认承载（a3：`8|16`、5 实例），见[模型 README](../../models/qwen2.5-0.5b/README.md)。该平台使用 `prefix_910` 与 NZ 权重 Pass，dtype 为 FP16、精度模式 `force_fp16`。
 
 ## 环境与测量口径
 
@@ -86,7 +86,7 @@ python3 -m core.pipeline data --config models/qwen2.5-0.5b/config/model.yaml --t
 python3 -m core.pipeline bench --config models/qwen2.5-0.5b/config/model.yaml --device 1
 ```
 
-当前默认是8|16、batch16、5实例，默认1000次调用。输入、依赖和AIR已保留；重新生成交付件时按主README执行data、baseline、prepare、build、infer、compare、bench七步入口。
+当前默认是8|16、batch16、5实例，默认1000次调用。输入、依赖和AIR已保留；重新生成交付件时按 `run.sh` 的阶段序列执行：依赖 → 输入 → golden → runtime → 导出 → infer → compare（→ bench）。
 
 三轮10000次调用的实验脚本：
 
@@ -439,7 +439,7 @@ SIGTERM中断发生在完成445次预热之后，未形成完整测量统计；�
 |43|2126.997|41.440|
 |44|2170.244|40.913|
 
-QPS中位数2126.997，与原记录2168.494相差-1.914%，以上为此次空闲卡实测值。
+QPS中位数2126.997，与 2026-10-21 三轮记录（[A3/A5 profiling 对比](qwen2.5-0.5b-a3-a5-profiling.md)，2168.494）相差-1.914%，以上为此次空闲卡实测值。
 初测seed42/43及旧不限核对照前后发现其他进程，已保留并标记占用风险，不参与当前中位数和比值；最终空闲卡复验前后均未发现其他进程。
 本次未修改A3默认配置、输入、runtime或AIR。新采集的单实例限核/不限核及推荐并发profiling，
 以及A5无缓存调优与逐算子对比见 [A3/A5复测与无缓存调优](qwen2.5-0.5b-a3-a5-retuning.md)。

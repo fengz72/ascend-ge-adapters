@@ -1,5 +1,7 @@
 # 100 设备编排与参数化验收：独立 CPU 审查
 
+本文是 100 设备编排与参数化验收的独立 CPU 审查准备稿，编排工作已完成；保留其门禁与检查清单等操作知识。
+
 本轮没有启动 SSH/NPU，也未修改控制器或验收器实现。实际 100 模型、二进制和设备运行结果另行验收。
 
 ## 控制器
@@ -11,7 +13,7 @@ python3 -m unittest discover -s work/bge-opt-100/tester -p test_control_guardrai
 bash -n work/bge-opt-100/env_run.sh
 ```
 
-最新 `control.py` 的 13 项测试通过，shell 语法检查通过。证据：[control-guardrails.log](../../../delivery/supporting-evidence/work/bge-opt-100/tester/control-guardrails.log)、[control-review.json](../../../delivery/supporting-evidence/work/bge-opt-100/tester/control-review.json)。测试将 subprocess 全部替换成 CPU stub，不执行 stub 二进制或加载 stub `.so`。
+最新 `control.py` 的 13 项测试通过，shell 语法检查通过。测试将 subprocess 全部替换成 CPU stub，不执行 stub 二进制或加载 stub `.so`。
 
 已验证：
 
@@ -29,7 +31,7 @@ bash -n work/bge-opt-100/env_run.sh
 
 ## 100 参数化验收
 
-新 [acceptance](../../../delivery/supporting-evidence/work/bge-opt-100/acceptance/README.md) 已完成 reference/golden/expected/original-inputs、100 physical identity 和新 artifact hash 的参数化。自带 22 个 CPU 测试已由测试角色重新执行通过，见 [migrated-acceptance-independent.log](../../../delivery/supporting-evidence/work/bge-opt-100/tester/migrated-acceptance-independent.log)。这覆盖路径迁移仍保留哈希、固定池、插件只进入 native、保留 allocator、物理锁集合和不可降低 CLI 门槛等约束。
+新 acceptance 已完成 reference/golden/expected/original-inputs、100 physical identity 和新 artifact hash 的参数化。自带 22 个 CPU 测试已由测试角色重新执行通过。这覆盖路径迁移仍保留哈希、固定池、插件只进入 native、保留 allocator、物理锁集合和不可降低 CLI 门槛等约束。
 
 测试环境变量均指向本地只读归档：
 
@@ -45,6 +47,6 @@ python3 -m unittest discover -s work/bge-opt-100/tester -p test_migrated_accepta
 
 补充四项独立性能语义回归时，最初为 1 通过、3 失败：runtime performance 显式写 `latency_scope=execute_only`、`arrival_model=open_loop` 或 `capture_enabled=true` 时，`perf_check` 仍返回通过。计划中的 capture/profiling/dump 已能被拒绝，但应同时核对实际 runtime 报告；其中 capture 不一致还会被 run identity 检查器拦截，scope/arrival 不一致则缺少门禁。
 
-初次补充回归的失败情况保留于上文发现记录；[migrated-acceptance-guardrails.log](../../../delivery/supporting-evidence/work/bge-opt-100/tester/migrated-acceptance-guardrails.log) 现为修复后的最新独立回归日志。scope 语义缺口不影响未计时的数值正确性任务，但必须在性能验收前关闭。
+初次补充回归的失败情况保留于上文发现记录。scope 语义缺口不影响未计时的数值正确性任务，但必须在性能验收前关闭。
 
 后续复核：该缺口已修复，补充四项独立对抗回归现为 4/4 通过，并已核对受测检查器与 100 实际部署文件 SHA 相同。100 逻辑2首轮压力和双场景事件已独立复验，见 [100-initial-acceptance.md](100-initial-acceptance.md)。上文问题描述保留为发现及修复记录，不代表仍然阻塞。

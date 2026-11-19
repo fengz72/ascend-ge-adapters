@@ -9,15 +9,13 @@
 | [适配说明](adaptation.md) | 计算路径、共享 prefix 输入池、CPU golden 与 AIR 导出 |
 | [验证记录](validation.md) | Qwen 正确性、历史阈值、版本及实际验证范围 |
 | [维护记录](maintenance.md) | 依赖统一与迁移分支的维护历史 |
-| [框架验证](../validation.md) | 框架契约、Tiny 和 ONNX 回归 |
 
 ## 调优与分析
 
 | 文档 | 时间与范围 |
 |---|---|
-| [A5 NZ 调优](qwen2.5-0.5b-a5-nz-tuning.md) | 2026-10-24；最近一次 A5 调优及配置选择依据，包含全部尝试和确认范围 |
-| [A5 权重 NZ 实验](qwen2.5-0.5b-a5-weight-nz.md) | 2026-10-23；ND/NZ 对照、MatMul 流水及 Pass 回归 |
+| [A5 NZ 权重排布与调优](qwen2.5-0.5b-a5-nz.md) | 2026-10-23 至 10-24；ND/NZ 对照、Pass 回归、核数×实例扫描（当前 A5 默认） |
 | [A3/A5 复测与无缓存调优](qwen2.5-0.5b-a3-a5-retuning.md) | 2026-10-22 起；无缓存配置扫描与硬件流水分析 |
-| [A3/A5 profiling 对比](qwen2.5-0.5b-a3-a5-profiling.md) | 2026-10-21 起；逐算子、主辅流、planner 和预热实验 |
-| [A3 调优](qwen2.5-0.5b-a3-tuning.md) | 2026-10-20 起；A3 配置搜索、复测及原始结果 |
+| [A3/A5 profiling 对比](qwen2.5-0.5b-a3-a5-profiling.md) | 2026-10-21 起；逐算子、逐节点、主辅流与预热实验 |
+| [A3 调优](qwen2.5-0.5b-a3-tuning.md) | 2026-10-20 起；A3 57 次配置搜索、复测及原始结果 |
 | [早期 A5 调优](qwen2.5-0.5b-a5-tuning-history.md) | 2026-10-20；历史 batch/限核/实例扫描与 164 次尝试 |

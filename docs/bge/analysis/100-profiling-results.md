@@ -12,7 +12,7 @@
 - `case-0002`、B1/S8/L128、FP32、GE mode 0、全核、单实例，输入 SHA 均 `27ce13c73cb35762ee7d0396d4425829d7e25a3b8ae2a12b37ed7f96b8690aa5`。native binary、图、输入与插件身份由受管验收结果绑定；分析再次核对该结果与本地拷贝的 plan/result SHA。
 - 图 SHA `5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822`，3137 节点、400 initializers；V2 插件 SHA `76ea9fb0f1800369b023e22d71298e508dcfaa6f69f34bcf952af4a1b5fa48ed`。融合日志实际报告 `replacements=48`。
 
-100 的 CPU parse/export 日志与机器报告在 `work/profile-analysis/`。31 份 CSV、step、计划、事件、日志与小 ONNX 已归档到本地 [profile-analysis](../../../delivery/supporting-evidence/work/bge-opt-100/profile-analysis/)。远端 CPU 窗口已释放，此后分析全部在本地进行。
+100 的 CPU parse/export 日志与机器报告在 `work/profile-analysis/`。31 份 CSV、step、计划、事件、日志与小 ONNX 已归档到本地 profile-analysis 目录。远端 CPU 窗口已释放，此后分析全部在本地进行。
 
 ## 如何排除预热并对齐
 
@@ -48,4 +48,4 @@ attention/output 的 24 位置全部更快，范围 −59.99% 至 −46.98%；FF
 - 未捕获该两次运行的最终 GE dump；原始残差边由相同 SHA 的 ONNX、实际 profile 名称、已加载 pass 身份与 48 次替换日志共同约束。不能把旧 99 编译图当作此次完整执行图。
 - 不能依据融合节点的四个 output 描述符推断四份数据均写回 HBM，也未测出该候选实际访存量。
 
-机器报告：[add-layernorm-comparison.json](../../../delivery/supporting-evidence/work/bge-opt-100/profile-analysis/comparison/add-layernorm-comparison.json)。960 组对应原始行号、迭代/请求映射、耗时与 Block Num：[matched-kernel-rows.csv](../../../delivery/supporting-evidence/work/bge-opt-100/profile-analysis/comparison/matched-kernel-rows.csv)。分析脚本：[compare_completed_profiles.py](../../../delivery/supporting-evidence/work/bge-opt-100/profiling-dev/compare_completed_profiles.py)。CSV/step 文件 SHA、PID、30 步覆盖、每一目标节点统计均可回溯。
+960 组对应原始行号、迭代/请求映射、耗时与 Block Num。CSV/step 文件 SHA、PID、30 步覆盖、每一目标节点统计均可回溯。

@@ -1,5 +1,7 @@
 # 100 BGE：GE 逐算子 profiling 交接
 
+本文是 100 的 GE 逐算子 profiling 交接稿，采集工作已完成；保留 msprof 调用、CSV 字段与 Model / Infer ID 对齐法等操作知识。
+
 开发只读核对 100 容器 CANN 9.0.0 和新 runner；没有采集 NPU 数据、没有启动模型、没有修改远端。2026-10-26。
 
 ## 真实采集入口

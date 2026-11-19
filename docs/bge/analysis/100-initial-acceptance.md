@@ -14,7 +14,7 @@
 | 原始 GE 打包 ONNX | `5e641362d99c9a1afb6dfce70f47b4ac07f1a7c88272fdfc791ea04ae84f4822` |
 | 外部 weights.data | `5fabfb4fb33a0db0eaa0537e011df2189150f04b590eca12170dec2cf598dd0d` |
 
-三次作业均为 GE mode=0、FP32、单实例全核；本轮原图未加载融合插件。独立运行身份检查重读实际二进制、图、权重和实际 plan/input，绑定 job request/status、结果目录、runtime seed/pool、事件 run ID。三次 native/包装器退出均为 0，任务进程组停止；前后两芯片 gate 均为 clear。见 [独立 run-identity.json](../../../delivery/supporting-evidence/work/bge-opt-100/tester/initial-independent/run-identity.json) 和 [下载原始小文件清单](../../../delivery/supporting-evidence/work/bge-opt-100/tester/initial-small/collection.json)。
+三次作业均为 GE mode=0、FP32、单实例全核；本轮原图未加载融合插件。独立运行身份检查重读实际二进制、图、权重和实际 plan/input，绑定 job request/status、结果目录、runtime seed/pool、事件 run ID。三次 native/包装器退出均为 0，任务进程组停止；前后两芯片 gate 均为 clear。
 
 `base-pressure-d2` 的 80,896,000 字节原始 scores 已逐请求独立比较，所有 2000 请求通过。manifest、measure events、runtime cohort 均恰为 2000，request ID 完整为 0～1999；事件与输出的 instance/case/run ID 一一对应。
 
@@ -28,7 +28,7 @@
 | 失败请求 | 0 | 0 |
 | 五例请求数 | 430 / 421 / 394 / 422 / 333 | 每实例每例 ≥20 |
 
-参考仍为冻结的原始 CPU golden 和用户 expected，没有从候选结果生成参考。外部输出有限 FP32 `[1,10112]`。完整独立报告：[pressure-accuracy.json](../../../delivery/supporting-evidence/work/bge-opt-100/tester/initial-independent/pressure-accuracy.json)。
+参考仍为冻结的原始 CPU golden 和用户 expected，没有从候选结果生成参考。外部输出有限 FP32 `[1,10112]`。
 
 ## 两种场景的第一正式轮
 
@@ -41,11 +41,11 @@
 
 两轮均达到单轮正式门槛 ≥60 秒且 ≥10000 完成请求；错误、超时、未归档请求和末尾在途为零。固定场景实际池只有 case-0002，随机场景实际池为原五例。两者分别保留基线，不能相互计算优化收益，也不能用 99 的数字替换本机基线。
 
-证据：[fixed 独立报告](../../../delivery/supporting-evidence/work/bge-opt-100/tester/initial-independent/base-fixed-r1-performance.json)、[random 独立报告](../../../delivery/supporting-evidence/work/bge-opt-100/tester/initial-independent/base-random-r1-performance.json)。当前仅各一轮，不计算三轮中位吞吐或宣称性能稳定。
+当前仅各一轮，不计算三轮中位吞吐或宣称性能稳定。
 
 ## 执行命令与范围
 
-以下命令均在 100 容器内，仅验证已完成任务的只读证据；`ROOT` 为上文项目根，`OUT=$ROOT/work/tester-initial`。精确 argv、退出码与用时见 [execution.json](../../../delivery/supporting-evidence/work/bge-opt-100/tester/initial-independent/execution.json)。七个检查的退出码全部为 0。
+以下命令均在 100 容器内，仅验证已完成任务的只读证据；`ROOT` 为上文项目根，`OUT=$ROOT/work/tester-initial`。七个检查的退出码全部为 0。
 
 ```sh
 bash "$ROOT/tools/env_run.sh" python3 "$ROOT/tools/checks/verify_plan_inputs.py" --plan "$ROOT/work/plans/base-pressure-d2.json" --report "$OUT/base-pressure-d2-inputs.json"
@@ -57,7 +57,7 @@ bash "$ROOT/tools/env_run.sh" python3 "$ROOT/tools/checks/validate_performance.p
 bash "$ROOT/tools/env_run.sh" python3 "$ROOT/tools/checks/validate_performance.py" --performance "$ROOT/work/base-random-r1/result.json" --events "$ROOT/work/base-random-r1/events.jsonl" --plan "$ROOT/work/plans/base-random-r1.json" --instances 1 --min-seconds 60 --min-requests 10000 --report "$OUT/base-random-r1-performance.json"
 ```
 
-部署在 100 的 `verify_outputs.py`、`workload_identity.py`、`validate_run_identity.py` 与本地受测文件逐项 SHA256 相同。此前发现的 runtime scope/arrival/capture 三项拒绝缺口已修复，独立补充四项 CPU 回归全部通过，见 [migrated-acceptance-guardrails.log](../../../delivery/supporting-evidence/work/bge-opt-100/tester/migrated-acceptance-guardrails.log) 及 [deployed-checker-identity.json](../../../delivery/supporting-evidence/work/bge-opt-100/tester/initial-small/deployed-checker-identity.json)。合成事件只证明检查器逻辑，不用于模型性能数字。
+部署在 100 的 `verify_outputs.py`、`workload_identity.py`、`validate_run_identity.py` 与本地受测文件逐项 SHA256 相同。此前发现的 runtime scope/arrival/capture 三项拒绝缺口已修复，独立补充四项 CPU 回归全部通过。合成事件只证明检查器逻辑，不用于模型性能数字。
 
 ## 证据边界与后续
 

@@ -1,5 +1,7 @@
 # 100 迁移：独立测试准备审查
 
+本文是 100 迁移的独立测试准备审查，准备项已完成；保留 CPU 回归清单等操作知识。
+
 结论：CPU 验收逻辑与双场景准备入口已独立复跑通过；这不构成 100 上的模型正确性、性能或稳定性通过。测试角色未发起 SSH 或 NPU 任务，未修改 runner、原模型、expected、精度阈值、旧 99 证据或全局 progress。
 
 ## 独立复跑
@@ -10,14 +12,14 @@
 python3 work/bge-opt-100/tester/run_cpu_readiness.py
 ```
 
-完整 argv、工作目录、PYTHONPATH、退出码、源码/输入 SHA256 和日志哈希见 [cpu-readiness.json](../../../delivery/supporting-evidence/work/bge-opt-100/tester/cpu-readiness.json)。脚本在测试专属目录组装本地源快照，并且只在内存中调整旧验收器的本地 fixture 路径；验收逻辑和阈值不变。此测试组装不是 100 上的冻结 build。
+脚本在测试专属目录组装本地源快照，并且只在内存中调整旧验收器的本地 fixture 路径；验收逻辑和阈值不变。此测试组装不是 100 上的冻结 build。
 
 | 检查 | 本轮结果 | 原始证据 |
 |---|---|---|
-| fixed/random replay 准备 CLI | 12 个测试通过 | [dual-workload-cli.log](../../../delivery/supporting-evidence/work/bge-opt-100/tester/dual-workload-cli.log) |
-| acceptance-v2 场景和输入身份 | 13 个测试通过 | [workload-identity-v2.log](../../../delivery/supporting-evidence/work/bge-opt-100/tester/workload-identity-v2.log) |
-| 旧验收器对抗检查 | 15 项通过 | [legacy-adversarial.log](../../../delivery/supporting-evidence/work/bge-opt-100/tester/legacy-adversarial.log) |
-| 完整分数、Top10 和最近秩自检 | 8 项通过 | [legacy-selftest.json](../../../delivery/supporting-evidence/work/bge-opt-100/tester/legacy-selftest.json) |
+| fixed/random replay 准备 CLI | 12 个测试通过 | — |
+| acceptance-v2 场景和输入身份 | 13 个测试通过 | — |
+| 旧验收器对抗检查 | 15 项通过 | — |
+| 完整分数、Top10 和最近秩自检 | 8 项通过 | — |
 | 100 原图 GE mode=0 数值正确性 | 未执行 | 等待设备侧冻结证据 |
 | 100 fixed/random 性能和最终稳定性 | 未执行 | 等待设备侧冻结证据 |
 
@@ -25,7 +27,7 @@ python3 work/bge-opt-100/tester/run_cpu_readiness.py
 
 ## 可复用入口与固定契约
 
-1. [acceptance-v2/verify_outputs.py](../../../delivery/supporting-evidence/work/bge-opt-20261026/acceptance-v2/verify_outputs.py) 的 `compare_one`、`npz_check`、`pressure_check`、`perf_check` 是本次复用的主入口。[workload_identity.py](../../../delivery/supporting-evidence/work/bge-opt-20261026/acceptance-v2/workload_identity.py) 核对原始八输入的 dtype、shape、内容哈希和实际打包池；场景不能仅靠标签判定。
+1. `acceptance-v2/verify_outputs.py` 的 `compare_one`、`npz_check`、`pressure_check`、`perf_check` 是本次复用的主入口。`workload_identity.py` 核对原始八输入的 dtype、shape、内容哈希和实际打包池；场景不能仅靠标签判定。
 2. 完整输出必须为有限 FP32 `[1,10112]`。数值门槛：cosine ≥ 0.9999、relative L2 ≤ 0.001、max absolute error ≤ 0.001。Top10 使用稳定降序，下标加 1 得到 `dense_id`，ID 和顺序精确一致，分数 atol=0.001/rtol=0。
 3. 压力验收通过 `(run_id, request_id)` 一一关联 events 与 manifest，再核对 instance/case/phase 和该 case 的完整向量。输出区域必须完整、无间隙/重叠/未引用尾部。CLI 不允许把压力门槛降到 2000 请求或每 instance×case 20 次以下。
 4. `perf_check --plan` 同时适用于实际单条池的 fixed-case-0002 和完整五条池的 random-five。它从 events 重算窗口成功数/QPS、排空、最近秩 p50/p99，检查每实例闭环、连续全局 request ID、预热和 H2D/D2H 字节数。正式三轮按每轮 ≥60 秒且 ≥10000 窗口内成功请求，搜索按 ≥30 秒且 ≥2000；两种场景分别统计，不能合并。

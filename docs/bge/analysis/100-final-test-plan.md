@@ -1,6 +1,6 @@
 # 100 最终独立验收入口
 
-离线入口已准备：[verify_100_delivery.py](../../../delivery/supporting-evidence/work/bge-opt-100/tester/verify_100_delivery.py)。它只读取已完成作业与冻结材料，不运行 runtime、不调用 NPU API。当前设备任务仍由主控串行执行；本文件不是最终验收结果。
+离线入口已准备：`verify_100_delivery.py`。它只读取已完成作业与冻结材料，不运行 runtime、不调用 NPU API。当前设备任务仍由主控串行执行；本文件不是最终验收结果。
 
 本地 CPU 回归：
 
@@ -8,11 +8,11 @@
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s work/bge-opt-100/tester -p test_delivery_audit.py -v
 ```
 
-12 项通过，见 [delivery-audit-cpu.log](../../../delivery/supporting-evidence/work/bge-opt-100/tester/delivery-audit-cpu.log)。包括三轮吞吐中位数与原始延迟合并 p99、配置漂移拒绝、窗口排空与部分十秒桶、原 RSS/HBM 门槛、缺少首末资源、采样间隙的保留、趋势需审查以及持锁内 gate 和至少三个生命周期。
+12 项通过。包括三轮吞吐中位数与原始延迟合并 p99、配置漂移拒绝、窗口排空与部分十秒桶、原 RSS/HBM 门槛、缺少首末资源、采样间隙的保留、趋势需审查以及持锁内 gate 和至少三个生命周期。
 
 ## 使用方式
 
-将单独 tester 文件放入 100 的测试目录，在设备测量结束后的 CPU 窗口运行。以下名称为最终交接参数示例，不代表这些 run 已存在或已经完成。
+本节入口 `verify_100_delivery.py` 与 `verify_100_comparison.py` 在 100 项目根 `/export/home/ext.hejun23/workspace/bge-opt-100` 下运行；本仓库不含这些脚本与 `tools/`。将单独 tester 文件放入 100 的测试目录，在设备测量结束后的 CPU 窗口运行。以下名称为最终交接参数示例，不代表这些 run 已存在或已经完成。
 
 ```sh
 bash "$ROOT/tools/env_run.sh" python3 "$ROOT/work/tester/verify_100_delivery.py" \
@@ -43,9 +43,9 @@ bash "$ROOT/tools/env_run.sh" python3 "$ROOT/work/tester/verify_100_delivery.py"
 
 此外，最终精度压力必须单独绑定该冻结配置的完整输出验收：至少2000请求、每实例每 case ≥20、request ID—输出关联、完整分数及 Top10 下标+1。正式性能与稳定性没有收集每一完整向量的持久化副本，不能替代此精度压力。最终报告还需核对初始同场景基线、全部 OPT、设备时长预算、失败/退化记录及交付配置，不能由本工具独立宣告整轮工作完成。
 
-## 已冻结命名的最终对照入口
+## 最终对照入口
 
-主控现已冻结推荐配置为原图 FP32、GE mode=0、八实例、每算子核上限 `12|24`、不加载融合插件。对照入口为 [verify_100_comparison.py](../../../delivery/supporting-evidence/work/bge-opt-100/tester/verify_100_comparison.py)，仅在收到全部已完成证据和 CPU 审查窗口后运行：
+截至 2026-10-26 冻结的候选为原图 FP32、GE mode=0、八实例、每算子核上限 `12|24`、不加载融合插件；当前运行配置见 [交付报告](../delivery-100.md)。对照入口为 `verify_100_comparison.py`，仅在收到全部已完成证据和 CPU 审查窗口后运行：
 
 ```sh
 bash "$ROOT/tools/env_run.sh" python3 "$ROOT/work/tester/verify_100_comparison.py" \
@@ -67,4 +67,4 @@ bash "$ROOT/tools/env_run.sh" python3 "$ROOT/work/tester/verify_100_comparison.p
 
 交付文档核对 `OPT-001` 至 `OPT-011` 共11份固定七节记录，指定的最终报告每个OPT恰好一行七列，保留失败、负收益和不接纳项。本次通过 `--delivery-doc` 明确选择 `docs/bge/delivery-100.md`，保留99历史 `acceptance.md` 原样；省略参数时仍默认读取 `docs-root/acceptance.md`。结构检查通过后仍需人工逐项核对数字原始来源、场景/主机及是否接纳；结构完整不等于数值内容已经验收。
 
-本地比较/预算/文档覆盖20项CPU回归通过，包含指定100交付文档且历史acceptance不变、失败原轮计费与显式补测选择的回归，见 [final-comparison-cpu.log](../../../delivery/supporting-evidence/work/bge-opt-100/tester/final-comparison-cpu.log)。连同原控制器、scope和稳定性逻辑，当前测试目录合计49项独立CPU回归通过，见 [all-independent-cpu.log](../../../delivery/supporting-evidence/work/bge-opt-100/tester/all-independent-cpu.log)。这些均为本地合成/只读材料测试，本次准备没有连接100或启动设备任务。
+本地比较/预算/文档覆盖20项CPU回归通过，包含指定100交付文档且历史acceptance不变、失败原轮计费与显式补测选择的回归。连同原控制器、scope和稳定性逻辑，当前测试目录合计49项独立CPU回归通过。这些均为本地合成/只读材料测试，本次准备没有连接100或启动设备任务。

@@ -15,7 +15,7 @@
 |2026-10-27 三轮性能二进制（归档）|`8efca50a62a7f569032345259d6e7813da428023903e4674d77de92bc7ac630d`|
 |本次修复后 `runner/runtime/build/ge_runtime`|`735a3532ecb131de203200a328835af0d58bcddf27f9572eb997b5d6808e43f4`|
 
-`cmake --build runtime/build -j4`、C++ `runtime_contracts` 及 13 项 BGE Python 回放测试通过；当前配置的三个相对材料路径均解析到现有项目根 `materials/`。新二进制使用独立受管配置键 `forcefp16-half10-dtypefix`，历史 `forcefp16-half10` 仍绑定旧二进制。
+`cmake --build runtime/build -j4`、C++ `runtime_contracts` 及 13 项 BGE Python 回放测试通过；该配置的三个相对材料路径均解析到现有项目根 `materials/`。新二进制使用独立受管配置键 `forcefp16-half10-dtypefix`，历史 `forcefp16-half10` 仍绑定旧二进制。
 
 逻辑设备 2 上，三个作业的前后双芯片空闲门禁、进程退出和独立输入身份校验均通过。性能作业关闭 profiling 和逐输出归档，计时包含 H2D、GE 执行同步和完整 D2H；压力作业单独归档并检查全部输出。
 

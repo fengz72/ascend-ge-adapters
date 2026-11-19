@@ -1,16 +1,16 @@
-# Qwen2.5-0.5B Prefix：A5 MatMulV3权重NZ实验
+# Qwen2.5-0.5B Prefix：A5 NZ 权重排布与吞吐调优
 
-> 交付状态（2026-10-24）：Pass 已提交为 `fba9f84`，位于个人 fork 的 `main`，主项目已更新子模块地址与引用。
-> 正式安装使用 Pass README 中的 `cmake --install build`。本文的 LD_PRELOAD 命令、未提交状态及被后续简化的实现描述均为历史实验记录；最终实现与回归以附录J和该提交为准。
-> 本文是2026-10-23的历史对照实验。当前配置和最近结果入口见[文档索引](README.md)。
+> 本文含 2026-10-23、2026-10-24 两轮实验：10-23 轮对比 ND/NZ 权重格式并落地 MatMulV3 的 NZ 转换 Pass，10-24 轮在启用 NZ 后扫描核预算与实例数。
+> 当前 A5 默认 = NZ 权重 + `16|32` + batch16 + 3 实例，落点为 [run.sh](../../models/qwen2.5-0.5b/run.sh) 与 [prepare.sh](../../models/qwen2.5-0.5b/scripts/prepare.sh)，见[模型 README](../../models/qwen2.5-0.5b/README.md)。
+> Pass 已提交为 `fba9f84`（个人 fork 的 `main`），主项目已更新子模块地址与引用；正式安装使用 Pass README 中的 `cmake --install build`。
 
-日期：2026-10-23。机器850-a5，容器hejun-cann910-stream，项目根路径
-`/home/h00909914/ascend-ge-adapters`。使用空闲逻辑卡3，CANN9.3.0 weekly.20261014.01，
-Ascend950PR_958b，物理32/64核。Prefix算子继续使用fbf0400无缓存版本。
+两轮共同环境：机器 850-a5，容器 hejun-cann910-stream，项目根路径 `/home/h00909914/ascend-ge-adapters`，CANN 9.3.0 weekly.20261014.01，Ascend950PR_958b，物理 32/64 核；Prefix 算子为 `fbf0400` 无缓存版本。
 
-## 结果
+## 1 结论与推荐配置
 
-相同卡、相同100组batch16输入池、16|32、3实例、关闭profiling，ND/NZ各三轮3000次调用（seed42/43/44）：
+### 1.1 ND/NZ 三轮对照（2026-10-23）
+
+相同卡、相同 100 组 batch16 输入池、`16|32`、3 实例、关闭 profiling，ND/NZ 各三轮 3000 次调用（seed42/43/44），口径见第 2 节：
 
 | 权重格式 | 业务QPS中位数 | 最差轮P99 ms |
 |---|---:|---:|
@@ -30,12 +30,47 @@ FP32验收基线沿用此前已通过的ND结果，本次不重新生成golden�
 
 **结论：本配置下NZ有约2%的小幅、同向收益，主要缓解并发MLP的MTE2路径；单实例基本不变。**
 该收益包含“NZ输入与由GE重新选择的NZ执行路径”，不是隔离后的纯内存排布收益。
-当前默认YAML仍保持ND、16|32、batch16、3实例；通过LD_PRELOAD按进程启用候选pass，未提交或推送代码。
 
-## 修改与执行路径
+当前 A5 默认已是 NZ（`prepare.sh` 无条件安装 NZ pass）、`16|32`、batch16、3 实例，见 1.3；10-23 轮以进程局部 LD_PRELOAD 启用候选 pass 做对照，不是当前安装方式。
+
+### 1.2 核数×实例扫描收敛（2026-10-24）
+
+本次将 **NZ、`16|32`、batch16、3 实例** 确定为 A5 推荐最优配置。该组参数由 `run.sh` 的平台默认承载（a5：`16|32`、3 实例），`prepare.sh` 默认安装 NZ pass，batch 为 `run.sh` 公共默认。
+
+该点在已完成的48个成功扫描点中QPS最高，业务QPS **2768.499**（扫描点最高值，单轮 1000 调用）、P99 **19.475 ms**，低于60ms。
+同一限核下，3/4/5实例QPS分别为2768.499/2749.840/2692.670，等权平均 **2737.003**，也是已测限核配置中最高。
+因此，峰值吞吐与3–5实例综合表现均选择16|32，默认实例数设为3。
+
+验证范围：以上性能来自每点1000调用、seed42、关闭profiling的扫描；100case/12800评分与ND基线逐位一致。
+测试期间因卡被其他任务占用而结束，本次没有完成候选三轮长窗口确认及新的默认入口性能复验。
+该配置是当前已测范围内的最优选择，不代表已穷尽全部可能组合。
+
+完整扫描表（12 组核预算 × 3–5 实例）见附录K。
+
+### 1.3 默认值
+
+| 项 | 当前默认 | 落点 |
+|---|---|---|
+| 权重格式 | NZ（169 个 MatMul 常量权重编译期转为 FRACTAL_NZ） | `prepare.sh` 无条件调用 `build_nz_pass` |
+| 核预算 | `16\|32` | `run.sh` 的 a5 平台默认 |
+| batch | 16 | `run.sh` 公共默认 |
+| 实例数 | 3 | `run.sh` 的 a5 平台默认 |
+
+## 2 测量口径
+
+两轮均为 A5、普通性能全部关闭 profiling、batch 固定 16，且使用同一 100 组变长输入池，SHA256：`21defc288cc9848d6f1f71f8a8c6d900327963431e57e77125274b5f5fc8c85b`；完整覆盖 89 种 shape/实例后计时。QPS 为业务样本/秒；P99 包含 H2D、描述符、执行与同步，不含服务排队及组 batch 等待。
+
+- 10-23 轮：空闲逻辑卡 3，ND/NZ 各三轮 3000 次调用（seed42/43/44），轮次交替为 ND42/NZ42/NZ43/ND43/ND44/NZ44。每轮 48000 业务样本；所有轮次 P99 均低于 60ms。编译期预排布、编译、加载与 89 种 shape/实例的预热均不计入正式性能。该轮数字为三轮中位数。
+- 10-24 轮：同一空闲逻辑卡 3，每个扫描点 1000 调用、seed42，共 48 个成功扫描点，另有两次恢复控制复测；未执行候选 3×3000 调用确认。该轮数字为单轮扫描值，不称为多轮中位数。
+- 10-24 轮在 P99 < 60 ms 的成功扫描点中比较 QPS；3–5 实例综合表现按三个实例数的 QPS 等权平均，与各点 P99 一并列出。
+- 两轮均逐次保存运行前后设备状态，全部正式性能对照运行前后目标逻辑卡没有其他进程。GE 核预算、planner 核预算与 attention 启动核数一致；使用已验证的无缓存算子核数变体。
+- NZ 使用标准 CANN 自定义融合 Pass 安装目录加载，无 LD_PRELOAD；每实例编译日志核对 169 个权重转换。
+- 逐图 profiling 采集（第 4 节）：固定 case-0020，T=2041、prefix=24、N1/N2=14/2、D=64；单实例 30 次正式调用、三实例 100 次正式调用，分别剔除每实例 10 次预热。
+
+## 3 Pass 实现与执行路径
 
 修改现有 `third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass`，注册名不变。
-原实现只匹配MatMul/MatMulV2，A5配置也没有选择该依赖；新增对已有MatMulV3的支持：
+原实现只匹配 MatMul/MatMulV2，缺少对 A5 上已有 MatMulV3 的支持；本 Pass 新增该支持：
 
 1. 对独占常量的FP16/BF16、静态正二维ND右矩阵、transpose_x2=false完成CPU侧预排布，NZ为[N1,K1,16,c0]；激活与输出保持ND。
 2. 检查buffer大小、dtype、形状及乘积溢出，尾部补零；共享消费者、同节点输入端口别名、已是NZ、不支持的格式/类型/形状均跳过。
@@ -51,7 +86,7 @@ NZ组169个权重的Input Formats均含FRACTAL_NZ，kernel由`MatMulV3_ND_ND_...
 **正式阶段新增TransData数为0**，没有把权重格式转换挪到每次请求。
 ND组存在aclnnMm/aclnnAddmm Host API，NZ组相应调用不再出现，属于执行路径改变；不能把全部吞吐收益都归到MTE2。
 
-## 逐算子与流水对照
+## 4 逐算子与流水对照
 
 固定case-0020：T=2041、prefix=24、N1/N2=14/2、D=64。
 单实例30次正式调用、三实例100次正式调用，分别剔除每实例10次预热。
@@ -103,20 +138,22 @@ NZ三实例各单元占比：
 本次只有PipeUtilization，无HBM带宽/L2命中率，支持“搬运路径开销降低”的判断，
 尚不能量化收益来自ND转换成本、访问连续性或缓存命中的各自比例，也不能断言HBM带宽已经打满。
 
-## 代码与验证范围
+## 5 正确性
 
 新增可选Host回归目标 `NZ_WEIGHT_PASS_BUILD_TESTS`（默认OFF），不需要NPU：
 验证尾部补零、NZ块边界、重复转换幂等、共享权重、transpose_x2、输入端口别名保护及opImplMode继承。
 CTest 1/1通过。Qwen实机验证使用FP16；BF16及其他模型不在本轮实机验收范围内，未在A3重跑新V3分支。
 
 正式对照/采集使用的measurement-libnz_weight_pass.so与measurement-pass.cpp均保留。
-之后补充非ND激活/输出与缺失x1保护、opImplMode继承、节点创建/删除失败处理；
-这些不改变本模型的默认opImplMode=1及有效ND图转换，最终库重新通过全量正确性与标准pipeline性能复验。
+Host 回归还覆盖非ND激活/输出与缺失x1保护、opImplMode继承、节点创建/删除失败处理；
+这些不改变本模型的默认opImplMode=1及有效ND图转换，交付库已通过全量正确性与标准pipeline性能复验。
 measurement-artifacts.json与final-check.json分别记录测量库、最终源码及库的SHA256。
 
-## 复现与交付
+两轮全量验证均为 100 case、12800 评分，与原 ND 基线逐位一致，max relative L2=0、max abs=0；FP32 验收基线沿用此前已通过的 ND 结果，不重新生成 golden。12 组核预算×实例的 correctness 逐 run 全 0 误差见附录L。
 
-在A5工作区按进程启用（不需要修改默认配置）：
+## 6 复现与交付
+
+10-23 轮以进程局部 LD_PRELOAD 加载候选 pass 做对照：
 
 ```bash
 source /usr/local/Ascend/cann-9.3.0/set_env.sh
@@ -135,9 +172,20 @@ python3 work/nz-weight-a5-20261023/bench_once.py 3
 输入池仍为`21defc288cc9848d6f1f71f8a8c6d900327963431e57e77125274b5f5fc8c85b`，复用原AIR及原生运行器。
 逐run记录设备状态；全部正式性能对照运行前后，目标逻辑卡没有其他进程。
 
+10-24 轮：
+
+- 主项目起点：`7053838194ec38e900d4b3ba49ed883d53ecf195`。
+- NZ Pass：`fba9f846cc31792fb155cb8c5653b06a74ea4137`；Prefix 无缓存算子：`fbf0400872079046c1b494188c5d8bd2749d868a`。
+- 默认配置：`run.sh` 平台默认（a5：`16|32`、3 实例、batch16），NZ pass 由 `prepare.sh` 安装；Ascend950PR_958b 上的实测配置同上。
+- 安装方式：执行默认依赖 prepare；NZ 库安装到 `${ASCEND_OPP_PATH}/vendors/custom_nz_pass/custom_fusion_passes/`。
+- 原始 plan、结果、请求 JSONL、设备状态、日志和摘要：`/home/h00909914/ascend-ge-adapters/work/a5-nz-retuning-20261024/`。
+- 所有核数变体摘要见 `variant-manifest.json`；没有新增或保留 CSV 文件。
+
 ## 附录A：全部运行结果
 
-Profiling的QPS/P99含采集开销，不参与普通性能排名。最大延迟一并保留。
+### A.1　2026-10-23（构建 `fba9f84`）
+
+Profiling 的 QPS/P99 含采集开销，不参与普通性能排名。最大延迟一并保留。
 
 | Run | 格式 | 实例 | 模式 | Profiling | 调用数/规模 | seed | 状态 | 业务QPS | P99 ms | 最大ms | 精度 |
 |---|---|---:|---|---|---|---:|---|---:|---:|---:|---|
@@ -160,6 +208,78 @@ Profiling的QPS/P99含采集开销，不参与普通性能排名。最大延迟�
 |---|---|
 | probe：原地更新V3、3个case | 转换169个；编译成功，执行失败；aclnnAddmm拒绝4维NZ权重，无有效性能结果 |
 | probe2：重建V3、3个case | 执行成功；数值验收以随后100case全量结果为准 |
+
+### A.2　2026-10-24（构建 `7053838`）
+
+本轮为 48 个成功扫描点，每点 1000 调用、seed42；12 组核预算的 3–5 实例汇总见附录K，两次恢复控制与污染记录见附录M。
+
+| Run | 阶段 | 格式 | AIC/AIV | 实例 | 调用/用例 | seed | 状态 | QPS | P99 ms | 最大 ms |
+|---|---|---|---|---:|---:|---:|---|---:|---:|---:|
+| `a5-nd-default-before-nz` | baseline | ND | 16\|32 | 3 | 1000 | 42 | success | 2714.526 | 19.833 | 20.620 |
+| `a5-nz-full-correctness-c16-i1-s42` | full-correctness | NZ | 16\|32 | 1 | 100 | 42 | success | — | — | — |
+| `a5-nz-grid-c16-i3-s42` | grid | NZ | 16\|32 | 3 | 1000 | 42 | success | 2768.499 | 19.475 | 20.291 |
+| `a5-nz-grid-c16-i4-s42` | grid | NZ | 16\|32 | 4 | 1000 | 42 | success | 2749.840 | 25.812 | 26.960 |
+| `a5-nz-grid-c16-i5-s42` | grid | NZ | 16\|32 | 5 | 1000 | 42 | success | 2692.670 | 32.520 | 33.828 |
+| `a5-nz-correctness-c32-i1-s42` | correctness | NZ | 32\|64 | 1 | 3 | 42 | success | — | — | — |
+| `a5-nz-grid-c32-i3-s42` | grid | NZ | 32\|64 | 3 | 1000 | 42 | success | 2695.361 | 19.735 | 20.304 |
+| `a5-nz-grid-c32-i4-s42` | grid | NZ | 32\|64 | 4 | 1000 | 42 | success | 2636.767 | 26.653 | 28.734 |
+| `a5-nz-grid-c32-i5-s42` | grid | NZ | 32\|64 | 5 | 1000 | 42 | success | 2598.569 | 33.698 | 34.699 |
+| `a5-nz-correctness-c12-i1-s42` | correctness | NZ | 12\|24 | 1 | 3 | 42 | success | — | — | — |
+| `a5-nz-grid-c12-i3-s42` | grid | NZ | 12\|24 | 3 | 1000 | 42 | success | 2543.826 | 21.352 | 22.130 |
+| `a5-nz-grid-c12-i4-s42` | grid | NZ | 12\|24 | 4 | 1000 | 42 | success | 2674.694 | 26.553 | 27.211 |
+| `a5-nz-grid-c12-i5-s42` | grid | NZ | 12\|24 | 5 | 1000 | 42 | success | 2657.467 | 32.931 | 33.828 |
+| `a5-nz-correctness-c24-i1-s42` | correctness | NZ | 24\|48 | 1 | 3 | 42 | success | — | — | — |
+| `a5-nz-grid-c24-i3-s42` | grid | NZ | 24\|48 | 3 | 1000 | 42 | success | 2698.467 | 19.291 | 23.067 |
+| `a5-nz-grid-c24-i4-s42` | grid | NZ | 24\|48 | 4 | 1000 | 42 | success | 2645.983 | 25.966 | 26.270 |
+| `a5-nz-grid-c24-i5-s42` | grid | NZ | 24\|48 | 5 | 1000 | 42 | success | 2591.635 | 33.034 | 33.907 |
+| `a5-nz-correctness-c8-i1-s42` | correctness | NZ | 8\|16 | 1 | 3 | 42 | success | — | — | — |
+| `a5-nz-grid-c8-i3-s42` | grid | NZ | 8\|16 | 3 | 1000 | 42 | success | 2125.970 | 26.167 | 26.697 |
+| `a5-nz-grid-c8-i4-s42` | grid | NZ | 8\|16 | 4 | 1000 | 42 | success | 2516.046 | 29.653 | 30.242 |
+| `a5-nz-grid-c8-i5-s42` | grid | NZ | 8\|16 | 5 | 1000 | 42 | success | 2639.808 | 35.991 | 36.620 |
+| `a5-nz-correctness-c20-i1-s42` | correctness | NZ | 20\|40 | 1 | 3 | 42 | success | — | — | — |
+| `a5-nz-grid-c20-i3-s42` | grid | NZ | 20\|40 | 3 | 1000 | 42 | success | 2691.635 | 19.094 | 19.421 |
+| `a5-nz-grid-c20-i4-s42` | grid | NZ | 20\|40 | 4 | 1000 | 42 | success | 2656.255 | 25.710 | 26.040 |
+| `a5-nz-grid-c20-i5-s42` | grid | NZ | 20\|40 | 5 | 1000 | 42 | success | 2626.204 | 32.493 | 32.966 |
+| `a5-nz-correctness-c28-i1-s42` | correctness | NZ | 28\|56 | 1 | 3 | 42 | success | — | — | — |
+| `a5-nz-grid-c28-i3-s42` | grid | NZ | 28\|56 | 3 | 1000 | 42 | success | 2669.372 | 19.327 | 20.619 |
+| `a5-nz-grid-c28-i4-s42` | grid | NZ | 28\|56 | 4 | 1000 | 42 | success | 2609.932 | 26.453 | 26.864 |
+| `a5-nz-grid-c28-i5-s42` | grid | NZ | 28\|56 | 5 | 1000 | 42 | success | 2543.933 | 33.650 | 34.429 |
+| `a5-nz-correctness-c4-i1-s42` | correctness | NZ | 4\|8 | 1 | 3 | 42 | success | — | — | — |
+| `a5-nz-grid-c4-i3-s42` | grid | NZ | 4\|8 | 3 | 1000 | 42 | success | 1187.250 | 47.337 | 48.004 |
+| `a5-nz-grid-c4-i4-s42` | grid | NZ | 4\|8 | 4 | 1000 | 42 | success | 1529.659 | 48.814 | 49.248 |
+| `a5-nz-grid-c4-i5-s42` | grid | NZ | 4\|8 | 5 | 1000 | 42 | success | 1815.054 | 51.072 | 52.416 |
+| `a5-nz-correctness-c14-i1-s42` | correctness | NZ | 14\|28 | 1 | 3 | 42 | success | — | — | — |
+| `a5-nz-grid-c14-i3-s42` | grid | NZ | 14\|28 | 3 | 1000 | 42 | success | 2650.396 | 20.056 | 20.507 |
+| `a5-nz-grid-c14-i4-s42` | grid | NZ | 14\|28 | 4 | 1000 | 42 | success | 2688.843 | 25.981 | 28.157 |
+| `a5-nz-grid-c14-i5-s42` | grid | NZ | 14\|28 | 5 | 1000 | 42 | success | 2631.187 | 32.721 | 33.513 |
+| `a5-nz-correctness-c18-i1-s42` | correctness | NZ | 18\|36 | 1 | 3 | 42 | success | — | — | — |
+| `a5-nz-grid-c18-i3-s42` | grid | NZ | 18\|36 | 3 | 1000 | 42 | success | 2638.152 | 19.896 | 20.669 |
+| `a5-nz-grid-c18-i4-s42` | grid | NZ | 18\|36 | 4 | 1000 | 42 | success | 2680.115 | 25.958 | 26.447 |
+| `a5-nz-grid-c18-i5-s42` | grid | NZ | 18\|36 | 5 | 1000 | 42 | success | 2644.771 | 32.725 | 33.764 |
+| `a5-nz-correctness-c10-i1-s42` | correctness | NZ | 10\|20 | 1 | 3 | 42 | success | — | — | — |
+| `a5-nz-grid-c10-i3-s42` | grid | NZ | 10\|20 | 3 | 1000 | 42 | success | 2404.722 | 22.706 | 26.759 |
+| `a5-nz-grid-c10-i4-s42` | grid | NZ | 10\|20 | 4 | 1000 | 42 | success | 2629.208 | 27.789 | 28.618 |
+| `a5-nz-grid-c10-i5-s42` | grid | NZ | 10\|20 | 5 | 1000 | 42 | success | 2643.674 | 34.171 | 35.480 |
+| `a5-nz-correctness-c6-i1-s42` | correctness | NZ | 6\|12 | 1 | 3 | 42 | success | — | — | — |
+| `a5-nz-grid-c6-i3-s42` | grid | NZ | 6\|12 | 3 | 1000 | 42 | success | 1708.119 | 32.191 | 33.183 |
+| `a5-nz-grid-c6-i4-s42` | grid | NZ | 6\|12 | 4 | 1000 | 42 | interrupted | — | — | — |
+| `a5-nz-restart-control-c16-i3-s42` | restart-control | NZ | 16\|32 | 3 | 1000 | 42 | success | 2763.740 | 19.400 | 20.381 |
+| `a5-nz-restart-control-c24-i3-s42` | restart-control | NZ | 24\|48 | 3 | 1000 | 42 | success | 2706.614 | 19.275 | 21.383 |
+| `a5-nz-grid-c6-i4-s42-attempt2` | grid | NZ | 6\|12 | 4 | 1000 | 42 | success | 2096.203 | 34.730 | 36.312 |
+| `a5-nz-grid-c6-i5-s42` | grid | NZ | 6\|12 | 5 | 1000 | 42 | success | 2343.574 | 39.691 | 40.778 |
+| `a5-nz-grid-c16-i1-s42` | grid | NZ | 16\|32 | 1 | 1000 | 42 | success | 1439.672 | 12.626 | 13.030 |
+| `a5-nz-grid-c16-i2-s42` | grid | NZ | 16\|32 | 2 | 1000 | 42 | success | 2514.404 | 14.653 | 14.974 |
+| `a5-nz-grid-c16-i6-s42` | grid | NZ | 16\|32 | 6 | 1000 | 42 | success | 2654.687 | 39.259 | 40.076 |
+| `a5-nz-grid-c16-i8-s42` | grid | NZ | 16\|32 | 8 | 1000 | 42 | success | 2624.133 | 52.252 | 58.360 |
+| `a5-nz-grid-c32-i1-s42` | grid | NZ | 32\|64 | 1 | 1000 | 42 | success | 2290.345 | 7.799 | 9.633 |
+| `a5-nz-grid-c32-i2-s42` | grid | NZ | 32\|64 | 2 | 1000 | 42 | success | 2661.916 | 13.340 | 13.726 |
+| `a5-nz-grid-c32-i6-s42` | grid | NZ | 32\|64 | 6 | 1000 | 42 | success | 2564.902 | 40.615 | 41.133 |
+| `a5-nz-grid-c32-i8-s42` | grid | NZ | 32\|64 | 8 | 1000 | 42 | success | 2531.323 | 53.913 | 55.389 |
+| `a5-nz-grid-c8-i1-s42` | grid | NZ | 8\|16 | 1 | 1000 | 42 | success | 817.403 | 22.640 | 23.288 |
+| `a5-nz-grid-c8-i2-s42` | grid | NZ | 8\|16 | 2 | 1000 | 42 | success | 1534.490 | 24.087 | 24.655 |
+| `a5-nz-grid-c8-i6-s42` | grid | NZ | 8\|16 | 6 | 1000 | 42 | success | 2627.950 | 42.880 | 44.706 |
+| `a5-nz-grid-c8-i8-s42` | grid | NZ | 8\|16 | 8 | 1000 | 42 | success | 2564.547 | 56.210 | 58.024 |
+| `a5-nz-neighbor-c4-i6-s42` | neighbor | NZ | 4\|8 | 6 | 1000 | 42 | contaminated | 2031.567 | 55.366 | 56.263 |
 
 ## 附录B：169个MatMul逐算子对照
 
@@ -602,3 +722,48 @@ A5 `e8b047d7d8939d7fdf44bb22d530d65ad7a191649cec6e89b350cf9b94535f56`。
 以及fixed-scheduling-full中的plan/result/native日志和scores.npz。
 final-audit.json重新核对源码/库/AIR摘要、前后输入计划、全部评分数组以及A3安装库恢复状态。
 修复前源码与测试保存在before/，未新增CSV。测试后恢复原安装状态，未持久安装新库或提交。
+
+## 附录K：12 组核预算 × 3–5 实例扫描表（2026-10-24）
+
+选择依据为本次已完成的扫描结果；本次以16|32、batch16、3实例收敛为默认推荐配置。全部扫描值及验证范围均保留如下。
+
+| AIC/AIV | i3 QPS | i4 QPS | i5 QPS | 等权平均QPS | i3/i4/i5 P99 ms |
+|---|---:|---:|---:|---:|---|
+| 16\|32 | 2768.499 | 2749.840 | 2692.670 | 2737.003 | 19.475 / 25.812 / 32.520 |
+| 20\|40 | 2691.635 | 2656.255 | 2626.204 | 2658.031 | 19.094 / 25.710 / 32.493 |
+| 14\|28 | 2650.396 | 2688.843 | 2631.187 | 2656.809 | 20.056 / 25.981 / 32.721 |
+| 18\|36 | 2638.152 | 2680.115 | 2644.771 | 2654.346 | 19.896 / 25.958 / 32.725 |
+| 24\|48 | 2698.467 | 2645.983 | 2591.635 | 2645.362 | 19.291 / 25.966 / 33.034 |
+| 32\|64 | 2695.361 | 2636.767 | 2598.569 | 2643.566 | 19.735 / 26.653 / 33.698 |
+| 12\|24 | 2543.826 | 2674.694 | 2657.467 | 2625.329 | 21.352 / 26.553 / 32.931 |
+| 28\|56 | 2669.372 | 2609.932 | 2543.933 | 2607.745 | 19.327 / 26.453 / 33.650 |
+| 10\|20 | 2404.722 | 2629.208 | 2643.674 | 2559.201 | 22.706 / 27.789 / 34.171 |
+| 8\|16 | 2125.970 | 2516.046 | 2639.808 | 2427.275 | 26.167 / 29.653 / 35.991 |
+| 6\|12 | 1708.119 | 2096.203 | 2343.574 | 2049.299 | 32.191 / 34.730 / 39.691 |
+| 4\|8 | 1187.250 | 1529.659 | 1815.054 | 1510.654 | 47.337 / 48.814 / 51.072 |
+
+## 附录L：correctness 12 行（2026-10-24）
+
+| Run | 用例数 | 评分数 | 最小 cosine | 最大 relative L2 | 最大绝对误差 | 逐位一致 |
+|---|---:|---:|---:|---:|---:|---|
+| `a5-nz-full-correctness-c16-i1-s42` | 100 | 12800 | 1.000000000000 | 0 | 0 | True |
+| `a5-nz-correctness-c32-i1-s42` | 3 | 384 | 1.000000000000 | 0 | 0 | True |
+| `a5-nz-correctness-c12-i1-s42` | 3 | 384 | 1.000000000000 | 0 | 0 | True |
+| `a5-nz-correctness-c24-i1-s42` | 3 | 384 | 1.000000000000 | 0 | 0 | True |
+| `a5-nz-correctness-c8-i1-s42` | 3 | 384 | 1.000000000000 | 0 | 0 | True |
+| `a5-nz-correctness-c20-i1-s42` | 3 | 384 | 1.000000000000 | 0 | 0 | True |
+| `a5-nz-correctness-c28-i1-s42` | 3 | 384 | 1.000000000000 | 0 | 0 | True |
+| `a5-nz-correctness-c4-i1-s42` | 3 | 384 | 1.000000000000 | 0 | 0 | True |
+| `a5-nz-correctness-c14-i1-s42` | 3 | 384 | 1.000000000000 | 0 | 0 | True |
+| `a5-nz-correctness-c18-i1-s42` | 3 | 384 | 1.000000000000 | 0 | 0 | True |
+| `a5-nz-correctness-c10-i1-s42` | 3 | 384 | 1.000000000000 | 0 | 0 | True |
+| `a5-nz-correctness-c6-i1-s42` | 3 | 384 | 1.000000000000 | 0 | 0 | True |
+
+## 附录M：中断与污染尝试（2026-10-24）
+
+### 中断与恢复说明
+
+2026-10-24 03:17:51 UTC多台容器同时退出，exit=137、OOMKilled=false；恢复后驱动仍为25.6.rc2，配置/AIR/运行器/Pass库摘要均未变化。重跑16|32和24|48三实例控制点的QPS变化分别为−0.172%和+0.302%，通过预设2%阈值。中断的6|12、4实例已另行重跑，原尝试保留但不参与排名。03:38:54 UTC，3号卡开始被VLLM占用；4|8、6实例的运行被标为contaminated并排除，后续未启动的重试没有性能数据。03:39 UTC检查时全部8卡均被占用，测试至此结束。
+
+- `a5-nz-grid-c6-i4-s42`：External simultaneous container termination at 2026-10-24T03:17:51Z; Docker exit=137, OOMKilled=false. Excluded from ranking; rerun after controls.
+- `a5-nz-neighbor-c4-i6-s42`：card occupied after run
