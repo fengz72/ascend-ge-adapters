@@ -1,19 +1,19 @@
 """Minimal text-only input generation for the StartLux-Decision text pipeline.
 
 Consumes the business dev.txt JSONL case file (one teacher-annotated choice
-question per row) and writes the executor input pool under work/inputs/:
+question per row) and writes the input pool under work/inputs/:
 
-* ``inputs.bin``   the packed per-case graph-input tensors (2 per case:
-  input_ids, position_ids);
-* ``records.json`` the per-case tensor index (schema ``ge-records/3``: the
-  ``tensors`` array is bound positionally to the graph inputs, ``samples`` is
-  the case's business row count);
-* ``readout.json`` the per-case CPU read-out metadata for the bench decider
+* ``cases.json``   the per-case index (schema ``ge-cases/1``: the ``inputs``
+  array is bound positionally to the graph inputs, dtype/shape are read by the
+  runtime from the npy headers, never from the JSON);
+* ``<case_id>/``   one directory per case holding the two graph-input tensors
+  (``input_ids.npy``, ``position_ids.npy``);
+* ``readout.json`` the per-case read-out metadata for downstream read-out
   (schema ``startlux-text-readout/1``: labels = the criteria keys in prompt
   order, letters_asked = K, temperature = the official choice temperature).
 
 Each JSONL row becomes ONE B=1 case at its TRUE length -- the B=1 contract is
-pinned by the exported graph itself (io-spec axis 0 static) and the records
+pinned by the exported graph itself (io-spec axis 0 static) and the case
 format cannot express padding: the laid-out width IS the row's true length,
 there is no actual_seq_lengths tensor.  The official prompt rendering
 (vendored ``startlux_decide.prompt``: from_systemone -> messages ->
@@ -22,7 +22,7 @@ recipe (``tokenizer.encode(prompt, add_special_tokens=False)``) produce
 ``input_ids``; the text-only MRoPE ``position_ids`` are the arange planes on
 all three axes (verified equal to the official ``get_rope_index`` output of
 the pinned checkpoint on the dev pool).  Steps of this pipeline
-(generate_inputs -> golden -> export_air -> executor) never import each
+(generate_inputs -> golden -> export_air -> ge_execute) never import each
 other; they interact only through the files under work/.  Paths default to
 fixtures/dev.txt and work/inputs; ``--cases`` / ``--output-dir`` override them.
 """
@@ -42,8 +42,8 @@ ADAPTER_DIR = Path(__file__).resolve().parents[1]
 if str(ADAPTER_DIR / "vendor") not in sys.path:
     sys.path.insert(0, str(ADAPTER_DIR / "vendor"))
 
-OUTPUT_NAME = "scores"
 QUESTION_TYPE = "choice"
+INPUT_NAMES = ("input_ids", "position_ids")   # 顺序 = 图输入顺序
 
 
 def weights_dir():
@@ -154,8 +154,8 @@ def main():
                         help="the dev JSONL case file (default: %(default)s)")
     parser.add_argument("--output-dir", type=Path,
                         default=ADAPTER_DIR / "work" / "inputs",
-                        help="directory for inputs.bin, records.json and readout.json "
-                             "(default: %(default)s)")
+                        help="directory for cases.json, the per-case npy directories "
+                             "and readout.json (default: %(default)s)")
     args = parser.parse_args()
     if not args.cases.is_file():
         raise SystemExit(f"generate_inputs: case file {args.cases} does not exist; place "
@@ -171,60 +171,52 @@ def main():
     rows, digest = _load_dev_rows(args.cases)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    records, readout_cases, query_index, variant_count = [], [], {}, {}
-    with (args.output_dir / "inputs.bin").open("wb") as stream:
-        for row in rows:
-            key = json.dumps(row["state"], ensure_ascii=False, sort_keys=True)
-            qi = query_index.setdefault(key, len(query_index))
-            ri = variant_count.get(qi, 0)
-            variant_count[qi] = ri + 1
-            case_id = f"dev-intent-q{qi:02d}-r{ri}"
+    for stale in ("inputs.bin", "records.json"):
+        (args.output_dir / stale).unlink(missing_ok=True)
+    cases, readout_cases, query_index, variant_count = [], [], {}, {}
+    for row in rows:
+        key = json.dumps(row["state"], ensure_ascii=False, sort_keys=True)
+        qi = query_index.setdefault(key, len(query_index))
+        ri = variant_count.get(qi, 0)
+        variant_count[qi] = ri + 1
+        case_id = f"dev-intent-q{qi:02d}-r{ri}"
 
-            rendered = from_systemone(row["state"], row["spec"])
-            prompt = plain_prompt(tokenizer, messages(rendered))
-            ids = tokenizer.encode(prompt, add_special_tokens=False)
-            if not ids:
-                raise ValueError(f"{row['where']}: the prompt tokenized to 0 tokens")
-            if min(ids) < 0 or max(ids) >= vocab:
-                raise ValueError(f"{row['where']}: input_ids outside the vocabulary "
-                                 f"bounds [0, {vocab})")
-            length = len(ids)
-            if length > max_position_embeddings:
-                raise ValueError(f"{row['where']}: prompt length {length} exceeds the "
-                                 f"model's max_position_embeddings {max_position_embeddings}")
+        rendered = from_systemone(row["state"], row["spec"])
+        prompt = plain_prompt(tokenizer, messages(rendered))
+        ids = tokenizer.encode(prompt, add_special_tokens=False)
+        if not ids:
+            raise ValueError(f"{row['where']}: the prompt tokenized to 0 tokens")
+        if min(ids) < 0 or max(ids) >= vocab:
+            raise ValueError(f"{row['where']}: input_ids outside the vocabulary "
+                             f"bounds [0, {vocab})")
+        length = len(ids)
+        if length > max_position_embeddings:
+            raise ValueError(f"{row['where']}: prompt length {length} exceeds the "
+                             f"model's max_position_embeddings {max_position_embeddings}")
 
-            tensors = [
-                ("input_ids", np.asarray([ids], dtype=np.int64)),
-                ("position_ids", np.tile(np.arange(length, dtype=np.int64)[None, None, :],
-                                          (3, 1, 1))),
-            ]
-            entry = {"id": case_id, "samples": 1, "tensors": []}
-            for name, array in tensors:
-                data = array.tobytes(order="C")
-                entry["tensors"].append({"name": name, "dtype": str(array.dtype),
-                                         "shape": list(array.shape),
-                                         "offset": stream.tell(), "bytes": len(data)})
-                stream.write(data)
-            records.append(entry)
-            labels = list(row["spec"]["criteria"].keys())
-            readout_cases.append({"id": case_id, "labels": labels,
-                                  "letters_asked": len(labels),
-                                  "temperature": temperature})
-            print(f"generate_inputs: {case_id} S={length}")
+        arrays = [np.asarray([ids], dtype=np.int64),
+                  np.tile(np.arange(length, dtype=np.int64)[None, None, :], (3, 1, 1))]
+        case_dir = args.output_dir / case_id
+        case_dir.mkdir(parents=True, exist_ok=True)      # np.save 不建父目录
+        inputs = []
+        for name, array in zip(INPUT_NAMES, arrays):
+            np.save(case_dir / f"{name}.npy", array)
+            inputs.append({"name": name, "path": f"{case_id}/{name}.npy"})
+        cases.append({"id": case_id, "samples": 1, "inputs": inputs})
+        labels = list(row["spec"]["criteria"].keys())
+        readout_cases.append({"id": case_id, "labels": labels,
+                              "letters_asked": len(labels),
+                              "temperature": temperature})
+        print(f"generate_inputs: {case_id} S={length}")
 
-    (args.output_dir / "records.json").write_text(json.dumps({
-        "schema": "ge-records/3",
-        "file": str((args.output_dir / "inputs.bin").resolve()),
-        "output_name": OUTPUT_NAME,
-        "cases": records,
-    }, indent=1) + "\n")
+    (args.output_dir / "cases.json").write_text(json.dumps({"cases": cases}, indent=1) + "\n")
     (args.output_dir / "readout.json").write_text(json.dumps({
         "schema": "startlux-text-readout/1",
         "temperature_source": "decision_config.json temperature_by_type[choice]",
         "cases": readout_cases,
     }, indent=1) + "\n")
     queries = len(query_index)
-    print(f"generate_inputs: {len(records)} cases, {queries} distinct queries; source "
+    print(f"generate_inputs: {len(cases)} cases, {queries} distinct queries; source "
           f"sha256 {digest[:12]}; inputs: {args.output_dir}")
 
 

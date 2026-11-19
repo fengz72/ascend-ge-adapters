@@ -4,17 +4,18 @@ The independent reference stage: loads the SAME weights folder
 (STARTLUX_MODEL_DIR) as an official ``Qwen3_5ForConditionalGeneration`` float32
 CPU model, applies the vendored official bidirectional attention patch (the
 text trunk's 6 full-attention layers are bidirectional), and scores every case
-of ``work/inputs`` -- ``input_ids`` rows are read straight from the packed
-pool, no re-tokenization.  B=1 is pinned by the graph contract: the laid-out
-width IS the row's true length (the records format cannot express padding),
+of ``work/inputs`` -- ``input_ids`` rows are read straight from the npy pool,
+no re-tokenization.  B=1 is pinned by the graph contract: the laid-out
+width IS the row's true length (the case format cannot express padding),
 so the reference runs each row at its full laid-out length, exactly the
 official unpadded semantics.  The 26 letter columns come from the folder's
 official ``decision_config.json``; the head rows are the original (tied)
 output embedding.
 
-Output (the ge-compare/1 layout ``tools/compare.py`` reads): ``work/golden/
-outputs.bin`` (concatenated [B, 26] float32 score tensors) + ``work/golden/
-result.json`` with the outputs index.
+Output (the per-case npy layout ``tools/compare.py`` reads): ``work/golden/
+<case_id>/output_0.npy`` ([1, 26] float32) + ``work/golden/result.json`` whose
+``cases`` index mirrors the ``ge_execute`` infer result, so compare.py
+dispatches the layout from the ``cases``/``outputs`` keys.
 
 This stage needs no NPU, no LD_PRELOAD and no model-package import; its only
 inputs are the files written by generate_inputs.py.  Paths default to
@@ -42,7 +43,9 @@ import torch
 
 ADAPTER_DIR = Path(__file__).resolve().parents[1]
 
-OUTPUT_NAME = "scores"
+# The runtime names outputs by position (runtime/main.cpp:245: output_<i>; the
+# GE semantic name is not propagated) and tools/compare.py aligns by name.
+OUTPUT_NAME = "output_0"
 
 
 def weights_dir():
@@ -63,18 +66,12 @@ def letter_ids(folder):
 
 
 def _load_cases(inputs):
-    """records.json + inputs.bin -> [(case_id, input_ids int64 [1, S])]."""
-    records = json.loads((inputs / "records.json").read_text())
-    if records.get("schema") != "ge-records/3":
-        raise SystemExit(f"golden: {inputs / 'records.json'} is not the record "
-                         "index (ge-records/3); run generate_inputs.py first")
-    blob = (inputs / "inputs.bin").read_bytes()
+    """cases.json + <case>/input_ids.npy -> [(case_id, input_ids int64 [1, S])]."""
+    index = json.loads((inputs / "cases.json").read_text())
     cases = []
-    for case in records["cases"]:
-        ids_ref = {t["name"]: t for t in case["tensors"]}["input_ids"]
-        length = int(ids_ref["shape"][1])
-        ids = np.frombuffer(blob, np.int64, count=length, offset=ids_ref["offset"])
-        cases.append((case["id"], torch.from_numpy(ids.reshape(1, length))))
+    for case in index["cases"]:
+        path = {item["name"]: item["path"] for item in case["inputs"]}["input_ids"]
+        cases.append((case["id"], torch.from_numpy(np.load(inputs / path))))
     return cases
 
 
@@ -83,11 +80,11 @@ def main():
                                                  "(work/golden)")
     parser.add_argument("--inputs-dir", type=Path,
                         default=ADAPTER_DIR / "work" / "inputs",
-                        help="directory holding inputs.bin and records.json "
+                        help="directory holding cases.json and the per-case npy dirs "
                              "(default: %(default)s)")
     parser.add_argument("--output-dir", type=Path,
                         default=ADAPTER_DIR / "work" / "golden",
-                        help="directory for outputs.bin and result.json "
+                        help="directory for the per-case npy dirs and result.json "
                              "(default: %(default)s)")
     args = parser.parse_args()
 
@@ -111,24 +108,26 @@ def main():
     head_rows = head.index_select(0, torch.tensor(letters)).float()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    result = {"status": "success", "outputs": {}}
-    with (args.output_dir / "outputs.bin").open("wb") as stream:
-        for case_id, ids in cases:
-            with torch.inference_mode():
-                hidden = bidirectional.text_forward(body, ids, attention_mask=None)
-                last = hidden[0, -1].float()
-                scores = last @ head_rows.transpose(0, 1)
-            row = np.ascontiguousarray(scores.detach().numpy(), dtype=np.float32)
-            tensor = row.reshape(1, -1)   # one captured row per case ([1, 26])
-            data = tensor.tobytes(order="C")
-            result["outputs"][case_id] = [{"instance": 0, "tensors": [{
-                "name": OUTPUT_NAME, "dtype": "float32", "shape": list(tensor.shape),
-                "offset": stream.tell(), "bytes": len(data)}]}]
-            stream.write(data)
-            print(f"golden: {case_id} S={int(ids.shape[1])} scores {list(tensor.shape)}")
+    (args.output_dir / "outputs.bin").unlink(missing_ok=True)   # 旧 ge-compare/1 blob
+    result = {"status": "success", "cases": []}
+    for case_id, ids in cases:
+        with torch.inference_mode():
+            hidden = bidirectional.text_forward(body, ids, attention_mask=None)
+            last = hidden[0, -1].float()
+            scores = last @ head_rows.transpose(0, 1)
+        row = np.ascontiguousarray(scores.detach().numpy(), dtype=np.float32)
+        tensor = row.reshape(1, -1)   # one captured row per case ([1, 26])
+        relative = f"{case_id}/{OUTPUT_NAME}.npy"
+        (args.output_dir / case_id).mkdir(parents=True, exist_ok=True)   # np.save 不建父目录
+        np.save(args.output_dir / relative, tensor)
+        result["cases"].append({"id": case_id, "outputs": [{
+            "name": OUTPUT_NAME, "dtype": str(tensor.dtype),
+            "shape": list(tensor.shape), "path": relative,
+            "bytes": tensor.nbytes}]})
+        print(f"golden: {case_id} S={int(ids.shape[1])} scores {list(tensor.shape)}")
 
     (args.output_dir / "result.json").write_text(json.dumps(result, indent=1) + "\n")
-    print(f"golden: {len(result['outputs'])} cases; output: {args.output_dir}")
+    print(f"golden: {len(result['cases'])} cases; output: {args.output_dir}")
 
 
 if __name__ == "__main__":

@@ -37,15 +37,14 @@ runtime/build/ge_execute --graph work/build/model.onnx --cases work/inputs/cases
     --output-dir work/bench --device 0 --instances 10 --warmup 1 --iterations 1000 --aicore-num 12|24
 ```
 
-> **迁移状态**：旧的 `ge_runtime`（stdin plan 协议）、`executor`、`pipeline_runtime` 已删除，下列调用方暂时没有可执行后端，下一步改为调用 `ge_execute`：
+> **迁移状态**：旧的 `ge_runtime`（stdin plan 协议）、`executor`、`pipeline_runtime` 已删除。`models/qwen2.5-0.5b` 与 `models/startlux-decision-v1.1-0.8b-instant-text` 已改为调用 `ge_execute`（`ge-cases/1` + 每 case 独立 npy）；`tools/compare.py` 按 `result.json` 的 `cases`/`outputs` 键自动分派新旧两种布局，因此新旧产物可以混比。下列调用方仍没有可执行后端：
 >
-> - `core.pipeline` 的 infer/bench，以及 `core.pipeline build` 的 AIR 路径（IO 嵌入）；
-> - `models/bge/run.sh`；
-> - `models/qwen2.5-0.5b/run.sh`、`models/onejev1.6-0.8b/run.sh`、`models/startlux-decision-v1.1-0.8b-instant-text/run.sh`：仍调用 `runtime/build/executor`，后两者的 bench 还用到 `ge_execute` 尚未提供的 `--readout`；
-> - `tools/compare.py`：要求 `outputs.bin` + `result.json` 的 `outputs` 索引（ge-compare/1），而 `ge_execute` 写 `<case_id>/output_<i>.npy` + `cases` 索引；
-> - 上述三个模型的 `model/generate_inputs.py` / `model/golden.py` 仍产出并校验 `ge-records/3`，需改为 `ge-cases/1` + 每 case 独立 npy。
+> - `core.pipeline` 的 infer/bench，以及 `core.pipeline build` 的 AIR 路径（IO 嵌入）：`core/backends/runtime.py` 仍指向 `runtime/build/ge_runtime`，且用的是 stdin plan + `GE_RESULT` 单行协议，`ge_execute` 两者都不支持（不读 stdin，结果只写文件）；
+> - `models/bge/run.sh`：整条流程 `exec python3 -m core.pipeline`，与上一条同因阻塞；
+> - `models/onejev1.6-0.8b/run.sh`：仍调用 `runtime/build/executor` 并传 `--air` / `--records`，bench 还用到 `ge_execute` 尚未提供的 `--readout`；其 `model/generate_inputs.py` / `model/golden.py` 仍产出并校验 `ge-records/3`；
+> - `models/startlux-decision-v1.1-0.8b-instant`（多模态，无 `-text` 后缀）：两阶段 vision → text 经 `pipeline_runtime` 的 stdin JSON 驱动，而 `ge_execute` 只支持单图，这一条不是换参数能解决的，需要先定方案。
 >
-> 迁移时注意 `ge_execute` 的 `--precision-mode` 默认是 `force_fp16`，而旧 `executor` 固定用 `must_keep_origin_dtype`；要复现既有精度基线必须显式传参。data/baseline 等纯 Python 步骤与 ONNX 导出不受影响。
+> 迁移时注意 `ge_execute` 的 `--precision-mode` 默认是 `force_fp16`，而旧 `executor` 固定用 `must_keep_origin_dtype`；要复现既有精度基线必须显式传参。`--device` 是新的必填项（进程内设备号，`ASCEND_RT_VISIBLE_DEVICES` 映射后恒为 0），旧 `executor` 把它硬编码了。data/baseline 等纯 Python 步骤与 ONNX/AIR 导出不受影响。
 
 ## 七个独立步骤
 

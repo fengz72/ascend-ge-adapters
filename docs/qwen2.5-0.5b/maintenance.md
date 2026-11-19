@@ -69,13 +69,14 @@ A5 验证沿用[验证记录](validation.md)中的进程级输出扩容修复库
 （Git 忽略）留档，没有删除。
 
 `tools/compare.py` 改为按 `result.json` 的键自动分派布局（`cases` → npy，
-`outputs` → 旧 `outputs.bin`），**旧布局的读取能力保留**，因为 onejev1.6-0.8b 与
-startlux-decision-v1.1-0.8b-instant-text 的 golden 仍在写它。本适配器是四个待迁移
-模型里第一个完成迁移的；其余三个的现状：
+`outputs` → 旧 `outputs.bin`），**旧布局的读取能力保留**，因为 onejev1.6-0.8b
+的 golden 仍在写它。本适配器是四个待迁移模型里第一个完成迁移的，
+`startlux-decision-v1.1-0.8b-instant-text` 已于同日按同一模式迁移（记录见其
+README 的「3.4 附录：迁移到 ge_execute 的验证记录」）；其余的现状：
 
 | 模型 | 阻塞点 |
 |---|---|
-| `onejev1.6-0.8b`、`startlux-decision-v1.1-0.8b-instant-text` | `run.sh` 仍调已删除的 `executor`，且 bench 传 `--readout`；`ge_execute` 尚未实现 readout decider 阶段 |
+| `onejev1.6-0.8b` | `run.sh` 仍调已删除的 `executor`，且 bench 传 `--readout`；`ge_execute` 尚未实现 readout decider 阶段（`startlux-…-instant-text` 迁移时的处置是直接移除该参数：decider 实测 ~0.001 ms，占 e2e 0.004%，低于共享机器噪声底） |
 | `startlux-decision-v1.1-0.8b-instant` | 两阶段（vision → text）pipeline，`ge_execute` 明确只支持单图，不在范围内 |
 | `bge`、`tiny`、`onnx-example` | 走 `core.pipeline` → `core/backends/runtime.py`，后者仍指向已删除的 `ge_runtime` 与 stdin plan 协议，需要单独迁移 core 侧 |
 
