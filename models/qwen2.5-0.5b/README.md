@@ -29,10 +29,10 @@
 
 | 部件                                                 | 输入                        | 输出（默认路径）                                                     |
 | ---------------------------------------------------- | --------------------------- | -------------------------------------------------------------------- |
-| `model/generate_inputs.py`                           | `QWEN_MODEL_DIR` 的 config.json | `work/inputs/{inputs.bin, records.json}`（schema `ge-records/3`） |
-| `model/golden.py`                                    | `work/inputs` + 权重目录    | `work/golden/{outputs.bin, result.json}`（ge-compare/1）             |
+| `model/generate_inputs.py`                           | `QWEN_MODEL_DIR` 的 config.json | `work/inputs/cases.json` + `work/inputs/case-XXXX/*.npy`（schema `ge-cases/1`） |
+| `model/golden.py`                                    | `work/inputs` + 权重目录    | `work/golden/<case>/output_0.npy` + `work/golden/result.json`        |
 | `model/export_air.py`                                | 权重目录                    | `work/build/packed.air`                                              |
-| `runtime/build/executor`（源码 `runtime/executor.cpp`） | `packed.air` + `work/inputs` | `work/output/{outputs.bin, result.json}`，bench 另加 `requests.csv` |
+| `runtime/build/ge_execute`（源码 `runtime/`）        | `packed.air` + `work/inputs` | `work/output/<case>/output_*.npy` + `result.json`，bench 逐请求数据在同目录 `result.json.records` |
 | `tools/compare.py`（复用）                           | golden 与 infer 输出        | `work/output/comparison.json`                                        |
 
 另含 `run.sh`（一键串联）与 `scripts/prepare.sh`（依赖构建：平台 Prefix 算子 +
@@ -53,7 +53,7 @@ WeightNZ pass，并生成 `work/deps/env.sh`）；二者不属于文件契约部
 
 - `work/build/packed.air` 首次在新目录编译时按形状逐一 TBE 编译，首跑偏慢属预期。
 - 全量跑一次的实测量级（本机 12 核、共享负载）：依赖构建 ~50 s（缓存命中）、CPU
-  golden ~11 min（8 线程）、导出 ~2 min、executor 编译+加载 ~7 s（TBE 缓存命中）、
+  golden ~11 min（8 线程）、导出 ~2 min、ge_execute 编译+加载 ~7 s（TBE 缓存命中）、
   100 case 精度推理 ~2 s、比较 ~1 s。
 - `model/generate_inputs.py` 需要 `QWEN_MODEL_DIR` 下的 `config.json`
   （仅读 `vocab_size`），不加载权重；`model/golden.py`、`model/export_air.py`
@@ -84,7 +84,7 @@ bash run.sh --platform a3 --device 2           # --device 为 npu-smi 的 Chip L
 ```
 
 `run.sh` 依次执行：环境检查与 `set_env.sh` → 依赖构建（`scripts/prepare.sh`）
-→ 生成输入 → CPU golden → C++ executor 构建（`runtime/build.sh`）→ packed AIR
+→ 生成输入 → CPU golden → ge_execute 构建（`runtime/build.sh`）→ packed AIR
 导出 → 精度推理 → `tools/compare.py` 门禁。
 
 - `--platform a3|a5`：选择 Prefix 算子与 bounds dtype（默认 `a3`）。
@@ -115,11 +115,17 @@ bash scripts/prepare.sh --platform a3 && source work/deps/env.sh
 python3 model/generate_inputs.py --platform a3           # -> work/inputs
 python3 model/golden.py                                  # -> work/golden（纯 CPU）
 python3 model/export_air.py --platform a3                # -> work/build/packed.air
-../../runtime/build/executor --air work/build/packed.air \
-    --records work/inputs/records.json --output-dir work/output
+../../runtime/build/ge_execute --graph work/build/packed.air \
+    --cases work/inputs/cases.json --output-dir work/output \
+    --device 0 --precision-mode must_keep_origin_dtype
 python3 ../../tools/compare.py --golden work/golden --output work/output \
     --cosine-min 0.998 --relative-l2-max 0.05
 ```
+
+`--device 0` 是 ge_execute 的**进程内**设备号：导出 `ASCEND_RT_VISIBLE_DEVICES`
+后可见设备从 0 开始，与上面 `--device <chip>` 的 Chip Logic ID 是两个概念。
+`--precision-mode must_keep_origin_dtype` 必须显式给出：ge_execute 默认
+`force_fp16`，不传则无法复现历史精度基线。
 
 产物为 `work/build/packed.air`。导出使用 torchair `dynamo_export`，每个图输入
 仅第 0 轴动态，因此一个 AIR 覆盖整个变长输入池。
@@ -141,6 +147,12 @@ packed 布局为 `segments = [prefix] + requests`：
 每条请求的末 token，即 `bounds[1:] - 1`；共享 prefix 只计算一次。A3 用
 AscendC `PrefixInferAttentionScore`（int64 bounds），A5 用 CANNBotDSL
 `PrefixAttention`（int32 bounds），两者输入张量数值一致。
+
+输入经 `work/inputs/cases.json`（schema `ge-cases/1`）索引：每个 case 的三个
+输入各自存一个 npy（`case-XXXX/{input_ids,position_ids,actual_seq_lengths}.npy`），
+`inputs` 数组顺序即图输入顺序，dtype/shape 由 runtime 从 npy 头读取。infer 与
+golden 产物同构：每个 case 一个 `<case_id>/output_0.npy`（`[N, 8]` float32），
+外加 `result.json` 的 `cases` 索引。
 
 ### 3.2 性能数据
 
@@ -169,8 +181,8 @@ AscendC `PrefixInferAttentionScore`（int64 bounds），A5 用 CANNBotDSL
 | avg  |   12.0863 |
 | max  |   13.4046 |
 
-bench（`--iterations 3000 --instances 5 --aicore-num 8|16`，每轮预热覆盖全部
-100 个 distinct shape，seed 42/43/44 三轮，3×3000 请求全 0 错误，逐实例 QPS
+bench（`--iterations 3000 --instances 5 --aicore-num 8|16`，每轮预热覆盖池内全部
+distinct shape，seed 42/43/44 三轮，3×3000 请求全 0 错误，逐实例 QPS
 均匀 27.327）：
 
 | 指标                       |         值 |
@@ -185,7 +197,18 @@ bench（`--iterations 3000 --instances 5 --aicore-num 8|16`，每轮预热覆盖
 e2e = H2D + 执行 + 同步 + D2H；H2D/D2H 合计 ~0.067 ms，可忽略。对照历史记录
 （[验证记录](../../docs/qwen2.5-0.5b/validation.md) A3 节：同为 `8|16`、batch16、
 5 实例，三轮各 10000 次调用）：业务 QPS 中位 2172.093、最差 P99 41.266 ms，
-本次自包含流程与之一致。逐轮原始数据与 `requests.csv` 在 `work/bench*/`。
+本次自包含流程与之一致。逐轮原始数据与逐请求记录（`result.json.records`）在
+`work/bench*/`。
+
+**迁移到 `ge_execute` 后的复测（2026-11-19，同一张卡、整机空闲）**：同配置三轮
+业务 QPS 中位 2185.282、模型调用 QPS 中位 136.580（逐实例 27.316）、e2e avg 中位
+36.5565 ms、P50 中位 36.2920 ms、P99 中位 40.8620 / 三轮最差 40.8900 ms，3×3000
+请求全 0 错误；精度推理稳态 99 case min 11.5780 / P50 12.1460 / avg 12.2540 /
+max 13.5660 ms（首 case 31.2240）。与上表逐项同分布，无回退。另修正一处口径：
+池内 distinct shape 实为 **89** 个（100 个 case 里有重复的 T），不是 100；
+`ge_execute` 的 `result.json.pool.distinct_shapes` 直接给出该值，每轮预热
+445 次 = 5 实例 × 89。详见[验证记录](../../docs/qwen2.5-0.5b/validation.md)
+的「ge_execute 迁移复测（2026-11-19）」节。
 
 ### 3.3 精度实测
 
@@ -195,7 +218,11 @@ e2e = H2D + 执行 + 同步 + D2H；H2D/D2H 合计 ~0.067 ms，可忽略。对�
 | 平台 | case / 样本 | 最小 cosine | 最大 relative L2 | 结果 |
 | ---- | ----------: | ----------: | ---------------: | ---- |
 | A3（Ascend910_9382） | 100 / 1600（全量） | 0.999439 | 0.033784 | PASS |
+| A3，迁移到 `ge_execute` 后复测（2026-11-19） | 100 / 1600（全量） | 0.9994394615744572 | 0.033784056043048426 | PASS（与上一行逐位一致） |
 | A5（Ascend950PR_958b） | 未实测（本机 CANN 9.0.0 无 A5 辅流接口） | — | — | — |
+
+复测能逐位一致的前提是显式传 `--precision-mode must_keep_origin_dtype`：
+`ge_execute` 默认 `force_fp16`，而旧 `executor` 把它硬编码在 session options 里。
 
 对照历史记录：旧 core 路径 A3 全量 100 组/1600 样本的最小 cosine 为
 0.998909550002、最大 relative L2 为 0.046848644966（评分头输出 FP16）；本流程

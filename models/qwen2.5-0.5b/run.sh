@@ -7,7 +7,7 @@
 #               [--iterations N [--warmup M] [--seed S]
 #                           [--instances K] [--aicore-num A|B]]
 #
-# Steps: dependency build -> inputs -> CPU golden -> C++ executor build ->
+# Steps: dependency build -> inputs -> CPU golden -> ge_execute build ->
 # packed AIR export -> infer -> compare; --iterations adds the seeded bench.
 set -euo pipefail
 
@@ -16,6 +16,8 @@ step() { printf '\n===== [%s] %s =====\n' "$(date +%H:%M:%S)" "$*"; }
 # ---------------- 固定参数（唯一可调处） ----------------
 PLATFORM=a3                 # a3: AscendC prefix + int64 bounds; a5: CANNBotDSL prefix + int32
 DEVICE_CHIP=2               # ASCEND_RT_VISIBLE_DEVICES: npu-smi 的 Chip Logic ID
+DEVICE_INDEX=0              # ge_execute --device: 进程内设备号；ASCEND_RT_VISIBLE_DEVICES
+                            # 映射后可见设备从 0 开始，故恒为 0（与上面的 Chip Logic ID 不同）
 COSINE_MIN=0.998            # 精度门限：逐行 cosine 下限
 RELATIVE_L2_MAX=0.05        # 精度门限：逐行 relative L2 上限
 ITERATIONS=""               # 空 = 不做 bench；--iterations N 开启
@@ -71,7 +73,7 @@ step "CPU golden（原始 HF FP32 参考）"
 python3 model/golden.py 2>&1 | tee work/logs/golden.log
 
 # ---------------------------------------------------------------- 5. runtime
-step "构建 C++ executor"
+step "构建 ge_execute"
 bash ../../runtime/build.sh 2>&1 | tee work/logs/runtime-build.log
 
 # ---------------------------------------------------------------- 6. 导出
@@ -79,11 +81,14 @@ step "导出 packed AIR"
 python3 model/export_air.py --platform "$PLATFORM" 2>&1 | tee work/logs/export.log
 
 # ---------------------------------------------------------------- 7. 精度推理
-step "C++ executor 精度推理"
-../../runtime/build/executor \
-    --air work/build/packed.air \
-    --records work/inputs/records.json \
-    --output-dir work/output 2>&1 | tee work/logs/infer.log
+step "ge_execute 精度推理"
+# ge_execute 默认 force_fp16；显式 must_keep_origin_dtype 才能复现历史精度基线。
+../../runtime/build/ge_execute \
+    --graph work/build/packed.air \
+    --cases work/inputs/cases.json \
+    --output-dir work/output \
+    --device "$DEVICE_INDEX" \
+    --precision-mode must_keep_origin_dtype 2>&1 | tee work/logs/infer.log
 
 # ---------------------------------------------------------------- 8. 数值比较
 step "公共工具比较精度"
@@ -95,11 +100,14 @@ python3 ../../tools/compare.py \
 
 # ---------------------------------------------------------------- 9. 性能（可选）
 if [[ -n "$ITERATIONS" ]]; then
-    step "C++ executor 性能测试（iterations=$ITERATIONS instances=$INSTANCES warmup=$WARMUP seed=$SEED aicore=$AICORE_NUM）"
-    ../../runtime/build/executor \
-        --air work/build/packed.air \
-        --records work/inputs/records.json \
+    step "ge_execute 性能测试（iterations=$ITERATIONS instances=$INSTANCES warmup=$WARMUP seed=$SEED aicore=$AICORE_NUM）"
+    # 同 infer：显式 must_keep_origin_dtype，与历史精度基线对齐。
+    ../../runtime/build/ge_execute \
+        --graph work/build/packed.air \
+        --cases work/inputs/cases.json \
         --output-dir work/bench \
+        --device "$DEVICE_INDEX" \
+        --precision-mode must_keep_origin_dtype \
         --iterations "$ITERATIONS" --warmup "$WARMUP" --seed "$SEED" \
         --instances "$INSTANCES" --aicore-num "$AICORE_NUM" \
         2>&1 | tee work/logs/bench.log
@@ -108,6 +116,6 @@ fi
 step "完成"
 echo "精度: work/output/comparison.json"
 if [[ -n "$ITERATIONS" ]]; then
-    echo "性能: work/bench/result.json + work/bench/requests.csv"
+    echo "性能: work/bench/result.json（逐请求记录见 result.json.records）"
 fi
 echo "日志: work/logs/"

@@ -468,3 +468,77 @@ A5 分支只做过**结构性**验证（桩算子，非真实 kernel）：按真
 同期对 `modeling_qwen.py` 的三处精简（`compressed_mask` 改由 a3 工厂注册、去掉只为喂闭包而存在的 `self.config`、补上「mask 必须惰性读，因为 `nn.Module.to()` 会重绑 buffer」的注释）已复验：eager 全 100 case 对照 CPU golden 得 worst cosine 0.999098718 / relative L2 0.045386977（图路径更优，见上表），重导出 AIR 仍为 993754309 字节，全量精度门禁 PASS 且 worst 值与改动前逐位一致（0.999439462 / 0.033784056）。
 原始数据在 `models/qwen2.5-0.5b/work/{golden,output,bench,bench-43,bench-44,logs}`
 （Git 忽略）。
+
+## ge_execute 迁移复测（2026-11-19）
+
+`runtime` 在 `28389ba` 把三个旧运行时（`ge_runtime` stdin plan 协议、`executor`、
+`pipeline_runtime`）换成单一二进制 `ge_execute`：输入契约从 `ge-records/3`
+（`inputs.bin` + `records.json`）换成 `ge-cases/1`（`cases.json` + 每 case 若干 npy），
+infer 产物从 `outputs.bin` + `result.json.outputs` 换成 `<output-dir>/<case_id>/output_<i>.npy`
++ `result.json.cases`，`requests.csv` 不再产出。本适配器随之迁移，本节是迁移后的复测。
+
+改动范围（算法与数值路径**未动**）：
+
+| 文件 | 改动 |
+|---|---|
+| `model/generate_inputs.py` | 产物换成 `work/inputs/cases.json` + `case-XXXX/{input_ids,position_ids,actual_seq_lengths}.npy`；写盘逻辑抽成可注入输出目录的 `write_pool(out_dir, vocab, platform)`；生成前清掉旧 `inputs.bin`/`records.json`。`generate_cases()`/`packed_inputs()` 的签名、RNG 序列、池参数、摘要顺序逐字未动 |
+| `model/golden.py` | `_load_cases()` 改读 `cases.json` + `np.load`（按 name 取张量）；产物换成与 runtime infer 同构的 `work/golden/<case_id>/output_0.npy` + `result.json.cases`，写盘抽成 `write_case_scores(out, case_id, tensor)`（`np.save` 不建父目录，由它负责）。打分逻辑（HF FP32 CPU、行重建、padded batch、`logits_to_keep`、8 列评分头、OMP/MKL pin）逐字未动 |
+| `run.sh` | infer/bench 两段换 `ge_execute --graph/--cases/--output-dir`，新增 `--device "$DEVICE_INDEX"`（进程内设备号 0，与 `DEVICE_CHIP` 的 Chip Logic ID 是两个概念）与显式 `--precision-mode must_keep_origin_dtype`；收尾提示由 `requests.csv` 改为 `result.json.records` |
+| `tools/compare.py` | `load_directory()` 按 `result.json` 的键自动分派：`cases` → npy 布局，`outputs` → 旧 `outputs.bin` 布局（保留给尚未迁移的 onejev / startlux-text golden），两侧可混比；新 loader 用 npy 头交叉校验声明的 dtype/shape/bytes，path 解析依次尝试原样（绝对或 CWD 相对，runtime 侧）、相对 result.json 目录（golden 侧）、`<dir>/<case_id>/output_<i>.npy` 兜底。比较逻辑、门限、`ge-compare/1` 报告、退出码未动 |
+| `tests/test_qwen_ge_cases.py`、`tests/test_compare_layouts.py` | 新增，纯 CPU：锁定历史 RNG 与 pool sha256、cases.json/npy 结构、`write_case_scores` 的父目录创建，以及两种布局的加载/混比/全部失败路径 |
+
+**`--precision-mode must_keep_origin_dtype` 是迁移中唯一的数值风险点**：旧 `executor`
+在 session options 里硬编码它，`ge_execute` 默认 `force_fp16`，不显式传则精度基线不可复现。
+其余 GE/ACL 序列逐项核对一致（`GEInitialize` 全局选项、session 选项、K 份
+AddGraph+CompileGraph 全部在 `aclrtSetDevice` 之前、`Graph::LoadFromFile`、warmup 每实例先覆盖
+全部 distinct shape、iterations 为所有实例合计），见 `runtime/session.cpp:271-409` 与旧
+`runtime/executor.cpp:198-265` 的对照。
+
+### A3 实测（2026-11-19）
+
+环境：与 2026-11-16 节同一容器（CANN 9.0.0、Ascend910_9382、Chip Logic ID 2、Python
+3.11.15、numpy 1.26.4、torch 2.9.0+cpu、torch_npu 2.9.0.post2、transformers 5.10.1），
+Prefix 算子与 NZ pass 沿用 `work/deps/` 已构建产物（未重跑 `prepare.sh`），AIR 沿用
+2026-11-17 导出的 `work/build/packed.air`（993754309 字节，未重导出）。**整机 16 张卡全空闲**
+（AICore 0%、HBM ~3.1/65 GB），比 2026-11-16 的共享负载干净。
+
+| 项目 | 配置 | 结果 |
+|---|---|---|
+| 输入池 | `generate_inputs.py --platform a3` | 100 case × batch16 = 1600 业务样本，pool sha256 前 12 位 **`cfeed98ec4a6`**（与 2026-11-16 记录一致，RNG 未漂移）；`cases.json` 100 case、每 case 3 个 npy、`samples` 全为 16 |
+| CPU golden | `golden.py`（HF FP32，8 线程） | 100 个 `[16,8]` float32 `output_0.npy` + `result.json.cases`；耗时 ~11 min，与旧记录同量级 |
+| runtime 构建 | `bash runtime/build.sh` + `ctest` | `ge_execute` 链接通过，CPU 契约测试 1/1 通过 |
+| AIR 冒烟 | 3 case 小池、单实例、不限核 | exit 0；CompileGraph 5490 ms（TBE 缓存命中）、LoadGraph 1261 ms、`allocation=GE (dynamic compiled)`、NZ pass 命中 `169/169`；输出 `[16,8]` float32 512 字节；对 golden 抽检 3 case 最小 cosine 0.999992796、最大 relative L2 0.007442 |
+| 精度 | 全量 100 case，门限 cosine ≥ 0.998 / relative L2 ≤ 0.05 | **PASS**，1600 行，worst cosine `0.9994394615744572`、worst relative L2 `0.033784056043048426` —— 与 2026-11-16 旧 `executor` 记录**逐位一致** |
+| 精度推理时延 | 单实例、不限核、100 case 各一次 | 首 case 31.2240 ms；稳态 99 case min 11.5780 / p50 12.1460 / avg 12.2540 / max 13.5660 ms；d2h avg 0.0285 ms（旧记录：首 case 29.458，稳态 11.4034 / 12.0479 / 12.0863 / 13.4046） |
+| bench | `8\|16`、5 实例、3000 请求 × 3 轮（seed 42/43/44），预热自动补齐到 445 次（5 × 池内 **89** 个 distinct shape） | 3 轮全 0 错误、`status=success`；业务 QPS 中位 **2185.282**（三轮 2181.907/2192.231/2185.282）；模型调用 QPS 中位 136.580（逐实例 27.316）；e2e avg 中位 36.5565 ms、p50 中位 36.2920 ms、p99 中位 40.8620 ms、三轮最差 p99 40.8900 ms / max 42.2940 ms；h2d avg 0.040–0.042、d2h avg 0.025–0.028 ms；compile 24245–25036 ms、逐实例 LoadGraph 1268–1366 ms；`per_instance` 均匀 600 |
+| profiling | `--profiling --iterations 4 --instances 1 --warmup 1` | exit 0；`work/smoke/prof/profiling/PROF_000001_*/{host,device_2}` 共 4.4 MB，`sample.json` + `.done` 齐备 |
+| 一键流程 | `bash run.sh --platform a3 --device 2` | 14:20:44→14:33:15 全程通过（依赖构建 46 s、输入 <1 s、golden 9.2 min、ge_execute 构建 <1 s、导出 2.2 min、精度推理 20 s、比较 <1 s）。重导出的 AIR 仍为 993754309 字节、NZ pass 命中 `169/169`；精度门禁 PASS，worst cosine `0.9994394615744572` / relative L2 `0.033784056043048426` 与上面逐阶段执行的那次**逐位一致**，100 个 case 的逐 case worst_cosine 也全部相同；infer e2e avg 12.135 / p50 11.878 / max 31.998 ms、CompileGraph 5218.6 ms、LoadGraph 1271.0 ms |
+| Python 回归 | `python3 -m unittest discover -s tests -p 'test_*.py'` | 150 tests，仅 1 个既有环境性 error（`test_startlux_native_proto.ProtoPreloadGuard` 缺 `causal_conv1d`，与本次无关），15 skipped；新增 26 个用例全通过 |
+
+对照 2026-11-16 节：业务 QPS 中位 2186.262 → 2185.282（-0.04%）、e2e p50 中位 36.2325 →
+36.2920 ms、p99 三轮最差 40.9928 → 40.8900 ms、worst cosine / relative L2 逐位相同。
+**性能与精度均无回退**，且本次整机空闲、上次为共享负载，两组数据落在同一分布内。
+
+三处记录口径修正（不改写原实验事实，只标注新证据）：
+
+- 旧记录写「预热覆盖全部 100 个 distinct shape」，实测池内 distinct shape 为 **89**
+  （100 个 case 里有重复的 T），`ge_execute` 的 `result.json.pool.distinct_shapes` 现在
+  直接给出这个数；预热次数 445 = 5 实例 × 89，新旧运行时同一算法。
+- `ge_execute` 在 **infer** 模式不回填 `result.json` 的 `compile_ms` / `load_ms`
+  （只有 bench 路径回填，`runtime/main.cpp:435-437`），infer 的编译/加载耗时只在 stdout 的
+  `[INFO]` 行里。已记入 `runtime/README.md` 的使用限制，属待修的记录缺口，不影响执行与数值。
+- **AIR 不是逐比特可复现的**：一键流程重导出后字节数仍是 993754309，但 sha256 从
+  `efef8787fc04b4802c4b9697ba9dbfaa716b9e53a82f9c9b2f29fc5befff06bd` 变成
+  `561020e42064e70517ec0b7f57e6af771a146a2e0d6fa2dc2ef98d50b3265ddd`（`dynamo_export`
+  的容器里带时间戳/路径一类易变元数据）。因此历史记录里的「AIR 993754309 字节」这一项
+  只能作为**字节数**指纹，不能升级成 sha256 指纹；判断图是否等价要看 NZ pass 命中数
+  （`169/169`）与下游精度（本次逐位一致），而不是图的哈希。
+
+未验证范围：A5（`--platform a5`，需 CANN ≥ 9.3.0 辅流接口，本机无 A5 实机）；ATC/OM 路径
+（`ge_execute` 明确不支持 OM）；HBM 增量未复测（旧记录 4741 MB / 948 MB 每实例）；
+bench 未在一键流程里跑（`run.sh` 不带 `--iterations` 时跳过第 9 阶段，本次 bench 数据
+取自上面逐阶段的三轮）。
+
+原始数据在 `models/qwen2.5-0.5b/work/{inputs,golden,output,bench,bench-43,bench-44,smoke,logs}`；
+迁移前旧 `executor` 的产物保留在 `work/output-legacy-records3/` 与 `work/bench-legacy/`
+（均 Git 忽略）。

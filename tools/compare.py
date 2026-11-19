@@ -1,18 +1,32 @@
-"""Strict per-row tensor comparison between two ge-runtime result directories.
+"""Strict per-row tensor comparison between two result directories.
 
-Reads the runtime infer/golden layout -- ``result.json`` (the GE_RESULT object
-with an ``outputs`` index of case -> rows -> tensors: name, dtype, shape,
-offset, bytes) plus the raw ``outputs.bin`` both sides index into -- and gates
-every row of every output tensor against cosine / relative-L2 thresholds.
+Two on-disk layouts are accepted, dispatched by the keys of ``result.json``:
 
-First-version scope (deliberate): float32 outputs only, one captured row per
-case (the infer contract), NumPy as the only dependency -- no model modules, no
-Torch, no TorchNPU, no ``core``.  NaN/Inf are hard failures.  Rows are the
-first-axis slices of each output (for the StartLux ``[B, 26]`` scores that is
-one row per batch sample, so a single bad row fails the comparison); zero
-reference rows are judged by absolute closeness (atol 1e-5) instead of an
-epsilon-patched cosine, and a zero candidate row against a nonzero reference
-scores cosine 0.0 -- no silent passes.
+* npy layout (the current ge_execute infer contract) -- ``cases`` is an array
+  and every case lists its outputs with name/dtype/shape/path/bytes where
+  ``path`` points at a ``.npy`` file.  The runtime writes
+  ``<output-dir>/<case_id>/output_<i>.npy`` and names the outputs by position
+  (``output_<i>``): GE's semantic tensor names are not propagated, so the name
+  is just the output index.  The golden stage mirrors this layout, writing
+  ``path`` relative to the directory holding ``result.json``.
+* outputs.bin layout (the legacy runtime contract) -- ``outputs`` is an
+  object of case -> rows -> tensors carrying name/dtype/shape/offset/bytes
+  into the directory's raw ``outputs.bin``.  Still readable because older
+  goldens were generated this way.
+
+A comparison may mix the two (golden legacy, candidate npy) since both loaders
+return the same in-memory structure.  Path resolution for the npy layout tries,
+in order, ``path`` verbatim (absolute as-is, relative against the CWD -- what
+the runtime emits when ``--output-dir`` is relative), ``result.json`` directory
+/ ``path`` (the golden convention), then ``<dir>/<case_id>/output_<i>.npy``.
+
+First-version scope (deliberate): float32 outputs only, NumPy as the only
+dependency -- no model modules, no Torch, no TorchNPU, no ``core``.  NaN/Inf are
+hard failures.  Rows are the first-axis slices of each output (for the StartLux
+``[B, 26]`` scores that is one row per batch sample, so a single bad row fails
+the comparison); zero reference rows are judged by absolute closeness (atol
+1e-5) instead of an epsilon-patched cosine, and a zero candidate row against a
+nonzero reference scores cosine 0.0 -- no silent passes.
 
 Exit code 0 only when every row of every case passes both thresholds; the
 report is written to ``<output>/comparison.json``.
@@ -41,19 +55,41 @@ def _tensor_dtype(name):
 
 
 def load_directory(directory):
-    """One result directory -> {case: {output name: float32 ndarray}}.
+    """One result directory -> {case: {output name: float64 ndarray}}.
 
-    The layout is the runtime infer contract the golden stage mirrors exactly:
-    result.json with an ``outputs`` mapping of case -> captured rows (one row,
-    instance 0) and each row's tensors carrying name/dtype/shape/offset/bytes
-    into the directory's outputs.bin.  Structural violations are loud errors.
+    Dispatches on ``result.json``'s keys: a ``cases`` array selects the npy
+    layout, an ``outputs`` object selects the legacy outputs.bin layout.  Both
+    loaders return the exact same in-memory structure so the comparison and
+    reporting code is layout-agnostic.  Structural violations are loud errors.
     """
     directory = Path(directory)
     result_path = directory / "result.json"
-    binary_path = directory / "outputs.bin"
-    if not result_path.is_file() or not binary_path.is_file():
-        _fail(f"{directory} must contain result.json and outputs.bin")
+    if not result_path.is_file():
+        _fail(f"{directory} must contain result.json")
     result = json.loads(result_path.read_text())
+    has_cases, has_outputs = "cases" in result, "outputs" in result
+    if has_cases and has_outputs:
+        _fail(f"{result_path}: carries both 'cases' (npy layout) and 'outputs' "
+              f"(outputs.bin layout); refusing to guess")
+    if not has_cases and not has_outputs:
+        _fail(f"{result_path}: has neither 'cases' (npy layout) nor 'outputs' "
+              f"(outputs.bin layout)")
+    if has_cases:
+        return _load_npy(directory, result_path, result)
+    return _load_outputs_bin(directory, result_path, result)
+
+
+def _load_outputs_bin(directory, result_path, result):
+    """Legacy layout: result.json ``outputs`` index into ``outputs.bin``.
+
+    The layout is the legacy runtime infer contract older goldens mirror:
+    result.json with an ``outputs`` mapping of case -> captured rows (one row,
+    instance 0) and each row's tensors carrying name/dtype/shape/offset/bytes
+    into the directory's outputs.bin.
+    """
+    binary_path = directory / "outputs.bin"
+    if not binary_path.is_file():
+        _fail(f"{directory} must contain result.json and outputs.bin")
     if result.get("status") != "success":
         _fail(f"{result_path}: status is {result.get('status')!r}, not 'success'")
     outputs = result.get("outputs")
@@ -90,6 +126,83 @@ def load_directory(directory):
             tensors[name] = np.array(array, dtype=np.float64, copy=True)
         if not tensors:
             _fail(f"{result_path}: case {case_id!r} carries no output tensors")
+        parsed[case_id] = tensors
+    return parsed
+
+
+def _output_candidates(directory, case_id, index, entry):
+    """The three accepted locations for one npy output entry, in priority order."""
+    candidates = []
+    path = entry.get("path")
+    if isinstance(path, str) and path:
+        candidates.append(Path(path))          # runtime style: absolute or CWD-relative
+        candidates.append(directory / path)    # golden style: relative to result.json
+    candidates.append(directory / case_id / f"output_{index}.npy")  # convention fallback
+    return candidates
+
+
+def _load_npy(directory, result_path, result):
+    """Current layout: result.json ``cases`` array pointing at ``.npy`` files."""
+    if "status" in result and result["status"] != "success":
+        _fail(f"{result_path}: status is {result.get('status')!r}, not 'success'")
+    cases = result.get("cases")
+    if not isinstance(cases, list) or not cases:
+        _fail(f"{result_path}: 'cases' must be a nonempty array")
+    parsed = {}
+    for case in cases:
+        if not isinstance(case, dict):
+            _fail(f"{result_path}: every case must be an object, got "
+                  f"{type(case).__name__}")
+        case_id = case.get("id")
+        if not isinstance(case_id, str) or not case_id:
+            _fail(f"{result_path}: every case needs a nonempty string 'id' "
+                  f"(got {case_id!r})")
+        if case_id in parsed:
+            _fail(f"{result_path}: duplicate case {case_id!r}")
+        entries = case.get("outputs")
+        if not isinstance(entries, list) or not entries:
+            _fail(f"{result_path}: case {case_id!r} must carry a nonempty "
+                  f"'outputs' array")
+        tensors = {}
+        for index, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                _fail(f"{result_path}: case {case_id!r} output {index} must be an "
+                      f"object, got {type(entry).__name__}")
+            name = entry.get("name")
+            if not isinstance(name, str) or not name:
+                _fail(f"{result_path}: case {case_id!r} output {index} needs a "
+                      f"nonempty string 'name' (got {name!r})")
+            if name in tensors:
+                _fail(f"{result_path}: duplicate output {name!r} in case {case_id!r}")
+            dtype = _tensor_dtype(entry.get("dtype"))
+            declared_shape = entry.get("shape")
+            if not isinstance(declared_shape, list) or not declared_shape:
+                _fail(f"{result_path}: case {case_id!r} output {name!r} needs a "
+                      f"nonempty 'shape' array (got {declared_shape!r})")
+            shape = [int(size) for size in declared_shape]
+            expected = int(np.prod(shape, dtype=np.int64)) * np.dtype(dtype).itemsize
+            if "bytes" in entry and int(entry["bytes"]) != expected:
+                _fail(f"{result_path}: case {case_id!r} output {name!r} declares "
+                      f"{entry['bytes']} bytes but shape {shape} of {entry['dtype']} "
+                      f"needs {expected}")
+            candidates = _output_candidates(directory, case_id, index, entry)
+            source = next((candidate for candidate in candidates
+                           if candidate.is_file()), None)
+            if source is None:
+                _fail(f"{result_path}: case {case_id!r} output {name!r} not found; "
+                      f"tried " + ", ".join(str(candidate) for candidate in candidates))
+            try:
+                array = np.load(source, allow_pickle=False)
+            except Exception as error:  # noqa: BLE001 - surface as a loud failure
+                _fail(f"{result_path}: case {case_id!r} output {name!r} failed to "
+                      f"load {source}: {error}")
+            if array.dtype != np.dtype(dtype):
+                _fail(f"{result_path}: case {case_id!r} output {name!r} declares dtype "
+                      f"{entry['dtype']} but {source} holds {array.dtype}")
+            if list(array.shape) != shape:
+                _fail(f"{result_path}: case {case_id!r} output {name!r} declares shape "
+                      f"{shape} but {source} holds {list(array.shape)}")
+            tensors[name] = np.array(array, dtype=np.float64, copy=True)
         parsed[case_id] = tensors
     return parsed
 
