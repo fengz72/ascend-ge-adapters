@@ -76,8 +76,8 @@ README 的「3.4 附录：迁移到 ge_execute 的验证记录」）；其余的
 
 | 模型 | 阻塞点 |
 |---|---|
-| `onejev1.6-0.8b` | `run.sh` 仍调已删除的 `executor`，且 bench 传 `--readout`；`ge_execute` 尚未实现 readout decider 阶段（`startlux-…-instant-text` 迁移时的处置是直接移除该参数：decider 实测 ~0.001 ms，占 e2e 0.004%，低于共享机器噪声底） |
-| `startlux-decision-v1.1-0.8b-instant` | 两阶段（vision → text）pipeline，`ge_execute` 明确只支持单图，不在范围内 |
+| `onejev1.6-0.8b`（**hold，暂缓适配**） | 三处：`run.sh` 仍调已删除的 `executor`；`model/generate_inputs.py` 产出 `ge-records/3` 打包布局（`inputs.bin` + `records.json`），而 `ge_execute` 要 `ge-cases/1` 的 `cases.json` 加每 case 独立 npy；bench 传 `--readout`，`ge_execute` 尚未实现 readout decider 阶段（`startlux-…-instant-text` 迁移时的处置是直接移除该参数：decider 实测 ~0.001 ms，占 e2e 0.004%，低于共享机器噪声底）。因此不是换参数能完成的迁移 |
+| `startlux-decision-v1.1-0.8b-instant`（**hold，暂缓适配**） | 两阶段（vision AIR → 设备常驻 features → text AIR）pipeline，`ge_execute` 明确只支持单图，需要先定方案 |
 
 复测数据与逐项对照见[验证记录](validation.md)的「ge_execute 迁移复测（2026-11-19）」节；
 `ge_execute` 侧的 AIR 分支验证记录见 [runtime/README.md](../../runtime/README.md) 附录。

@@ -17,7 +17,7 @@
 | [`models/bge`](models/bge/README.md) | `ge_execute`，原始 ONNX 直喂 | 业务原始导出经 `aclgrphParseONNX` 直接加载，无打包图中间步骤 |
 | [`models/qwen2.5-0.5b`](models/qwen2.5-0.5b/README.md) | `ge_execute`，3 输入动态 packed AIR | 适配、验证、调优与 profiling 见[文档索引](docs/qwen2.5-0.5b/README.md) |
 | [`models/startlux-decision-v1.1-0.8b-instant-text`](models/startlux-decision-v1.1-0.8b-instant-text/README.md) | `ge_execute`，单图 AIR | 文本路 |
-| [`models/onejev1.6-0.8b`](models/onejev1.6-0.8b/README.md) | **无可执行后端** | `run.sh` 调 `runtime/build/executor`，bench 还需要 `--readout`；`ge_execute` 两者都不提供 |
+| [`models/onejev1.6-0.8b`](models/onejev1.6-0.8b/README.md) | **hold，暂缓适配** | 单图 AIR，但 `run.sh` 调已不在仓库的 `runtime/build/executor`，输入池是 `ge-records/3` 打包格式而非 `ge_execute` 要的 `ge-cases/1`，bench 的 `--readout`（CPU decider 计入 e2e）也无对应参数 |
 | [`models/startlux-decision-v1.1-0.8b-instant`](models/startlux-decision-v1.1-0.8b-instant/README.md) | **hold，暂缓适配** | 两阶段 vision AIR → 设备常驻 features → text AIR，需要能串联两张图的 runner；`ge_execute` 只支持单图，仓库内无可用后端，`run.sh` 不可执行 |
 
 已验证平台、精度与性能数字、使用限制写在各自的 README 里，本页不汇总，也不代替各模型的验证范围声明。

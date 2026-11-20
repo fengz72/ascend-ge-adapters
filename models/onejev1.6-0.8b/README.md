@@ -1,5 +1,7 @@
 # OneJev1.6-0.8B 多模态极简流程
 
+> **状态：hold，暂缓适配。** `run.sh` 不可执行，阻塞有三处：它调用的 `runtime/build/executor` 已不在仓库；`model/generate_inputs.py` 产出打包格式 `inputs.bin` + `records.json`（schema `ge-records/3`），而 `ge_execute` 要的是 `cases.json`（schema `ge-cases/1`）加每 case 独立 npy；bench 的 `--readout` 把 CPU decider 计入 e2e，`ge_execute` 没有对应参数。迁移因此不是换参数，需要重写输入生成并先定 readout 计时方案。不依赖执行端的部件各自独立：`model/generate_inputs.py`、`model/golden.py`、`scripts/prepare.sh`、`model/export_air.py`、`scripts/verify/`；`tools/compare.py` 需要推理产物，同样受阻。本目录当前无 `tests/` 覆盖。
+
 本目录是 [OneJev1.6-0.8B](https://huggingface.co/OmniJev/OneJev1.6-0.8B)
 多模态 System One 决策模型的**单图+文本**极简交付：每个部件一个自包含脚本、
 部件间零 import 依赖，只通过 `work/` 下的文件契约交互，共用一个 7 输入动态
@@ -44,7 +46,7 @@ byte-identical 交叉验证）。
 | `model/generate_inputs.py` | cases.jsonl + 权重目录 | `work/inputs/{inputs.bin, records.json, readout.json}` |
 | `model/golden.py` | `work/inputs` + 权重目录 | `work/golden/{outputs.bin, result.json}` |
 | `model/export_air.py` | 权重目录 | `work/build/onejev.air` |
-| `runtime/build/executor`（`runtime/executor.cpp`） | `onejev.air` + `work/inputs` | `work/output/{outputs.bin, result.json}`，bench 另加 `requests.csv` |
+| 图执行 runner（**当前无实现，见顶部 hold 说明**） | `onejev.air` + `work/inputs` | `work/output/{outputs.bin, result.json}`，bench 另加逐调用记录 |
 | `tools/compare.py`（复用） | golden 与 infer 输出 | `work/output/comparison.json` |
 
 另含 `run.sh`（一键串联）、`scripts/prepare.sh`（依赖构建）、
@@ -72,14 +74,16 @@ byte-identical 交叉验证）。
 
 ```bash
 export ONEJEV_MODEL_DIR=/path/to/hf-model        # 权重材料，不自动下载
+# 当前在「图执行 runner 构建」一步失败，见顶部 hold 说明
 bash run.sh --device 0                            # 精度全流程
 bash run.sh --device 0 --iterations 2000 --instances 1   # 追加 bench
 ```
 
-`run.sh` 依次执行：生成输入 → CPU golden → 依赖构建 → C++ executor 构建 →
-多模态 AIR 导出 → 精度推理 → `tools/compare.py` 门禁（cosine≥0.999、
-relative L2≤0.02）；`--iterations` 追加多实例 bench（`--instances`、
-`--aicore-num`、`--readout work/inputs/readout.json` 计时 CPU decider）。
+`run.sh` 依次执行：生成输入 → CPU golden → 依赖构建 → 图执行 runner 构建
+（**当前无实现，见顶部 hold 说明**）→ 多模态 AIR 导出 → 精度推理 →
+`tools/compare.py` 门禁（cosine≥0.999、relative L2≤0.02）；`--iterations`
+追加多实例 bench（`--instances`、`--aicore-num`、`--readout
+work/inputs/readout.json` 把 CPU decider 计入 e2e）。
 
 ### 2.3 怎么导出 AIR
 
