@@ -1,5 +1,7 @@
 # StartLux-Decision v1.1 0.8B Instant Ascend GE 适配（独立脚本流程）
 
+> **状态：hold，暂缓适配。** 两阶段流程（vision AIR → 设备常驻 features → text AIR）需要一个能串联两张图的 runner，仓库内没有：`ge_execute` 只支持单图。`run.sh` 不可执行。下文涉及执行端的内容（`pipeline_runtime`、`ge_runtime`、逐调用记录文件）描述的是本流程所要求的形态，不是当前可运行的入口。不依赖执行端的阶段各自独立：`generate_inputs.py`、`decider/golden.py`、`prepare.sh`、`model/export_air.py` 与 CPU 单测；`tools/compare.py` 与 `decider/verify_business.py` 需要推理产物，同样受阻。
+
 ## 是什么
 
 [StartLux-Decision-v1.1-0.8B-Instant](https://huggingface.co/startlux-models/StartLux-Decision-v1.1-0.8B-Instant)
@@ -16,8 +18,10 @@ vision.air + text.air），C++ pipeline runtime
 `decider/verify_business.py` 承担。无 YAML / adapter / handle；固定参数集中在
 `run.sh` 顶部。
 
-单图交付：视觉塔 + 图像特征注入 + 三轴 MRoPE + 文本 decoder + 26 列读出头整
-合在单一动态 AIR、单次 GESession 中执行。验收状态见
+两阶段交付：视觉塔单独导出为动态 vision AIR（任意图数、任意官方网格），其输出
+image features 设备常驻直连 text AIR；图像特征注入、三轴 MRoPE、文本 decoder
+与 26 列读出头在 text AIR 中执行。两图的 IO 契约写在 `work/build/split.json`
+（schema `startlux-split-air/1`）。验收状态见
 [validation.md](validation.md)（历史精度事实）与
 [performance.md](performance.md)（P8 正式基准 + 独立流程验证测量附录）。
 
@@ -93,11 +97,12 @@ NPU 卡用 `--device` 指定（npu-smi 的 Chip Logic ID，默认 4）；其余�
 输入 case 池 = **仅官方仓库 examples 的 5 个业务 case**（工单三问题 B3/
 三个 B1 拆分 + 配送照片 noul；bench 池 = 精度池）。流程：检查环境及权重 →
 生成输入（官方预处理一次完成）→ CPU golden →
-构建/安装 pass 与自定义算子（`work/deps/`）→ 构建 C++ runtime（复用
-`runtime/build.sh`）→ 导出单 AIR 并自动生成 infer/bench 请求 → 精度推理 →
+构建/安装 pass 与自定义算子（`work/deps/`）→ 构建两阶段 runner（**当前无实现，
+见顶部 hold 说明**；`runtime/build.sh` 只构建单图的 `ge_execute`）→ 导出
+vision/text 两张 split AIR 并自动生成 infer/bench 请求 → 精度推理 →
 数值比较（`tools/compare.py`）→ 业务概率校验 → **人工确认卡空闲** → 性能
 测试。产物在 `work/infer/`（comparison.json + business.json）与
-`work/bench/`（result.json + requests.csv），日志在 `work/logs/`。
+`work/bench/`（result.json 及逐调用记录），日志在 `work/logs/`。
 
 单独重跑（每条只执行本步，缺输入直接报错）：
 
@@ -108,7 +113,7 @@ bash   models/startlux-decision-v1.1-0.8b-instant/prepare.sh            # 依赖
 # 导出（LD_PRELOAD 指向 work/deps/.../install/lib/libchunk_gated_delta_rule_compat_proto.so）：
 LD_PRELOAD=<proto.so> python3 models/startlux-decision-v1.1-0.8b-instant/model/export_air.py \
     --device 0 --instances 1 --warmup 32 --iterations 2048 --seed 42
-LD_PRELOAD=<proto.so> runtime/build/ge_runtime < models/.../work/infer/request.json
+# 精度推理：需要能串联 vision/text 两张 AIR 的 runner，当前无实现（见顶部 hold 说明）
 python3 tools/compare.py --golden models/.../work/golden --output models/.../work/infer \
     --cosine-min 0.999 --relative-l2-max 0.02
 python3 models/startlux-decision-v1.1-0.8b-instant/decider/verify_business.py
