@@ -59,6 +59,14 @@ multimodal + torchair exporter 门禁）共 **317 项全部通过**：
 `tests/test_startlux_unified_preprocess.py`（23 项）与
 `tests/test_startlux_native_proto.py` 改路径后全部通过。
 
+2026-11-20：`tests/test_startlux_native_proto.py` 的 `ProtoPreloadGuard`（4 项，
+覆盖 `export_air.py` 的 `_require_proto_preloaded`）按用户决策删除。它在
+`setUpClass` 里 import `export_air.py`，而该模块的 module level 会拉 torch、模型
+包与 `causal_conv1d`（由本模型 `prepare.sh` 从 `third_party/ascend-ops`
+安装），因此在没跑过 `prepare.sh` 的检出上恒为 `ModuleNotFoundError` error，
+不是 hermetic 契约测试。同文件的 `ActivatorRetired`（2 项，只查文件系统）保留。
+guard 本身没动，每次真实导出都会经过它。
+
 ## 2026-11-12 变更：GDN 零态提升为层间共享（18 Fill → 1）
 
 **前置 probe（决定性，chip 14）**：`npu_chunk_gated_delta_rule` 的 `initial_state`
