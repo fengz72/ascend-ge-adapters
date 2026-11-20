@@ -7,7 +7,7 @@
 ## README
 
 ### 模板
-`models/<model>/README.md` 按 [`docs/model-readme-template.md`](docs/model-readme-template.md) 写。五段骨架是 1 背景 / 2 环境 / 3 运行指南（含 3.1 输入与输出、3.2 Patch、3.3 产物路径）/ 4 精度和性能 / 5 使用限制。每段填哪些字段、表格列名与脚注语义以模板为准，本文件不重复。
+`models/<model>/README.md` 按 [`docs/model-readme-template.md`](docs/model-readme-template.md) 写。骨架是 1 背景 / 2 环境 / 3 运行指南 / 4 精度和性能。每段填哪些字段、表格列名与脚注语义以模板为准，本文件不重复。
 
 写作纪律：
 
