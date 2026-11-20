@@ -128,7 +128,6 @@ runtime/build/ge_execute \
 | `--seed` | 42 | 有放回抽样种子；同 seed 同 N 下全局序列可复现，K 只改分工 |
 | `--aicore-num` | `12\|24` | 每算子 AIC\|AIV 上限（GEInitialize 设 `ge::ir_option::AICORE_NUM`）。编译期上限，**不预留、不隔离、不等于绑核** |
 | `--precision-mode` | `force_fp16` | 内部 FP16，外部浮点 IO 保持 FP32 |
-| `--graph-run-mode` | `0`（默认） | mode=1 在 CANN 9.0 上 SIGSEGV，别用 |
 | `--profiling` | 关 | 产出 `<output-dir>/profiling/PROF_*`，msprof 可解析；带采集开销的结果单独看待 |
 | `--format` | 按后缀推断 | `.onnx` → onnx，`.air` → air |
 
@@ -181,7 +180,7 @@ python3 model/compare.py --golden fixtures/cpu-golden.npz \
 - 若换成**静态图**，池里只能有一种 shape：多 shape 会在 Init 直接报错（`compiles to a static shape but the case pool has N distinct shapes`）。原因是 GE 对静态图喂错 shape **不报错**，会静默按编译期 shape 解释字节；而 GE 没有查询编译期输入 shape 的 API，所以只能拦到这一层。
 - npy 必须 **C-order**；dtype 白名单 13 种（float16/bfloat16/float32/float64、int8/16/32/64、uint8/16/32/64、bool）；`fortran_order=True`、大端、object/字符串/复数一律报错，不转置不兜底。bfloat16 要按 uint16 存并在 JSON 里标 `"dtype": "bfloat16"`。
 - **启动时间随实例数线性增长**：每实例一份 AddGraph+CompileGraph 且必须串行（同一 graphId 只能 LoadGraph 一次）。逐份耗时打在 `[INFO] CompileGraph ok (gid=i/K), cost ..., allocation=caller|GE`，汇总在 `result.json` 的 `compile_ms`/`load_ms`。
-- `graph_run_mode` / `aicore_num` / `--profiling` 都是 GEInitialize 的全局选项，进程内只生效一次，改了要重跑进程。
+- `aicore_num` / `--profiling` 都是 GEInitialize 的全局选项，进程内只生效一次，改了要重跑进程。
 - 不支持 OM（ATC 产物）、dump、两阶段 pipeline、请求池时序回放（旧 `replay`）。
 - **精度门禁的翻转界**：当前形态下 3/5 例实测误差已超自己的翻转界（`1.20×` / `1.37×` / `1.51×`；双 Pass 形态是 `1.16×` / `1.04×` / `1.19×`）。因此「不存在既能放行当前实现又能保证 Top-10 排序的数值门限」这一结论变强而非变弱。
 - **性能未重测**：停用预计算 Pass 后相对原始图的总增益从固定 `+38.527%` / 随机 `+29.418%` 回落到仅 FIAS 的 `+25.723%` / `+17.849%`，两组数字同样出自旧 `ge_runtime` + `LD_PRELOAD` 栈；当前 `ge_execute` + vendors 栈上从未测过任何一组。要引用性能数字必须先重测。
@@ -196,11 +195,13 @@ python3 model/compare.py --golden fixtures/cpu-golden.npz \
 |2026-11-19|设备侧复验：7 步退出 0，`CompileGraph ok` 9283.6 ms / `LoadGraph ok` 1065.5 ms，五例逐位相同|`0.9999998228985413`|`0.0006315230319931038`|`0.00033801794052124023`|原始 ONNX SHA-256 `2080f876…`|
 |2026-11-19|停用 `BgeCandidatePrecomputePass`，`BGE_PRECOMPUTE` 0 命中；`CompileGraph ok` 9013.4 ms / `LoadGraph ok` 1213.5 ms|`0.9999997515415282`|`0.0007160327352242834`|`0.00043082237243652344`|Pass 库 `076dd785…`；上游 `d221027` 删掉 qwen 测试后 Python 测试为 111 个|
 |2026-11-19|Pass 重构为单个 `BgeFusedInferAttentionPass`，汇总行一行；`CompileGraph ok` 9057.5 ms / `LoadGraph ok` 1185.1 ms，五例与 Pass README 精度表逐位相同|`0.9999997515415282`|`0.0007160327352242834`|`0.00043082237243652344`|Pass 构建树产物 `b3ab21b5…`；子模块 `b633f55`|
+|2026-11-20|`ge_execute` 不再显式设 `ge.graphRunMode`（可选项，GE 默认 `0` = 在线推理），七步退出 0，`CompileGraph ok` 8550.4 ms / `LoadGraph ok` 1078.8 ms，五例 npy 与上一轮逐比特相同|`0.9999997515415282`|`0.0007160327352242834`|`0.00043082237243652344`|`ge_execute` SHA-256 `dfe7f38f…`；Pass 构建树 `b3ab21b5…`；子模块 `0f08611`|
 
-三轮设备侧验收的逐轮 provenance：
+四轮设备侧验收的逐轮 provenance：
 
 - 2026-11-19 10:15:39–10:16:01：Chip Logic ID 0，全程 22 秒；运行前后 NPU 0 均报 `No running processes`、全机 0 个进程行，chip 0 HBM 3156 → 3156 MB；九个异常关键字全 0；Top-10 五例全对。
 - 2026-11-19 15:07:22–15:07:47：Chip Logic ID 0，全程 25 秒；前后均 8/8 个 NPU 报 `No running processes`、全机 0 个进程行，chip 0 HBM 3155 → 3154 MB；`logs/infer.log` 13 行（双 Pass 形态 16 行），`BGE_PRECOMPUTE` 0 命中、九个异常关键字全 0；Top-10 五例全对。
 - 2026-11-19 16:58:33–16:58:56：Chip Logic ID 0，全程 23 秒；前后均 8/8 个 NPU 报 `No running processes`、全机 0 个进程行，chip 0 HBM 3155 → 3155 MB；`logs/infer.log` 11 行、本 Pass 占 1 行；16 个「不得出现」关键字全 0；Top-10 五例全对。
+- 2026-11-20 14:53:33–14:53:55：Chip Logic ID 0，全程 22 秒；前后均 8/8 张卡的 16 个 chip 视图报 `No process in device`、全机 0 个进程行，chip 0 HBM 3157 → 3157 MB；`logs/infer.log` 11 行、本 Pass 占 1 行；九个「不得出现」关键字全 0；Top-10 五例全对。
 
 各项的完整产物路径、哈希与逐条检查清单见 `models/bge/README.md` 的使用限制与验收记录。

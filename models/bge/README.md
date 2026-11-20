@@ -31,7 +31,7 @@
 | numpy | 1.26.4 |
 | Torch / TorchNPU / Transformers | **不需要**——ONNX 直喂 GE，不经 torch |
 | onnx / onnxruntime | 运行**不需要**；仅再生成 `cpu-golden.npz` 时用 onnxruntime 1.26.0（`CPUExecutionProvider`） |
-| 验证范围 | 已实测 `Ascend910_9382` + CANN 9.0.0 + `graph_run_mode=0`；其他 SoC 与 CANN 版本待验证 |
+| 验证范围 | 已实测 `Ascend910_9382` + CANN 9.0.0；其他 SoC 与 CANN 版本待验证 |
 
 本容器装了**两个 Python 3.11**，SONAME 相同但是两套东西：PATH 上的 `/usr/local/python3.11.15`（3.11.15，有 numpy 1.26.4）与系统 `/usr/bin/python3`（3.11.6，**没有 numpy**），而 `ldconfig -p | grep libpython3.11` 默认解析到后者。GE 编译算子时在原生进程里内嵌一个 CPython（TBE/TE 走 Python，还会起 multiprocessing 工作进程），`set_env.sh` 只设 `PYTHONPATH` 与 CANN 的 lib 目录、**不设 `PYTHONHOME`**，所以必须由调用方把内嵌解释器钉到正在驱动的这个解释器上，否则 GE 初始化报 `No module named numpy`。`run.sh` 已内建这两行 export，换机器时用下面两条自检：
 
@@ -172,12 +172,12 @@ ctest --test-dir runtime/build --output-on-failure
 
 [^3]: 融合 Pass 的实测记录与口径见 [`BgeFusedInferAttentionPass/README.md`](../../third_party/custom_development_code/fusion_pass/BgeFusedInferAttentionPass/README.md) 第 4 节；实例数扫描的逐轮数据见[十实例报告](../../docs/bge/analysis/100-fp16-ten-selection-20261027.md)、[复测报告](../../docs/bge/analysis/100-fp16-scale-recompare-20261027.md)与[修复报告](../../docs/bge/analysis/100-runner-review-fix-20261028.md)。
 
-**验收口径**（上表的 provenance）：2026-11-19 16:58:33–16:58:56，Chip Logic ID 0 / `0000:9D:00.0`，CANN 9.0.0，`graph_run_mode=0`，`precision_mode=force_fp16`，`aicore_num=12|24`，全程 23 秒。运行前后均 8/8 个 NPU 报 `No running processes`、全机 0 个进程行、chip 0 HBM 3155 → 3155 MB。产物身份：`ge_execute` `ef3a5e95b6e3d302208f6e1ec38c4446b21bd025b8393b0eb918509bb6a66c81`、Pass 构建树 `b3ab21b5aa77ad4cbc7342b1cd41d9d4cd73671640543a6f9ac80fbe6a2b2141`（vendors 副本因 `cmake --install` 剥离 RPATH 与之差 240 字节、大小相同，核对身份认准 `build/` 那份）、图 `2080f876…`。`CompileGraph ok` 9057.5 ms、`LoadGraph ok` 1185.1 ms、8 input buffers；`logs/infer.log` 共 11 行、Pass 占 1 行；`refused=control_edge`、`remove_failed`、`cannot resolve`、`replacement_failed`、`InitIoReuseFlag`、`netoutput_node`、`E13028`、`E19999`、`skipped=` 全 0 命中。逐轮记录见 [ge-execute-usage.md](../../docs/bge/ge-execute-usage.md) 第 9 节。
+**验收口径**（上表的 provenance）：2026-11-20 14:53:33–14:53:55，Chip Logic ID 0 / `0000:9D:00.0`，CANN 9.0.0，`precision_mode=force_fp16`，`aicore_num=12|24`，全程 22 秒。运行前后均 8/8 张卡（16 个 chip 视图）报无进程、全机 0 个进程行、chip 0 HBM 3157 → 3157 MB。产物身份：`ge_execute` `dfe7f38faac66ae59fccd48e8b2144aca4b5963bdaee83f35bade881ceda4bf8`、Pass 构建树 `b3ab21b5aa77ad4cbc7342b1cd41d9d4cd73671640543a6f9ac80fbe6a2b2141`（vendors 副本因 `cmake --install` 剥离 RPATH 与之差 240 字节、大小相同，核对身份认准 `build/` 那份）、图 `2080f876…`。`CompileGraph ok` 8550.4 ms、`LoadGraph ok` 1078.8 ms、8 input buffers；`logs/infer.log` 共 11 行、Pass 占 1 行；`refused=control_edge`、`remove_failed`、`cannot resolve`、`replacement_failed`、`InitIoReuseFlag`、`netoutput_node`、`E13028`、`E19999`、`skipped=` 全 0 命中。逐轮记录见 [ge-execute-usage.md](../../docs/bge/ge-execute-usage.md) 第 9 节。
 
 ## 5. 使用限制
 
 - 仅覆盖给定五条 batch=1 样例（文本长 6/9/8/13/8、行为长 128、统计宽 20）。未设置业务 p99 上限，**不声称满足生产 SLA**。
-- 只支持 GE Session 推理。CANN 9.0 下 `graph_run_mode=1`（训练模式）会使原始图在 `fe::ConstToAttrStridedSliceV2Pass` 内 SIGSEGV，必须用 mode=0。**ATC/OM 部署未验证。**
+- 只支持 GE Session 推理，图执行模式用 GE 默认的推理模式。**ATC/OM 部署未验证。**
 - 验证范围只有 `Ascend910_9382` + CANN 9.0.0；换 SoC 或换 CANN 版本需重跑第 5、6 步门禁。
 - 10 实例为用户指定配置，**不声称实例数或随机场景吞吐最优**；12 实例未完成独立全量输出与稳定性验收。
 - `fixtures/cpu-golden.npz` 是**派生产物**（onnxruntime CPU FP32 跑五份样例得到）。更换 ONNX 图或更换样例都必须重新生成它，否则数值门禁比的是过时参考；再生成脚本在仓库里（`docs/bge/evidence/20261026/acceptance/build_cpu_golden.py`）但硬编码了 100 机器路径，需先改两个常量，详见 `fixtures/SOURCE.md`。

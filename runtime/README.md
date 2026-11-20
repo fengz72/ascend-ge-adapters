@@ -61,7 +61,6 @@ runtime/build/ge_execute --graph work/build/model.onnx --cases work/inputs/cases
 | `--seed S` | 42 | 有放回抽样种子；同 seed 同 N 下全局序列可复现，K 只改分工 |
 | `--aicore-num A\|B` | 空 | 每算子 AIC\|AIV 核上限，GEInitialize 设 `ge::ir_option::AICORE_NUM`。编译期上限，**不预留、不隔离、不等于绑核** |
 | `--precision-mode` | `force_fp16` | GE session 精度模式 |
-| `--graph-run-mode` | 0 | 0 = 推理模式（项目默认；mode=1 在 CANN 9.0 上 SIGSEGV） |
 | `--profiling` | 关 | 经 GEInitialize 全局选项开启，产出 msprof 可解析的 `PROF_*` 会话 |
 | `--aic-metrics` | `PipeUtilization` | profiling 的 AIC 指标 |
 
@@ -104,7 +103,7 @@ runtime/build/ge_execute --graph work/build/model.onnx --cases work/inputs/cases
 - **不做 io 契约校验**：输入个数/顺序/dtype/shape 是否与图匹配交给 GE 判断。唯一护栏是"静态编译图 + 池内多于一种 shape"在 Init 直接报错——实测 GE 对静态图喂错 shape **不报错**，会静默按编译期 shape 解释字节。池内 shape 与图自身静态 shape 不一致这种查不出来（GE 没有查询编译期输入 shape 的 API，那需要 io 契约）。
 - **npy 只接受 C-order 与 13 个白名单 dtype**（float16/bfloat16/float32/float64、int8/16/32/64、uint8/16/32/64、bool）；`fortran_order=True`、大端、object/字符串/复数一律报错，不转置不兜底。
 - **启动时间随实例数线性增长**：每实例一份 AddGraph+CompileGraph 且必须串行（同一 graphId 只能 LoadGraph 一次）。实测 1.35GB BGE ONNX 约 8s/份，tiny 图约 0.5s/份。逐份耗时打在 `[INFO] CompileGraph ok (gid=i/K), cost ...` 与 `result.json` 的 `compile_ms`/`load_ms`。
-- `graph_run_mode`、`aicore_num`、profiling 都是 GEInitialize 的全局选项，进程内只生效一次，改了要重跑进程。
+- `aicore_num`、profiling 都是 GEInitialize 的全局选项，进程内只生效一次，改了要重跑进程。
 - **AIR 分支已实测**（2026-11-19，Qwen2.5-0.5B 的 993754309 字节动态 `packed.air`，带自定义 Prefix 算子与 WeightNZ/MatMulV3 融合 pass）：infer / bench / profiling 三种用法均 exit 0，精度与性能与旧 `executor` 记录一致，见下方 AIR 附录。
 - **infer 模式不回填 `compile_ms` / `load_ms`**：这两个字段只在 bench 路径写进 `result.json`（`main.cpp:435-437`），infer 下恒为 `0.0` / `[]`，编译与加载耗时只在 stdout 的 `[INFO] CompileGraph ok ... cost` / `[INFO] LoadGraph ok ... cost` 行里。属记录缺口，不影响执行。
 
@@ -119,7 +118,7 @@ runtime/build/ge_execute --graph work/build/model.onnx --cases work/inputs/cases
 | tiny 静态 ONNX | MatMul+Add+ArgMax，2 输出（float32 + int64） | 走 caller 分配分支（`allocation=caller (static compiled)`）；scores 与 numpy 差 `1.19e-07`（1 ULP，融合累加顺序），indices 精确一致；d2h avg 0.028ms |
 | tiny 动态 ONNX | 同图，N 动态，rows=2/3/1 | 走 GE 分配分支；变长输出 `[2,3]/[3,3]/[1,3]` 与 `[2]/[3]/[1]` 正确，数值同上；d2h avg 0.036ms |
 | tiny bench | 静态图 | `--instances 2 --warmup 2 --iterations 21 --aicore-num 8\|16`：21 请求 0 错误，warmup 4 次，e2e p50 0.081ms（exec avg 0.033 + d2h avg 0.026） |
-| CLI 契约 | —（不需要 NPU） | `--help` exit 0；缺必填/未知 flag/`--instances 0`/`--warmup -1`/`--graph-run-mode 2`/`--format om`/后缀无法推断/`--aicore-num 12` 全部 exit 2；`cases.json` 缺失 exit 1 |
+| CLI 契约 | —（不需要 NPU） | `--help` exit 0；缺必填/未知 flag/`--instances 0`/`--warmup -1`/`--format om`/后缀无法推断/`--aicore-num 12` 全部 exit 2；`cases.json` 缺失 exit 1 |
 | CPU 契约测试 | —（不需要 NPU） | `ctest` 1/1 通过：npy 读写往返与全部拒绝路径、cases 解析与错误路径、抽样/预热计划、统计与百分位（含 `d2h_avg` / 逐请求 `d2h_ms`）、JSON 落盘 |
 
 待卡空闲补跑（两项都在含 D2H 之前的构建上已通过，且都不在 D2H 改动的代码路径上——profiling 与静态图护栏都在 `Session::Init`）：

@@ -49,7 +49,7 @@ runtime/build/ge_execute --graph work/build/model.onnx --cases work/inputs/cases
     --output-dir work/bench --device 0 --instances 10 --warmup 1 --iterations 1000 --aicore-num 12|24
 ```
 
-`--device` 是必填的进程内设备号，`ASCEND_RT_VISIBLE_DEVICES` 映射后恒为 0。`--iterations N` 在所有实例间合计，`N>0` 即 bench、`0` 即 infer；`--instances K` 编译 K 份图并串行 AddGraph+CompileGraph，启动时间随 K 线性增长。`--aicore-num A|B` 是编译期每算子核上限，不预留、不隔离、不等于绑核。`--graph-run-mode` 默认 0（推理模式），mode=1 在 CANN 9.0 上 SIGSEGV。
+`--device` 是必填的进程内设备号，`ASCEND_RT_VISIBLE_DEVICES` 映射后恒为 0。`--iterations N` 在所有实例间合计，`N>0` 即 bench、`0` 即 infer；`--instances K` 编译 K 份图并串行 AddGraph+CompileGraph，启动时间随 K 线性增长。`--aicore-num A|B` 是编译期每算子核上限，不预留、不隔离、不等于绑核。
 
 `--precision-mode` 默认 `force_fp16`。已实测的精度基线是在 `must_keep_origin_dtype` 下取得的，复现这些数字必须显式传参；`models/qwen2.5-0.5b` 与 `models/startlux-decision-v1.1-0.8b-instant-text` 的 `run.sh` 已经显式传了。
 

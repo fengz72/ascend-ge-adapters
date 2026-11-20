@@ -137,7 +137,7 @@ export STARTLUX_MODEL_DIR=/path/to/hf-model
 - 沿用现有 IO 嵌入能力及已验证的导出逻辑，必要时调用 runtime 的 `write_io` 模式。
 - 自动生成 `infer/request.json`、`bench/request.json`，用户不编辑请求 JSON。
 
-两个请求使用同一张 AIR。显式设置既有 GESession 选项，包括 `graph_run_mode` 和 `must_keep_origin_dtype`，不依赖 runtime 默认精度策略。
+两个请求使用同一张 AIR。显式设置既有 GESession 选项，包括 `must_keep_origin_dtype`，不依赖 runtime 默认精度策略。
 
 ### 4.5 prepare.sh 与环境设置
 

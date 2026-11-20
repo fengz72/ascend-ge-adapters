@@ -18,7 +18,6 @@ struct SessionConfig {
     int instances = 1;                         // 图实例数 = 闭环并发数
     std::string aicoreNum;                     // "" = 不限核; 否则 "正整数|正整数"
     std::string precisionMode = "force_fp16";
-    int graphRunMode = 0;
     bool profiling = false;
     std::string profilingOutput;               // profiling=true 时的输出目录
     std::string aicMetrics = "PipeUtilization";
@@ -54,8 +53,9 @@ public:
     Session &operator=(const Session &) = delete;
 
     // 初始化顺序是实测约束, 不可调换:
-    //   1. GEInitialize{ge.graphRunMode, ge.exec.deviceId,
+    //   1. GEInitialize{ge.exec.deviceId,
     //                   [ge::ir_option::AICORE_NUM], [profiling 两个选项]}
+    //      (不设 ge.graphRunMode: 它是可选项, GE 默认 0 = 在线推理)
     //   2. aclInit (ACL_ERROR_REPEAT_INITIALIZE 视为成功)
     //   3. ge::Session{ge.session_device_id, ge.exec.precision_mode}
     //   4. 每实例: 读图 (air: Graph::LoadFromFile / onnx: aclgrphParseONNX)

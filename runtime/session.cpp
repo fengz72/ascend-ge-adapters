@@ -270,8 +270,6 @@ void Session::Init(const CasePool &pool) {
 
     // ---- 1. GEInitialize: 全局选项在进程内只生效一次, 之后再也改不了 ----
     std::map<ge::AscendString, ge::AscendString> globalOptions;
-    globalOptions.emplace(ge::AscendString("ge.graphRunMode"),
-                          ge::AscendString(std::to_string(impl.config.graphRunMode).c_str()));
     globalOptions.emplace(ge::AscendString("ge.exec.deviceId"),
                           ge::AscendString(std::to_string(impl.config.device).c_str()));
     const std::string aicore = NormalizeAicoreNum(impl.config.aicoreNum);

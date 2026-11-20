@@ -38,7 +38,6 @@ DEVICE_CHIP=0                 # ASCEND_RT_VISIBLE_DEVICES: npu-smi 的 Chip Logi
 DEVICE=0                      # 进程内设备号（可见映射后的编号）
 PRECISION_MODE=force_fp16     # GE 精度模式：内部 FP16，外部浮点 IO 保持 FP32
 AICORE_NUM="12|24"            # 每算子核上限 AIC|AIV（空 = 不限核）
-GRAPH_RUN_MODE=0              # GE 预测模式；mode=1 在 CANN 9.0 上 SIGSEGV
 COSINE_MIN=0.9999             # 精度门限：逐行 cosine 下限
 RELATIVE_L2_MAX=0.001         # 精度门限：逐行 relative L2 上限
 MAX_ABS_ERROR=0.001           # 精度门限：逐行最大绝对误差上限
@@ -147,7 +146,7 @@ bash "$ROOT/runtime/build.sh" 2>&1 | tee "$LOGS/runtime-build.log"
 [[ -x "$RUNTIME_BIN" ]] || die "runtime binary is missing after build: $RUNTIME_BIN"
 
 # ---------------------------------------------------------------- 5. 精度推理
-step "精度推理（ge_execute, $PRECISION_MODE, graph_run_mode=$GRAPH_RUN_MODE）"
+step "精度推理（ge_execute, $PRECISION_MODE）"
 rm -rf "$WORK/infer"
 mkdir -p "$WORK/infer"
 # 省略 --iterations 即 infer：每 case 跑一次、单实例、无预热。
@@ -160,8 +159,7 @@ mkdir -p "$WORK/infer"
     --output-dir "$WORK/infer" \
     --device "$DEVICE" \
     --precision-mode "$PRECISION_MODE" \
-    --aicore-num "$AICORE_NUM" \
-    --graph-run-mode "$GRAPH_RUN_MODE" 2>&1 | tee "$LOGS/infer.log"
+    --aicore-num "$AICORE_NUM" 2>&1 | tee "$LOGS/infer.log"
 [[ -s "$WORK/infer/result.json" ]] \
     || die "infer produced no result.json; see $LOGS/infer.log"
 
@@ -204,7 +202,6 @@ if [[ -n "$ITERATIONS" ]]; then
         --device "$DEVICE" \
         --precision-mode "$PRECISION_MODE" \
         --aicore-num "$AICORE_NUM" \
-        --graph-run-mode "$GRAPH_RUN_MODE" \
         --instances "$INSTANCES" \
         --iterations "$ITERATIONS" \
         --warmup "$WARMUP" \

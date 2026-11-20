@@ -2,7 +2,7 @@
 //
 //   ge_execute --graph <model.air|model.onnx> --cases <cases.json> --output-dir <dir> --device <N>
 //              [--format air|onnx] [--instances K=1] [--warmup M=0] [--iterations N=0] [--seed S=42]
-//              [--aicore-num A|B] [--precision-mode force_fp16] [--graph-run-mode 0]
+//              [--aicore-num A|B] [--precision-mode force_fp16]
 //              [--profiling] [--aic-metrics PipeUtilization] [--help]
 //
 // infer (iterations==0): 单实例按 cases 顺序各跑一次, 每个输出写
@@ -77,7 +77,6 @@ struct Options {
     long long warmup = 0;
     long long iterations = 0;
     unsigned long long seed = 42;
-    long long graphRunMode = 0;
     bool profiling = false;
     bool help = false;
 };
@@ -87,8 +86,8 @@ void Usage(std::ostream &os) {
           "                   --output-dir <dir> --device <N>\n"
           "                   [--format air|onnx] [--instances K=1] [--warmup M=0]\n"
           "                   [--iterations N=0] [--seed S=42] [--aicore-num A|B]\n"
-          "                   [--precision-mode force_fp16] [--graph-run-mode 0]\n"
-          "                   [--profiling] [--aic-metrics PipeUtilization] [--help]\n"
+          "                   [--precision-mode force_fp16] [--profiling]\n"
+          "                   [--aic-metrics PipeUtilization] [--help]\n"
           "  --iterations N > 0: bench over N global requests on K closed-loop instances\n"
           "  default:            infer, every case once in order -> per-case .npy outputs\n";
 }
@@ -154,8 +153,6 @@ void ParseArgs(int argc, char **argv, Options &opt) {
             opt.aicoreNum = value("--aicore-num");
         } else if (arg == "--precision-mode") {
             opt.precisionMode = value("--precision-mode");
-        } else if (arg == "--graph-run-mode") {
-            opt.graphRunMode = ToInt(value("--graph-run-mode"), "--graph-run-mode");
         } else if (arg == "--aic-metrics") {
             opt.aicMetrics = value("--aic-metrics");
         } else if (arg == "--profiling") {
@@ -180,9 +177,6 @@ void ParseArgs(int argc, char **argv, Options &opt) {
     if (opt.iterations < 0) {
         throw CliError("--iterations needs a value >= 0");
     }
-    if (opt.graphRunMode != 0 && opt.graphRunMode != 1) {
-        throw CliError("--graph-run-mode must be 0 or 1");
-    }
     try {
         NormalizeAicoreNum(opt.aicoreNum);   // 值格式不对属于用法错误 -> exit 2
     } catch (const std::exception &error) {
@@ -202,7 +196,6 @@ Json ConfigJson(const Options &opt, const std::string &format, int instances) {
                 {"seed", opt.seed},
                 {"aicore_num", opt.aicoreNum},
                 {"precision_mode", opt.precisionMode},
-                {"graph_run_mode", opt.graphRunMode},
                 {"profiling", opt.profiling},
                 {"aic_metrics", opt.aicMetrics},
                 {"profiling_output", opt.profiling ? opt.outputDir + "/profiling" : ""}};
@@ -500,7 +493,6 @@ int main(int argc, char **argv) {
         config.instances = instances;
         config.aicoreNum = opt.aicoreNum;
         config.precisionMode = opt.precisionMode;
-        config.graphRunMode = static_cast<int>(opt.graphRunMode);
         config.profiling = opt.profiling;
         config.profilingOutput = opt.profiling ? opt.outputDir + "/profiling" : "";
         config.aicMetrics = opt.aicMetrics;
