@@ -20,12 +20,13 @@ INSTANCES=10                  # 性能：闭环并发实例数 = 编译 10 份�
 WARMUP=1                      # 性能：每实例预热次数；池内 distinct shape 多于它时自动补齐
 ITERATIONS=""                 # 性能：空 = 不做 bench；N = 所有实例合计的测量次数
 SEED=42                       # 性能：有放回抽样种子
-DEVICE="0"                    # 运行设备
+DEVICE_CHIP="0"               # ASCEND_RT_VISIBLE_DEVICES：npu-smi 的 Chip Logic ID
+DEVICE_INDEX=0                # ge_execute --device：映射后可见设备从 0 开始，故恒为 0
 # --------------------------------------------------------
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --device)         need "$@"; DEVICE="$2"; shift 2 ;;
+        --device)         need "$@"; DEVICE_CHIP="$2"; shift 2 ;;
         --iterations)     need "$@"; ITERATIONS="$2"; shift 2 ;;
         --warmup)         need "$@"; WARMUP="$2"; shift 2 ;;
         --instances)      need "$@"; INSTANCES="$2"; shift 2 ;;
@@ -35,12 +36,12 @@ while [[ $# -gt 0 ]]; do
         *)                die "unknown argument: $1" ;;
     esac
 done
-[[ -n "$DEVICE" ]] || die "--device is required (npu-smi Chip Logic ID)"
+[[ -n "$DEVICE_CHIP" ]] || die "--device is required (npu-smi Chip Logic ID)"
 
 # ---------------------------------------------------------------- 1. 环境
-step "检查环境（device=$DEVICE）"
+step "检查环境（chip=$DEVICE_CHIP）"
 BGE_MODEL_PATH="$(cd "$(dirname "$BGE_MODEL_PATH")" && pwd)/$(basename "$BGE_MODEL_PATH")"
-export ASCEND_RT_VISIBLE_DEVICES="$DEVICE"
+export ASCEND_RT_VISIBLE_DEVICES="$DEVICE_CHIP"
 export PYTHONPATH="$(python3 -c 'import sysconfig;print(sysconfig.get_path("purelib"))')${PYTHONPATH:+:$PYTHONPATH}"
 mkdir -p "$LOGS"
 rm -f "$LOGS"/*.log   # 清掉上一轮的，免得已删步骤的日志看起来还在跑
@@ -80,7 +81,7 @@ rm -rf "$WORK/infer"
     --graph "$BGE_MODEL_PATH" \
     --cases "$WORK/inputs/cases.json" \
     --output-dir "$WORK/infer" \
-    --device "$DEVICE" \
+    --device "$DEVICE_INDEX" \
     --precision-mode "$PRECISION_MODE" \
     --aicore-num "$AICORE_NUM" 2>&1 | tee "$LOGS/infer.log"
 
@@ -104,7 +105,7 @@ if [[ -n "$ITERATIONS" ]]; then
         --graph "$BGE_MODEL_PATH" \
         --cases "$WORK/inputs/cases.json" \
         --output-dir "$WORK/bench" \
-        --device "$DEVICE" \
+        --device "$DEVICE_INDEX" \
         --precision-mode "$PRECISION_MODE" \
         --aicore-num "$AICORE_NUM" \
         --instances "$INSTANCES" \
