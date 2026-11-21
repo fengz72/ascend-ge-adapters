@@ -1,245 +1,82 @@
-# Qwen2.5-0.5B 共享 prefix 极简流程
-
-本目录是 [Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) 的自包含交付：
-每个部件一个自包含脚本、部件间零 import 依赖，只通过 `work/` 下的文件契约
-交互，共用一个 3 输入动态 packed AIR（`input_ids` [T] / `position_ids` [T] /
-`actual_seq_lengths` [N+1] → `scores` [N, 8]）。整个流程自包含于本目录。
-
 ## 1. 背景
 
-### 1.1 官方地址
+[Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B)，权重目录由 `QWEN_MODEL_DIR` 给出，流程不自动下载。骨干是 24 层 Qwen2 decoder：hidden 896、GQA 14 个注意力头 / 2 个 KV 头（head_dim 64）、intermediate 4864、RMSNorm + SiLU MLP + half RoPE、vocab 151936，`lm_head` 与 `embed_tokens` 绑定。读出头不是全词表投影：`install_score_head()` 从 tied embedding 取出 8 行（token id 15–22）作 `[8, 896]` 评分头，对每条请求末 token 的 hidden 做 FP32 矩阵乘，得到 `[N, 8]` 分数。
 
-| 项目     | 地址                                          |
-| -------- | --------------------------------------------- |
-| 模型地址 | https://huggingface.co/Qwen/Qwen2.5-0.5B      |
+业务是共享 prefix 的批量打分：每个 case 一段 prefix 只参与一次计算，其后跟随 16 条业务请求（batch 固定 16），每条请求取末 token 的 8 个固定 token 分数，列序由 [config/target_tokens.json](config/target_tokens.json) 定义。输入池 100 个 case，prefix 20–25 token，请求总长按 lognormal 抽样（`mu=4.997`、`sigma=0.167`，截断到 `[prefix+1, 218]`）；一次前向完成 prefix + 全部请求，无 KV-cache。
 
-### 1.2 业务约束
 
-- **共享 prefix**：每个 case 只有一段 prefix 参与计算一次，其后跟随 16 条业务
-  请求；prefix Q/KV 不重复计算。
-- **固定 batch = 16**（`config/target_tokens.json` 之外的池参数固化在
-  `model/generate_inputs.py`）。
-- **输入池**：100 个 case，每 case 共享 prefix=20–25 token + batch16 请求；请求
-  总长沿用历史 lognormal 分布（`mu=4.997`、`sigma=0.167`、上限 218）。
-- **评分列**：每个业务请求取末 token 的 8 个固定 token 分数，列序由
-  [config/target_tokens.json](config/target_tokens.json) 定义。
-- **无 KV-cache**：一次前向完成 prefix + 全部请求。
+## 2. 环境
 
-目录中的五个文件契约部件：
+### 2.1 Ascend910_9382（`--platform a3`）
 
-| 部件                                                 | 输入                        | 输出（默认路径）                                                     |
-| ---------------------------------------------------- | --------------------------- | -------------------------------------------------------------------- |
-| `model/generate_inputs.py`                           | `QWEN_MODEL_DIR` 的 config.json | `work/inputs/cases.json` + `work/inputs/case-XXXX/*.npy`（schema `ge-cases/1`） |
-| `model/golden.py`                                    | `work/inputs` + 权重目录    | `work/golden/<case>/output_0.npy` + `work/golden/result.json`        |
-| `model/export_air.py`                                | 权重目录                    | `work/build/packed.air`                                              |
-| `runtime/build/ge_execute`（源码 `runtime/`）        | `packed.air` + `work/inputs` | `work/output/<case>/output_*.npy` + `result.json`，bench 逐请求数据在同目录 `result.json.records` |
-| `tools/compare.py`（复用）                           | golden 与 infer 输出        | `work/output/comparison.json`                                        |
+| 项目 | 值 |
+|---|---|
+| SoC | `Ascend910_9382` |
+| CANN | 9.0.0（V100R001C10SPC001B250，aarch64-linux） |
+| NPU 驱动 | npu-smi 25.5.t6.b001 |
+| Python | 3.11.15（`/usr/local/python3.11.15`） |
+| Torch | 2.9.0+cpu |
+| TorchNPU | 2.9.0.post2（提供 torchair `dynamo_export`） |
+| Transformers | 5.10.1（只用于 CPU golden） |
+| numpy | 1.26.4 |
+| safetensors | 0.7.0（导出时读 `model.safetensors`） |
+| cmake / GCC | 3.27.9 / 12.3.1（构建 Prefix 算子与 NZ pass） |
 
-另含 `run.sh`（一键串联）与 `scripts/prepare.sh`（依赖构建：平台 Prefix 算子 +
-WeightNZ pass，并生成 `work/deps/env.sh`）；二者不属于文件契约部件。
 
-边界与限制：
-
-- 二进制依赖由 `scripts/prepare.sh <platform>` 从 `third_party/custom_development_code`
-  子模块构建（本机从零约 53 s）：平台 Prefix Attention 算子装入
-  `work/deps/prefix_attention/install/{python,opp}`，WeightNzAndMatMulV3Pass 装进
-  活动 CANN 的 `vendors/custom_nz_pass/custom_fusion_passes/`，为可选性能 pass
-  （缺省图仍可运行；生效证据是编译日志的 `matmul_match num is 169`）。
-- 首次使用需初始化子模块：
-
-  ```bash
-  git submodule update --init third_party/custom_development_code
-  ```
-
-- `work/build/packed.air` 首次在新目录编译时按形状逐一 TBE 编译，首跑偏慢属预期。
-- 全量跑一次的实测量级（本机 12 核、共享负载）：依赖构建 ~50 s（缓存命中）、CPU
-  golden ~11 min（8 线程）、导出 ~2 min、ge_execute 编译+加载 ~7 s（TBE 缓存命中）、
-  100 case 精度推理 ~2 s、比较 ~1 s。
-- `model/generate_inputs.py` 需要 `QWEN_MODEL_DIR` 下的 `config.json`
-  （仅读 `vocab_size`），不加载权重；`model/golden.py`、`model/export_air.py`
-  需要完整权重。
-
-## 2. 运行
-
-### 2.1 环境信息
-
-本机已验证组合（版本核对日期 2026-11-16）：
-
-| 组件                        | 版本                                          |
-| --------------------------- | --------------------------------------------- |
-| CANN（Ascend-cann-toolkit） | 9.0.0（V100R001C10SPC001B250，aarch64-linux） |
-| NPU 驱动（npu-smi）         | 25.5.t6.b001                                  |
-| 硬件                        | Ascend910_9382                                |
-| Python                      | 3.11.15                                       |
-| torch                       | 2.9.0+cpu                                     |
-| torch_npu                   | 2.9.0.post2                                   |
-| transformers                | 5.10.1                                        |
-| numpy                       | 1.26.4                                        |
-
-### 2.2 运行脚本
+## 3. 运行指南
 
 ```bash
-export QWEN_MODEL_DIR=/path/to/Qwen2.5-0.5B    # 权重材料，不自动下载
-bash run.sh --platform a3 --device 2           # --device 为 npu-smi 的 Chip Logic ID
-```
-
-`run.sh` 依次执行：环境检查与 `set_env.sh` → 依赖构建（`scripts/prepare.sh`）
-→ 生成输入 → CPU golden → ge_execute 构建（`runtime/build.sh`）→ packed AIR
-导出 → 精度推理 → `tools/compare.py` 门禁。
-
-- `--platform a3|a5`：选择 Prefix 算子与 bounds dtype（默认 `a3`）。
-- `--device <chip>`：`ASCEND_RT_VISIBLE_DEVICES` 使用 `npu-smi` 的 Chip Logic ID。
-- 性能测试追加 `--iterations N`，可选 `--warmup M`、`--seed S`、
-  `--instances K`、`--aicore-num A|B`：
-
-  ```bash
-  bash run.sh --platform a3 --device 2 --iterations 1000
-  ```
-
-  未给 `--instances` / `--aicore-num` 时按平台默认（a3：5 实例、`8|16`；
-  a5：3 实例、`16|32`）。bench 读取完整输入池，不走精度文件。
-
-### 2.3 单独执行某个部件
-
-各部件的路径都是固定的（`work/` 下的文件契约），没有路径参数；单独执行只需
-CANN 环境 + `QWEN_MODEL_DIR`，涉及 NPU 的步骤还要 `source work/deps/env.sh`：
-
-```bash
+cd models/qwen2.5-0.5b                          # run.sh 用相对路径，必须在本目录执行
 source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
-export QWEN_MODEL_DIR=/path/to/Qwen2.5-0.5B
-export ASCEND_RT_VISIBLE_DEVICES=2                       # npu-smi 的 Chip Logic ID
-# CANN 内嵌 Python 需要看到容器 numpy（run.sh 同样会做）
-export PYTHONPATH="$(python3 -c 'import site; print(site.getsitepackages()[0])'):${PYTHONPATH:-}"
-
-bash scripts/prepare.sh --platform a3 && source work/deps/env.sh
-python3 model/generate_inputs.py --platform a3           # -> work/inputs
-python3 model/golden.py                                  # -> work/golden（纯 CPU）
-python3 model/export_air.py --platform a3                # -> work/build/packed.air
-../../runtime/build/ge_execute --graph work/build/packed.air \
-    --cases work/inputs/cases.json --output-dir work/output \
-    --device 0 --precision-mode must_keep_origin_dtype
-python3 ../../tools/compare.py --golden work/golden --output work/output \
-    --cosine-min 0.998 --relative-l2-max 0.05
+export QWEN_MODEL_DIR=/path/to/Qwen2.5-0.5B     # 权重材料，不自动下载
+bash run.sh --platform a3 --device 2            # --device 是 npu-smi 的 Chip Logic ID
 ```
 
-`--device 0` 是 ge_execute 的**进程内**设备号：导出 `ASCEND_RT_VISIBLE_DEVICES`
-后可见设备从 0 开始，与上面 `--device <chip>` 的 Chip Logic ID 是两个概念。
-`--precision-mode must_keep_origin_dtype` 必须显式给出：ge_execute 默认
-`force_fp16`，不传则无法复现历史精度基线。
 
-产物为 `work/build/packed.air`。导出使用 torchair `dynamo_export`，每个图输入
-仅第 0 轴动态，因此一个 AIR 覆盖整个变长输入池。
+### 3.1 输入与输出
 
-## 3. 运行时
+| 名称 | shape | dtype | 说明 |
+|---|---|---|---|
+| `input_ids` | `[-1]` | int64 | packed token：先 prefix，再各请求私有 token；`0 ≤ id < 151936` |
+| `position_ids` | `[-1]` | int64 | prefix 段自 0 起，每条请求自 `len(prefix)` 重新计数；取值 `< 2048` |
+| `actual_seq_lengths` | `[(batch+1)]` | int64（a3）／int32（a5） | 各段累计结束位置，`batch` = 请求数（池内恒 16） |
 
-### 3.1 输入输出
+| 输出 | shape | dtype | 业务语义 |
+|---|---|---|---|
+| `scores`（产物文件名是位置名 `output_0`） | `[-1, 8]` | float32 | 每条业务请求末 token 的 8 个评分列，列顺序来源 [config/target_tokens.json](config/target_tokens.json) |
 
-| 张量                 | 方向 | dtype                          | shape   | 语义与约束                                                        |
-| -------------------- | ---- | ------------------------------ | ------- | ----------------------------------------------------------------- |
-| `input_ids`          | 输入 | int64                          | [T]     | packed token：先 prefix，再各请求私有 token；`0 ≤ id < vocab_size` |
-| `position_ids`       | 输入 | int64                          | [T]     | prefix 自 0 起，每条请求自 `len(prefix)` 重新计数                  |
-| `actual_seq_lengths` | 输入 | int64（a3）/ int32（a5）       | [N+1]   | 各段累计结束位置；`N` = 每 case 请求数（batch16 时为 16）         |
-| `scores`             | 输出 | float32                        | [N, 8]  | 每个业务请求末 token 的 8 个评分列，列序见 `config/target_tokens.json` |
 
-packed 布局为 `segments = [prefix] + requests`：
-`input_ids = concat(segments)`；`position_ids` 的 prefix 段从 0 开始、每条请求从
-`len(prefix)` 开始；`actual_seq_lengths = cumsum(段长)`，共 N+1 个值。业务行取
-每条请求的末 token，即 `bounds[1:] - 1`；共享 prefix 只计算一次。A3 用
-AscendC `PrefixInferAttentionScore`（int64 bounds），A5 用 CANNBotDSL
-`PrefixAttention`（int32 bounds），两者输入张量数值一致。
+### 3.2 Patch
 
-输入经 `work/inputs/cases.json`（schema `ge-cases/1`）索引：每个 case 的三个
-输入各自存一个 npy（`case-XXXX/{input_ids,position_ids,actual_seq_lengths}.npy`），
-`inputs` 数组顺序即图输入顺序，dtype/shape 由 runtime 从 npy 头读取。infer 与
-golden 产物同构：每个 case 一个 `<case_id>/output_0.npy`（`[N, 8]` float32），
-外加 `result.json` 的 `cases` 索引。
+| 替换目标 | 替换为 | 来源与安装位置 |
+|---|---|---|
+| 每层的 packed 因果注意力，且共享 prefix 的 K/V 只存一份、只算一份 | a3：AscendC `PrefixInferAttentionScore`（`torch.ops.npu_ops_transformer.npu_prefix_infer_attention_score.tensor`，`sparse_mode=2` 读固定 `[2048, 2048]` 压缩因果掩码、`pre_tokens=INT_MAX` 与 `next_tokens=0` 即因果，bounds 作为图输入保持动态）；a5：CANNBotDSL `PrefixAttention`（`torch.ops.ascendc_ops.prefix_attention`，FP16 GE 交付件） | `third_party/custom_development_code/custom_op/prefix-attention/{ascendc,cannbot-dsl/ge}`；`scripts/prepare.sh <platform>` 构建到 `work/deps/prefix_attention/install/{python,opp}`，由 `work/deps/env.sh` 的 `PYTHONPATH` + `ASCEND_CUSTOM_OPP_PATH` 激活 |
+| `MatMul`/`MatMulV2`/`MatMulV3` 常量权重的 ND 排布 | 自定义融合 pass `MatMulWeightNZPass`（工程名 `WeightNzAndMatMulV3Pass`）：权重 ND → FRACTAL_NZ，节点统一重建为 `MatMulV3`；注册阶段 `kAfterOriginGraphOptimize` | `third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass`；`cmake --install` 装进活动 CANN 的 `vendors/custom_nz_pass/custom_fusion_passes/`，GE 自行加载。可选性能 pass，缺省图仍可运行，生效证据是编译日志的 `matmul_match num is 169 / matmul_effect num is 169` |
+| 读出头：checkpoint 无独立 `lm_head`（与 `embed_tokens` 绑定） | `install_score_head(token_ids)` 从 tied embedding 取 8 行派生 `[8, 896]` FP32 评分头，在 `load_state_dict(strict=True)` 与 `requires_grad_(False)` 之后调用 | [model/modeling_qwen.py](model/modeling_qwen.py)、[model/export_air.py](model/export_air.py) |
+| 导出侧的动态轴与位置绑定 | torchair `dynamo_export(dynamic=True)` + `experimental_config.frozen_parameter`；reshape 的动态轴必须写 `-1`（写显式符号尺寸会让 dynamo 提升 SymInt 链、多出 Data 节点并生成 GE 无法推断的 `Pack`），导出后删掉重复冻结权重的 `dynamo.pbtxt` | [model/export_air.py](model/export_air.py) |
 
-### 3.2 性能数据
+### 3.3 产物路径
 
-2026-11-16 本机实测：CANN 9.0.0、Ascend910_9382、Chip Logic ID 2、batch16、
-100 组变长输入池。共享机器（他人在跑多卡任务），绝对值受整机负载影响。
+```text
+work/
+├── deps/              # 第 2 步 scripts/prepare.sh：prefix_attention/install/{python,opp}、weight_nz/build、env.sh
+├── inputs/            # 第 3 步 model/generate_inputs.py：cases.json（ge-cases/1）+ case-XXXX/{input_ids,position_ids,actual_seq_lengths}.npy
+├── golden/            # 第 4 步 model/golden.py：result.json + case-XXXX/output_0.npy（HF FP32 CPU 参考，[16, 8]）
+├── build/             # 第 6 步 model/export_air.py：packed.air（993754309 字节，FP16 冻结权重）
+├── output/            # 第 7 步 ge_execute：result.json + case-XXXX/output_0.npy；第 8 步 tools/compare.py 把 comparison.json 写进这里
+├── bench/             # 第 9 步（--iterations）ge_execute：result.json（config 回显、pool、qps、samples_per_second、e2e 分位、逐实例、逐请求 records）；多 seed 轮次写在 bench-<seed>/
+├── logs/              # 每步一份 *.log
+└── torch_extensions/  # TORCH_EXTENSIONS_DIR：算子 torch binding 的 JIT 缓存
+```
 
-图冷启动（不计入请求时延）：
 
-| 阶段                                        |        耗时 |
-| ------------------------------------------- | ----------: |
-| CompileGraph（首份，TBE 冷缓存，不限核）    | 480103 ms |
-| CompileGraph（首份，TBE 冷缓存，`8\|16`）   | 232853 ms |
-| CompileGraph（每份，TBE 缓存命中）          |  4.7–7.0 s |
-| LoadGraph（每实例）                         |  1.28–1.97 s |
+## 4. 精度和性能
 
-`--aicore-num` 是编译期上限，改核数会触发一次重新编译；同进程内后续图实例命中
-缓存。5 实例 bench 的 HBM 增量 4741 MB（948 MB/实例）。
-
-精度推理（单实例、不限核、100 case 各一次）：首个 case 29.458 ms 含首次执行冷
-开销，单独列出；其余 99 个 case 为稳态。
-
-| 指标 |        ms |
-| ---- | --------: |
-| min  |   11.4034 |
-| P50  |   12.0479 |
-| avg  |   12.0863 |
-| max  |   13.4046 |
-
-bench（`--iterations 3000 --instances 5 --aicore-num 8|16`，每轮预热覆盖池内全部
-distinct shape，seed 42/43/44 三轮，3×3000 请求全 0 错误，逐实例 QPS
-均匀 27.327）：
-
-| 指标                       |         值 |
-| -------------------------- | ---------: |
-| 业务 QPS（三轮中位）       |  2186.262 |
-| 模型调用 QPS（三轮中位）   |   136.641 |
-| e2e avg（中位）            |  36.5565 ms |
-| e2e P50（中位）            |  36.2325 ms |
-| e2e P99（中位／三轮最差）  |  40.7956 / 40.9928 ms |
-| H2D / D2H avg              |  ~0.041 / ~0.026 ms |
-
-e2e = H2D + 执行 + 同步 + D2H；H2D/D2H 合计 ~0.067 ms，可忽略。对照历史记录
-（[验证记录](../../docs/qwen2.5-0.5b/validation.md) A3 节：同为 `8|16`、batch16、
-5 实例，三轮各 10000 次调用）：业务 QPS 中位 2172.093、最差 P99 41.266 ms，
-本次自包含流程与之一致。逐轮原始数据与逐请求记录（`result.json.records`）在
-`work/bench*/`。
-
-**迁移到 `ge_execute` 后的复测（2026-11-19，同一张卡、整机空闲）**：同配置三轮
-业务 QPS 中位 2185.282、模型调用 QPS 中位 136.580（逐实例 27.316）、e2e avg 中位
-36.5565 ms、P50 中位 36.2920 ms、P99 中位 40.8620 / 三轮最差 40.8900 ms，3×3000
-请求全 0 错误；精度推理稳态 99 case min 11.5780 / P50 12.1460 / avg 12.2540 /
-max 13.5660 ms（首 case 31.2240）。与上表逐项同分布，无回退。另修正一处口径：
-池内 distinct shape 实为 **89** 个（100 个 case 里有重复的 T），不是 100；
-`ge_execute` 的 `result.json.pool.distinct_shapes` 直接给出该值，每轮预热
-445 次 = 5 实例 × 89。详见[验证记录](../../docs/qwen2.5-0.5b/validation.md)
-的「ge_execute 迁移复测（2026-11-19）」节。
-
-### 3.3 精度实测
-
-门限由 `run.sh` 固定为逐行 `cosine ≥ 0.998`、逐行 `relative L2 ≤ 0.05`；
-`tools/compare.py` 结果写入 `work/output/comparison.json`。
-
-| 平台 | case / 样本 | 最小 cosine | 最大 relative L2 | 结果 |
-| ---- | ----------: | ----------: | ---------------: | ---- |
-| A3（Ascend910_9382） | 100 / 1600（全量） | 0.999439 | 0.033784 | PASS |
-| A3，迁移到 `ge_execute` 后复测（2026-11-19） | 100 / 1600（全量） | 0.9994394615744572 | 0.033784056043048426 | PASS（与上一行逐位一致） |
-| A5（Ascend950PR_958b） | 未实测（本机 CANN 9.0.0 无 A5 辅流接口） | — | — | — |
-
-复测能逐位一致的前提是显式传 `--precision-mode must_keep_origin_dtype`：
-`ge_execute` 默认 `force_fp16`，而旧 `executor` 把它硬编码在 session options 里。
-
-对照历史记录：迁移到自包含流程前的旧框架路径 A3 全量 100 组/1600 样本的最小 cosine 为
-0.998909550002、最大 relative L2 为 0.046848644966（评分头输出 FP16）；本流程
-的评分头在 FP32 中计算，同一门限下余量明显变大（0.999439 / 0.033784）。
-
-## 使用限制
-
-- 面向标准全注意力、SiLU、默认 RoPE 的推理，不支持训练、HF `generate()`、
-  KV-cache 或滑动窗口注意力。
-- **A5** 需要 CANN ≥ 9.3.0 的辅流接口；本机（CANN 9.0.0）无法验证 A5 路径。
-- 交付精度为 FP16；CPU golden 为 FP32 独立参考。
-- 评分列固定为 `config/target_tokens.json` 的 8 个 token，不随输入改变。
-- Prefix Attention 与 WeightNZAndMatMulV3Pass 来自
-  `third_party/custom_development_code` 子模块的固定提交。
-
-## 相关文档
-
-- [适配说明](../../docs/qwen2.5-0.5b/adaptation.md)
-- [维护记录](../../docs/qwen2.5-0.5b/maintenance.md)
-- [验证记录](../../docs/qwen2.5-0.5b/validation.md)与[文档索引](../../docs/qwen2.5-0.5b/README.md)
+| 平台 | case | cosine 最小 | relative L2 最大 | 业务 QPS | Avg | P99 |
+|---|---|---|---|---|---|---|
+| `Ascend910_9382`（a3） | case-0084（最短，T=1839） | 0.9999996 | 0.003582 | | 34.814 | 36.149 |
+| | case-0037（均值附近，T=2053） | 0.9999993 | 0.004366 | | 36.964 | 38.677 |
+| | case-0088（最长，T=2330） | 0.9999982 | 0.008141 | | 40.489 | 42.018 |
+| | case-0091（精度最紧，T=2148） | 0.9994395 | 0.033784 | | 38.046 | 39.420 |
+| | 全量 100 组 / 1600 样本通过 | 0.9994395 | 0.033784 | 2185.282 | 36.556 | 40.862 |
+| `Ascend950PR_958b`（a5） | — | | | | | |
