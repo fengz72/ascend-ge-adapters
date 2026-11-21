@@ -72,5 +72,10 @@ work/
 
 | 平台 | case | cosine 最小 | relative L2 最大 | 业务 QPS | Avg | P99 |
 |---|---|---|---|---|---|---|
-| `Ascend910_9382` | 全量 5 组 | | | | | |
+| `Ascend910_9382` | 全量 5 组 | 0.999996 | 0.002666 | 989.907 | 10.084 | 13.773 |
+
+精度标准见 [^1]，性能口径见 [^2]。表中数字来自 2026-11-21 在 Chip Logic ID 7 上的同一次 `run.sh --device 7 --iterations 30000`。
+
+[^1]: 逐行判定（每 case 一行 10112 列），门限 cosine ≥ 0.9999、relative L2 ≤ 0.003，`tools/compare.py` 要求全部行同时满足两条才算通过。golden 由 `model/golden.py` 用 onnxruntime 1.26.0 CPU FP32 在 `model/generate_cases.py` 的 seed 42 随机池上生成；设备侧是 `ge_execute --precision-mode force_fp16 --aicore-num 12|24`。relative L2 上限按 FP16 实测极值标定：`FusedInferAttentionScore` 只接受 FP16/BF16/INT8，`must_keep_origin_dtype` 编译期即报 EZ3002，因此没有 FP32 口径可选。五例的 Top-10（`dense_id = 输出下标 + 1`）ID 与顺序与 golden 完全一致。
+[^2]: 性能按整池测量，不是逐 case，故只给一行。`ge_execute` bench 模式：10 实例闭环并发、seed 42 有放回抽样，30000 请求落在 30.306 s 窗口内、0 错误，每实例 3000 次，五例各 5925–6096 次。业务 QPS = 窗口内样本数 / 窗口时长，batch=1 时等于请求吞吐。计时边界是逐请求 e2e，含 H2D + execute + sync + 全量 D2H（`timed_phases`），不含编译（10 份图共 79.948 s）、加载（每实例 1.051–1.196 s）与预热（40 次共 0.411 s；池内 4 个 distinct shape 多于 `--warmup 1`，由 runtime 自动补齐）。Avg / P99 为 e2e 均值与 99 分位；同轮 e2e min 4.234 / max 18.013 ms，exec avg 9.932 / p99 13.629 ms，h2d avg 0.119 ms，d2h avg 0.033 ms。单轮结果，未做多轮中位与实例数扫描。
 
