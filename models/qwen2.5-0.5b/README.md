@@ -23,6 +23,23 @@
 | cmake / GCC | 3.27.9 / 12.3.1（构建 Prefix 算子与 NZ pass） |
 
 
+### 2.2 Ascend950PR_958b（`--platform a5`）
+
+| 项目 | 值 |
+|---|---|
+| SoC | `Ascend950PR_958b` |
+| CANN | 9.2.2（V100R001C12SPC003B201，aarch64-linux） |
+| NPU 驱动 | npu-smi 25.6.rc3 |
+| Python | 3.12.16（`/usr/local/python3.12.16`） |
+| Torch | 2.12.0+cpu |
+| TorchNPU | 2.12.0（提供 torchair `dynamo_export`） |
+| Transformers | 5.8.1（只用于 CPU golden） |
+| numpy | 2.5.4 |
+| safetensors | 0.8.0（导出时读 `model.safetensors`） |
+| ninja | 1.13.2（`scripts/prepare.sh` 的 a5 构建自检 `import ninja`） |
+| cmake / GCC | 3.31.12 / 12.3.1（构建 Prefix 算子与 NZ pass） |
+
+
 ## 3. 运行指南
 
 ```bash
@@ -75,4 +92,4 @@ work/
 | 平台 | case | cosine 最小 | relative L2 最大 | 业务 QPS | Avg | P99 |
 |---|---|---|---|---|---|---|
 | `Ascend910_9382`（a3） | seq: avg 150 p99 218 / prefix=[20, 25] | 0.9994395 | 0.033784 | 2185.282 | 36.556 | 40.862 |
-| `Ascend950PR_958b`（a5） | seq: avg 150 p99 218 / prefix=[20, 25] | | | | | |
+| `Ascend950PR_958b`（a5） | seq: avg 150 p99 218 / prefix=[20, 25] | 0.9996369 | 0.028409 | 2706.961 | 17.686 | 20.288 |
