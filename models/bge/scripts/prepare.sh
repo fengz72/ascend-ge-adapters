@@ -10,15 +10,6 @@
 #
 # Installed pass (registers at kAfterBuiltinFusionPass):
 #   BgeFusedInferAttentionPass   -> libbge_fused_infer_attention_pass.so
-#
-# BgeCandidatePrecomputePass is deliberately NOT installed.  It was archived to
-# the submodule branch `archive/bge-candidate-precompute-pass` (fork remote) and
-# dropped from this model: its measured +10% throughput came with per-round p99
-# spread widening from 2.86%/3.99% to 23.45%/16.35%, it was never re-measured on
-# the ge_execute stack, and its matcher is far more model-specific than FIAS's.
-# See models/bge/README.md.  Because GE loads EVERY .so in the vendors directory,
-# this script actively deletes a previously installed copy -- otherwise the pass
-# would keep running and keep printing [BGE_PRECOMPUTE] lines.
 set -euo pipefail
 
 step() { printf '\n===== [%s] %s =====\n' "$(date +%H:%M:%S)" "$*"; }
@@ -41,7 +32,7 @@ VENDOR_DIR="$ASCEND_OPP_PATH/vendors/bge_custom_pass/custom_fusion_passes"
 # place it would be loaded ALONGSIDE the renamed library, and both passes match
 # the identical structure, so whichever ran first would decide the fused node
 # names and the packaged graph would stop being reproducible.
-RETIRED_LIBRARIES=(libbge_candidate_precompute.so libbge_fias_structure_pass.so)
+RETIRED_LIBRARIES=(libbge_fias_structure_pass.so)
 
 # The pass installs through its own CMakeLists' absolute
 # `LIBRARY DESTINATION "$ENV{ASCEND_OPP_PATH}/vendors/bge_custom_pass/custom_fusion_passes"`,
