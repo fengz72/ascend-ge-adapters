@@ -42,7 +42,7 @@ target_compile_options(ge_execute PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
 
 target_link_libraries(ge_execute PRIVATE
     ge_compiler
-    ge_runner
+    ge_runner_v2
     ge_common
     ge_common_base
     graph
@@ -54,7 +54,7 @@ target_link_libraries(ge_execute PRIVATE
     pthread
 )
 # 注: 不链 acl_op_compiler —— 本运行时不调任何算子编译/aclnn API (图编译走
-# ge::Session::CompileGraph)。曾经链着它但无一处引用, 白增一条对 CANN 组件的依赖。
+# ge::GeSession::CompileGraph)。曾经链着它但无一处引用, 白增一条对 CANN 组件的依赖。
 
 # CPU 契约测试: 只覆盖 npy/cases/stats, 不碰 GE/ACL, 因此不链任何 CANN 库,
 # 也不需要旧 ABI 开关 (它和 GE 头没有共同类型)。

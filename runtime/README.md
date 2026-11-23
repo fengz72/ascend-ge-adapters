@@ -25,7 +25,7 @@ bash runtime/build.sh                                  # -> runtime/build/ge_exe
 ctest --test-dir runtime/build --output-on-failure     # CPU 契约测试
 ```
 
-CANN 原生进程内嵌 Python，必须与调用方解释器对齐；`TMPDIR` 必须短（GEInitialize 起的 `multiprocessing.Manager` 在 `$TMPDIR/pymp-*/listener-*` 上 bind AF_UNIX socket，`sun_path` 上限 107 字节）：
+CANN 原生进程内嵌 Python，必须与调用方解释器对齐；`TMPDIR` 必须短（GEInitializeV2 起的 `multiprocessing.Manager` 在 `$TMPDIR/pymp-*/listener-*` 上 bind AF_UNIX socket，`sun_path` 上限 107 字节）：
 
 ```bash
 export PYTHONHOME="$(python3 -c 'import sys; print(sys.base_prefix)')"
@@ -59,9 +59,9 @@ runtime/build/ge_execute --graph work/build/model.onnx --cases work/inputs/cases
 | `--instances K` | 1 | 闭环并发实例数 = 编译 K 份图（每份一次 AddGraph+CompileGraph，串行） |
 | `--warmup M` | 0 | **每实例** M 次预热；池内 distinct shape 多于 M 时自动补齐到覆盖全部 shape。不消耗测量序列、不计入统计 |
 | `--seed S` | 42 | 有放回抽样种子；同 seed 同 N 下全局序列可复现，K 只改分工 |
-| `--aicore-num A\|B` | 空 | 每算子 AIC\|AIV 核上限，GEInitialize 设 `ge::ir_option::AICORE_NUM`。编译期上限，**不预留、不隔离、不等于绑核** |
+| `--aicore-num A\|B` | 空 | 每算子 AIC\|AIV 核上限，GEInitializeV2 设 `ge::ir_option::AICORE_NUM`。编译期上限，**不预留、不隔离、不等于绑核** |
 | `--precision-mode` | `force_fp16` | GE session 精度模式 |
-| `--profiling` | 关 | 经 GEInitialize 全局选项开启，产出 msprof 可解析的 `PROF_*` 会话 |
+| `--profiling` | 关 | 经 GEInitializeV2 全局选项开启，产出 msprof 可解析的 `PROF_*` 会话 |
 | `--aic-metrics` | `PipeUtilization` | profiling 的 AIC 指标 |
 
 ### cases.json（schema `ge-cases/1`）
@@ -103,8 +103,8 @@ runtime/build/ge_execute --graph work/build/model.onnx --cases work/inputs/cases
 - **不做 io 契约校验**：输入个数/顺序/dtype/shape 是否与图匹配交给 GE 判断。唯一护栏是"静态编译图 + 池内多于一种 shape"在 Init 直接报错——实测 GE 对静态图喂错 shape **不报错**，会静默按编译期 shape 解释字节。池内 shape 与图自身静态 shape 不一致这种查不出来（GE 没有查询编译期输入 shape 的 API，那需要 io 契约）。
 - **npy 只接受 C-order 与 13 个白名单 dtype**（float16/bfloat16/float32/float64、int8/16/32/64、uint8/16/32/64、bool）；`fortran_order=True`、大端、object/字符串/复数一律报错，不转置不兜底。
 - **启动时间随实例数线性增长**：每实例一份 AddGraph+CompileGraph 且必须串行（同一 graphId 只能 LoadGraph 一次）。实测 1.35GB BGE ONNX 约 8s/份，tiny 图约 0.5s/份。逐份耗时打在 `[INFO] CompileGraph ok (gid=i/K), cost ...` 与 `result.json` 的 `compile_ms`/`load_ms`。
-- `aicore_num`、profiling 都是 GEInitialize 的全局选项，进程内只生效一次，改了要重跑进程。
-- **AIR 分支已实测**（2026-11-19，Qwen2.5-0.5B 的 993754309 字节动态 `packed.air`，带自定义 Prefix 算子与 WeightNZ/MatMulV3 融合 pass）：infer / bench / profiling 三种用法均 exit 0，精度与性能与旧 `executor` 记录一致，见下方 AIR 附录。
+- `aicore_num`、profiling 都是 GEInitializeV2 的全局选项，进程内只生效一次，改了要重跑进程。
+- **AIR 分支已实测**（Qwen2.5-0.5B 的 993754309 字节动态 `packed.air`，带自定义 Prefix 算子与 WeightNZ/MatMulV3 融合 pass）：infer / bench / profiling 三种用法均 exit 0。2026-11-19 的记录见下方 AIR 附录；当前构建已切到 GE API v2，复测见 v2 附录。
 - **infer 模式不回填 `compile_ms` / `load_ms`**：这两个字段只在 bench 路径写进 `result.json`（`main.cpp:435-437`），infer 下恒为 `0.0` / `[]`，编译与加载耗时只在 stdout 的 `[INFO] CompileGraph ok ... cost` / `[INFO] LoadGraph ok ... cost` 行里。属记录缺口，不影响执行。
 
 ## 附录：验证记录（2026-11-18，本机 Chip Logic ID 3，CANN 9.0.0）
@@ -156,3 +156,29 @@ Data 节点），带自定义 Prefix Attention 算子（经 `ASCEND_CUSTOM_OPP_P
 
 复现用的 3 case 小池与产物在 `models/qwen2.5-0.5b/work/smoke/`，全量产物在
 `work/{inputs,golden,output,bench,bench-43,bench-44,logs}`（均 Git 忽略）。
+
+## 附录：GE API v2 迁移验证记录（2026-11-23，本机 Chip Logic ID 2，CANN 9.0.0）
+
+`ge_execute` 从 `ge_api.h` / `libge_runner.so` 硬切到 `ge_api_v2.h` / `libge_runner_v2.so`
+（`ge::GeSession`、`GEInitializeV2`/`GEFinalizeV2`、`RunGraphWithStreamAsync`、`GEGetErrorMsgV3`）。
+v1 runner 本身只是转发 `GEInitializeV2` 的壳，底座不变；v2 把 `BuildGraph` 合并进
+`CompileGraph(graph_id, inputs)`，且不像 v1 `BuildGraph` 那样丢 summary、提前 load。
+v2 里 Compile/Load 都可选（`LoadGraph` 会自动编译、`RunGraph*` 会自动加载），本运行时仍显式调用，
+否则首跑会把两者吃进去、`compile_ms`/`load_ms` 口径失真。下表与 v1 构建同卡同口径对照：
+
+| 场景 | 命令要点 | 结果 |
+|---|---|---|
+| 构建与链接 | `bash runtime/build.sh` | exit 0；`ldd` 只有 `libge_runner_v2.so`，无 `libge_runner.so` |
+| CPU 契约测试 | `ctest --test-dir runtime/build` | 1/1 通过 |
+| qwen AIR 全量 infer | 100 case、单实例、`must_keep_origin_dtype` | exit 0；`allocation=GE (dynamic compiled)`（summary/`IsStatic` 路径仍工作）、CompileGraph 5575 ms、LoadGraph 1259 ms；e2e avg 12.077 / p50 11.811 ms；compare 100 case / 1600 行 PASS，worst cosine `0.9994394615744572`、rel L2 `0.033784056043048426`，与 v1 构建输出**逐位相同**（100/100 case） |
+| qwen AIR bench（单流） | `--instances 1 --warmup 10 --iterations 3000 --aicore-num 8\|16`，seed 42/43/44 | 三轮各 3000 请求 0 错误；qps 43.643 / 43.576 / 43.588（中位 43.588，v1 同口径中位 43.519，+0.16%）；e2e p50 22.028–22.073、p99 26.483–26.593 ms；compile 5.14–5.27 s、LoadGraph 1.23–1.31 s |
+| qwen profiling | `--profiling --instances 1 --warmup 2 --iterations 20` | exit 0；`profiling/PROF_000001_*/{host,device_2}` 的 `sample.json` + `.done` 齐备 |
+| bge ONNX 全流程 | `models/bge/run.sh --device 2 --instances 1`（1.35GB 内联权重导出，融合 pass 已装） | exit 0；CompileGraph 8760 ms、LoadGraph 1067 ms、8 个输入缓冲；compare 5 case PASS，worst cosine `0.999996`、rel L2 `0.002666`（门限 0.9999 / 0.003） |
+
+未覆盖：qwen 生产口径 `--instances 5`——测量期间同租户在 16 张卡上各占 ~59GB HBM（每卡仅剩
+~3GB），5 份图实例加载即 `rtMalloc fail, purpose: page caching, size:992870400`；因此上表的单流
+数字**不能**与 2026-11-19 附录里的 5 实例业务 QPS 直接比较。静态图护栏（`allocation=caller
+(static compiled)` 分支）仍待补跑：本轮两张图都是动态图，走不到该分支。
+
+复现产物在 `models/qwen2.5-0.5b/work/{output-v2-final,bench-v2-42,bench-v2-43,bench-v2-44,output-v2-prof}`
+与 `models/bge/work/`（均 Git 忽略）。

@@ -4,7 +4,7 @@
 
 #include <acl/acl.h>
 #include <exe_graph/runtime/tensor.h>
-#include <ge/ge_api.h>
+#include <ge/ge_api_v2.h>
 #include <ge/ge_graph_compile_summary.h>
 #include <graph/graph.h>
 #include <parser/onnx_parser.h>
@@ -31,6 +31,13 @@ namespace {
 using Clock = std::chrono::steady_clock;
 
 [[noreturn]] void Fail(const std::string &what) { throw std::runtime_error(what); }
+
+// v2 错误接口返回 AscendString, Fail 吃 std::string, 统一在这里转。
+std::string GeErrorMsg() {
+    const ge::AscendString msg = ge::GEGetErrorMsgV3();
+    const char *raw = msg.GetString();
+    return raw == nullptr ? std::string() : std::string(raw);
+}
 
 // steady_clock 的原始周期在不同平台上不一致, 先固定到 us 再换算 ms, 保证
 // "微秒精度" 这个口径不随实现漂移。
@@ -198,7 +205,7 @@ struct Session::Impl {
 
     SessionConfig config;
     std::string format;
-    std::shared_ptr<ge::Session> session;
+    std::shared_ptr<ge::GeSession> session;
     aclrtContext context = nullptr;   // 默认 context, 工作线程共享
     std::vector<std::unique_ptr<Instance>> instances;
     double compileMs = 0.0;
@@ -268,7 +275,7 @@ void Session::Init(const CasePool &pool) {
     }
     const int instanceCount = std::max(1, impl.config.instances);
 
-    // ---- 1. GEInitialize: 全局选项在进程内只生效一次, 之后再也改不了 ----
+    // ---- 1. GEInitializeV2: 全局选项在进程内只生效一次, 之后再也改不了 ----
     std::map<ge::AscendString, ge::AscendString> globalOptions;
     globalOptions.emplace(ge::AscendString("ge.exec.deviceId"),
                           ge::AscendString(std::to_string(impl.config.device).c_str()));
@@ -278,7 +285,7 @@ void Session::Init(const CasePool &pool) {
                               ge::AscendString(aicore.c_str()));
     }
     if (impl.config.profiling) {
-        // GE profiling 只有 GEInitialize 这一个开关 (执行期没有 API), 产出 msprof 可解析的
+        // GE profiling 只有 GEInitializeV2 这一个开关 (执行期没有 API), 产出 msprof 可解析的
         // PROF_* 会话; 输出目录必须在初始化前就存在。
         if (impl.config.profilingOutput.empty()) {
             Fail("profiling enabled but profilingOutput is empty");
@@ -297,28 +304,28 @@ void Session::Init(const CasePool &pool) {
         globalOptions.emplace(ge::AscendString(ge::OPTION_EXEC_PROFILING_OPTIONS),
                               ge::AscendString(encoded.c_str()));
     }
-    if (ge::GEInitialize(globalOptions) != ge::SUCCESS) {
-        Fail("GEInitialize failed: " + ge::GEGetErrorMsg());
+    if (ge::GEInitializeV2(globalOptions) != ge::SUCCESS) {
+        Fail("GEInitializeV2 failed: " + GeErrorMsg());
     }
     impl.geInited = true;
 
-    // ---- 2. aclInit: 与 GEInitialize 是两个独立子系统, 重复初始化算成功 ----
+    // ---- 2. aclInit: 与 GEInitializeV2 是两个独立子系统, 重复初始化算成功 ----
     const aclError aclRet = aclInit(nullptr);
     if (aclRet != ACL_SUCCESS && aclRet != ACL_ERROR_REPEAT_INITIALIZE) {
         Fail("aclInit failed, aclError=" + std::to_string(static_cast<int>(aclRet)));
     }
     impl.aclInited = true;
 
-    // ---- 3. ge::Session: device / precision 是 session 级选项, 不能提到 GEInitialize ----
+    // ---- 3. ge::GeSession: device / precision 是 session 级选项, 不能提到 GEInitializeV2 ----
     std::map<ge::AscendString, ge::AscendString> sessionOptions;
     sessionOptions.emplace(ge::AscendString("ge.session_device_id"),
                            ge::AscendString(std::to_string(impl.config.device).c_str()));
     sessionOptions.emplace(ge::AscendString("ge.exec.precision_mode"),
                            ge::AscendString(impl.config.precisionMode.c_str()));
-    impl.session = std::make_shared<ge::Session>(sessionOptions);
+    impl.session = std::make_shared<ge::GeSession>(sessionOptions);
 
     // ---- 4. 每实例 AddGraph + CompileGraph, 全部编译完才能进第 5 步 ----
-    // 同一 graphId 不能 LoadGraph 两次 (ge_api.h 约束), 所以 K 路并发必须是 K 份
+    // 同一 graphId 不能 LoadGraph 两次 (ge_api_v2.h 约束), 所以 K 路并发必须是 K 份
     // AddGraph+CompileGraph; 串行执行, 单份 ~10s 是这套在线图的固有代价。
     // CompileGraph 必须在 aclrtSetDevice **之前** (对齐 atb/bench_ge_latency 的实测序列,
     // 反过来会在编译期触发设备上下文相关的初始化差异)。
@@ -333,10 +340,10 @@ void Session::Init(const CasePool &pool) {
             Fail("cannot load graph '" + impl.config.graphPath + "' as " + impl.format);
         }
         if (impl.session->AddGraph(instance->graphId, graph) != ge::SUCCESS) {
-            Fail("AddGraph(gid=" + gid + ") failed: " + ge::GEGetErrorMsg());
+            Fail("AddGraph(gid=" + gid + ") failed: " + GeErrorMsg());
         }
         if (impl.session->CompileGraph(instance->graphId) != ge::SUCCESS) {
-            Fail("CompileGraph(gid=" + gid + ") failed: " + ge::GEGetErrorMsg());
+            Fail("CompileGraph(gid=" + gid + ") failed: " + GeErrorMsg());
         }
         auto summary = impl.session->GetCompiledGraphSummary(instance->graphId);
         if (summary == nullptr) {
@@ -404,7 +411,7 @@ void Session::Init(const CasePool &pool) {
         const auto loadBegin = Clock::now();
         // 同一个 graphId 只能 LoadGraph 一次; 每实例一份 gid, 所以这里恰好每图一次。
         if (impl.session->LoadGraph(instance.graphId, {}, instance.stream) != ge::SUCCESS) {
-            Fail("LoadGraph(gid=" + gid + ") failed: " + ge::GEGetErrorMsg());
+            Fail("LoadGraph(gid=" + gid + ") failed: " + GeErrorMsg());
         }
 
         // 输入缓冲按池内最大字节预分配: 每请求只 H2D 实际字节, 避免每请求 malloc。
@@ -502,11 +509,11 @@ RunTimings Session::Execute(int instance, const Case &request) {
     }
 
     const auto execBegin = Clock::now();
-    const ge::Status status = impl.session->ExecuteGraphWithStreamAsync(
+    const ge::Status status = impl.session->RunGraphWithStreamAsync(
         slot.graphId, slot.stream, inputs, slot.lastOutputs);
     if (status != ge::SUCCESS) {
-        Fail("ExecuteGraphWithStreamAsync(gid=" + std::to_string(slot.graphId) +
-             ") failed: " + ge::GEGetErrorMsg());
+        Fail("RunGraphWithStreamAsync(gid=" + std::to_string(slot.graphId) +
+             ") failed: " + GeErrorMsg());
     }
     CheckAcl(aclrtSynchronizeStream(slot.stream),
              "aclrtSynchronizeStream(gid=" + std::to_string(slot.graphId) + ")");
@@ -599,7 +606,7 @@ Readback Session::CollectOutputs(int instance, bool discard) {
 void Session::Destroy() {
     Impl &impl = *impl_;
     // 顺序是实测约束: 先放实例资源 (缓冲 + stream), 再拆 Session, 再退设备,
-    // 最后 GEFinalize -> aclFinalize。任一步都只是尽力而为, 析构路径不能抛。
+    // 最后 GEFinalizeV2 -> aclFinalize。任一步都只是尽力而为, 析构路径不能抛。
     for (auto &instance : impl.instances) {
         ReleaseInstance(*instance);
     }
@@ -614,8 +621,8 @@ void Session::Destroy() {
         impl.deviceSet = false;
     }
     if (impl.geInited) {
-        if (ge::GEFinalize() != ge::SUCCESS) {
-            std::fprintf(stderr, "ge_execute: GEFinalize failed: %s\n", ge::GEGetErrorMsg().c_str());
+        if (ge::GEFinalizeV2() != ge::SUCCESS) {
+            std::fprintf(stderr, "ge_execute: GEFinalizeV2 failed: %s\n", GeErrorMsg().c_str());
         }
         impl.geInited = false;
     }

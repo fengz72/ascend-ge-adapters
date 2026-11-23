@@ -1,7 +1,7 @@
 #pragma once
 // GE Session 单图执行封装 (AIR / ONNX)。
 // GE 与 ACL 头只出现在 session.cpp 里 (pimpl), 所以 main.cpp 和 CPU 契约测试
-// 都不需要 GE 环境。所有失败都抛 std::runtime_error (消息含 GEGetErrorMsg)。
+// 都不需要 GE 环境。所有失败都抛 std::runtime_error (消息含 GEGetErrorMsgV3)。
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -53,22 +53,24 @@ public:
     Session &operator=(const Session &) = delete;
 
     // 初始化顺序是实测约束, 不可调换:
-    //   1. GEInitialize{ge.exec.deviceId,
+    //   1. GEInitializeV2{ge.exec.deviceId,
     //                   [ge::ir_option::AICORE_NUM], [profiling 两个选项]}
     //      (不设 ge.graphRunMode: 它是可选项, GE 默认 0 = 在线推理)
     //   2. aclInit (ACL_ERROR_REPEAT_INITIALIZE 视为成功)
-    //   3. ge::Session{ge.session_device_id, ge.exec.precision_mode}
+    //   3. ge::GeSession{ge.session_device_id, ge.exec.precision_mode}
     //   4. 每实例: 读图 (air: Graph::LoadFromFile / onnx: aclgrphParseONNX)
     //      -> AddGraph(gid = i+1) -> CompileGraph(gid) -> GetCompiledGraphSummary(gid)
     //      全部实例编译完才进第 5 步 (CompileGraph 必须在 aclrtSetDevice 之前)
     //   5. aclrtSetDevice -> aclrtGetCurrentContext
     //      (stream 必须建在**默认 context** 上; 显式 CreateContext 会让 GE executor
     //       报 "stream is not in current ctx")
-    //   6. 每实例: aclrtCreateStream -> Session::LoadGraph(gid, {}, stream)
+    //   6. 每实例: aclrtCreateStream -> GeSession::LoadGraph(gid, {}, stream)
     //      (同一 gid 只能 LoadGraph 一次) -> 按 pool.maxBytes 预分配输入 device 缓冲
     //      -> 静态编译图 (summary->IsStatic()) 时按 summary 的 shape/dtype 精确分配
     //         输出缓冲并由调用方持有; 动态图不分配, 用 GE 返回的张量地址
-    // profiling 输出目录在 GEInitialize 前创建。
+    // v2 里 Compile/Load 可选 (首跑会自动编译加载), 仍显式调用: 否则编译+加载耗时
+    // 被算进首跑、compileMs/loadMs 口径失真, 编译错误也会推迟暴露。
+    // profiling 输出目录在 GEInitializeV2 前创建。
     void Init(const CasePool &pool);
 
     // 工作线程进入时调用一次: aclrtSetCurrentContext(默认 context)。
@@ -79,7 +81,7 @@ public:
 
     // H2D 该 case 的实际字节 -> 按该 case 的 shape 重建 gert::Tensor
     // (TensorData 的 size 给**分配大小**, shape 给该请求实际 shape)
-    // -> ExecuteGraphWithStreamAsync -> aclrtSynchronizeStream。
+    // -> RunGraphWithStreamAsync -> aclrtSynchronizeStream。
     // 返回的 e2eMs = h2dMs + execMs, **不含 D2H**; 取输出另调 CollectOutputs,
     // 由调用方把 d2hMs 折进 e2e (口径见 README)。
     // instance 超出已建实例数、输入个数与缓冲不符、字节数超缓冲都抛 runtime_error。
