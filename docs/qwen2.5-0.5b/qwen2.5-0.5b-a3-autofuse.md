@@ -49,10 +49,12 @@
 
 `[-3]` 不是 AIR 里的维值，而是 GE 的 `DUMMY_SHAPE`（`include/graph/types.h:27-32`：`UNKNOWN_DIM=-1`、`UNKNOWN_DIM_NUM=-2`、`DUMMY_SHAPE={-3}`）。编译期没有输入张量（`inputs size:0`）时 Data 节点拿到的就是这个哑元，而 autofuse 的符号化前置拒绝哑元、整个 autofuse 中止并让编译失败。不开 AF 时同一条路径不会走符号化，所以生产路径一直是正常的。
 
-绕开方式是给编译期喂真实 shape，即 v1 `ge::Session::BuildGraph(uint32_t graph_id, const std::vector<ge::Tensor> &inputs)`（`ge_api.h:165`；v2 的 `CompileGraph(graph_id, inputs)` 注释写明 inputs 用于更新 Data 节点的 shape/dtype/format）。实测有两处与 `CompileGraph` 不同，必须一起处理：
+绕开方式是给编译期喂真实 shape。v1 下只能换另一个接口 `ge::Session::BuildGraph(uint32_t graph_id, const std::vector<ge::Tensor> &inputs)`（`ge_api.h:165`），实测有两处与 `CompileGraph` 不同，必须一起处理：
 
 1. `BuildGraph` 之后 `GetCompiledGraphSummary` 返回 null（`ge_api.cc:1058 graph needs to be compiled first`），只能按动态图走，输出由 GE 分配；
 2. `BuildGraph` 内部已完成 load，再调 `LoadGraph` 会报 `Graph has been loaded`（`graph_manager.cc:1648`），该路径要跳过 `LoadGraph`。
+
+这两个副作用都是 v1 `BuildGraph` 特有的；runtime 切到 GE API v2 后，带输入编译是同一个 `CompileGraph` 的两参重载，summary 与 `LoadGraph` 都正常，见第 6 节。
 
 带输入编译本身是中性的：`bc-noaf` 的 QPS 中位数 43.424、100 case infer e2e 1216.5ms，与 `dyn-noaf` 的 43.519 / 1227.8ms 同级，输出逐位相同。
 
@@ -117,17 +119,46 @@ AF 侧另有一处旁证：dump 的 `RunCustomPassAfterBuiltinFusionPass`（0000
 
 打开 GE verbose 日志（`ASCEND_GLOBAL_LOG_LEVEL=0/1` + `ASCEND_PROCESS_LOG_PATH`）本身会把 infer 拖慢约 6 倍：同一 AF 配置，带 INFO 日志时 100 case e2e 7579.3ms（avg 75.8ms/case），不带日志时 1233.2ms（avg 12.3ms/case）。评估编译期行为时要分开跑，不能把日志开销记到 AF 头上。
 
+## 6. GE API v2 下复测（2026-11-23，runtime 提交 `9a2f3d3` 之后）
+
+第 1 节的失败与绕过都是 v1 口径。runtime 切到 GE API v2（`ge/ge_api_v2.h` + `libge_runner_v2.so` + `ge::GeSession`）后，带输入编译不再是另一个接口，而是同一个 `CompileGraph` 的重载：
+
+```cpp
+Status CompileGraph(uint32_t graph_id);                                         // 交付路径
+Status CompileGraph(uint32_t graph_id, const std::vector<ge::Tensor> &inputs);   // AF 需要的入口
+```
+
+复测时同样给 `ge_execute` 加了个默认关闭的开关（编译时用样例 case 的主机字节构造 `ge::Tensor`：`TensorDesc(Shape, FORMAT_ND, dtype)` + 主机指针 + 字节数，走两参重载，其余流程不变），**测完已回滚，v2 上不需要 patch**。口径与第 2–4 节一致（同 `packed.air`、同 100 case 池、`must_keep_origin_dtype`、`--instances 1`、chip 2）：
+
+- **默认路径在 v2 上仍然开不起来**：不带样例输入的单参 `CompileGraph(gid)` + AF 复测（2026-11-23 18:55）报同一组错——`symbolic_shape_symbolizer.cc:65 Node[arg2_1] is not supported symbolize, input origin shape is [-3]` → `autofuse_optimize.cc:205 Symbolize graph input failed` → `Compile graph failed, error code:1343225857`，只是出口从 v1 的 `ge_api.cc:1042` 变成 `ge_api_v2.cc:800`，`ge_execute` 侧表现为 `CompileGraph(gid=1) failed: E19999: Inner Error!` 后 exit 1。v2 降低的是"绕过"的代价，不是 AF 的前置要求。
+- **v1 `BuildGraph` 的两个副作用在 v2 消失**：`GetCompiledGraphSummary` 正常（日志仍是 `allocation=GE (dynamic compiled)`，`IsStatic()` = false），`LoadGraph(gid, {}, stream)` 正常（`LoadGraph ok (gid=1), cost 1234.0 ms`），不再需要"跳过 LoadGraph"和"summary 为 null 时降级"。
+- **符号化通过、autofuse 真的跑了**：`symbolic_shape_symbolizer.cc:310 SymbolizeShape: Symbolize data node arg2_1, index 0, value 2053, symbol s0`（arg4_1 = 2053、arg15_1 = 17，即样例 case-0037 的真实 shape），`autofuser.cpp:147 [Lowering] 28092 µs`、`:165 [Lifting] 933 µs`；第 1 节那三条报错与 error 1343225857 均不再出现。
+- **精度**：100 case / 1600 行 PASS，worst cosine `0.9994394615744572`、rel L2 `0.033784056043048426`，与不开 AF 的输出 **100/100 逐位相同**；池内 89 种 shape 全部正确执行，说明带输入编译没有把图变成 shape 特化。
+- **性能仍无收益**（`--iterations 3000 --warmup 10 --aicore-num 8|16`，同 seed 交替，两轮 p99 均 ≤ 26.6ms，未受同租户干扰）：
+
+| seed | 不开 AF：qps / p50 / p99 / 单图编译 | 开 AF：qps / p50 / p99 / 单图编译 | 差值 |
+|---|---|---|---|
+| 42 | 43.631 / 22.038 / 26.487 / 5.152s | 43.683 / 22.012 / 26.467 / 6.355s | qps +0.12%，编译 +1.20s |
+| 43 | 43.600 / 22.064 / 26.573 / 5.150s | 43.620 / 22.051 / 26.565 / 6.332s | qps +0.05%，编译 +1.18s |
+
+qps/p50/p99 的差异都在噪声内（v2 不开 AF 的既有参照：seed42 43.643、seed43 43.576），唯一稳定成本是每份图编译 +1.2s（+23%，v1 时是 +40%）。
+
+**结论不变：A3 不引入 AUTOFUSE_FLAGS。** v2 降低的只是"开启 AF"的工程代价，收益侧仍为 0——第 3 节的执行图对比说明这张图上 reduce/concat 没有可融合模式，与用哪个 API 版本无关。若以后图形态变化（出现大量未融合的 reduce/concat 链，或改走静态导出），两参 `CompileGraph` 就是现成的评估入口。
+
 ## 附录：原始产物与复现
 
-产物都在 `models/qwen2.5-0.5b/work/`（gitignored）：`af/EVIDENCE.md`（证据摘录）、`af/compile-case.patch`（已回滚的 `--compile-case` 开关）、`af/{phase2,phase3,phase4,ab2}.sh`（复现脚本）、`af/hist-*.txt`（算子直方图）、`logs/{infer,compare,bench}-*.log`、`bench-*-i3000/result.json`（逐请求记录在 `records`）、`output-b-*/comparison.json`。
+产物都在 `models/qwen2.5-0.5b/work/`（gitignored）：`af/EVIDENCE.md`（证据摘录）、`af/compile-case.patch`（**v1 时代**的 `--compile-case` 开关，只对 `9a2f3d3` 之前的 runtime 有效）、`af/{phase2,phase3,phase4,ab2}.sh`（复现脚本）、`af/hist-*.txt`（算子直方图）、`af/plog-v2-af/`（第 6 节的符号化取证）、`logs/{infer,compare,bench}-*.log`、`bench-*-i3000/result.json`（逐请求记录在 `records`）、`output-b-*/comparison.json`、`bench-v2af-*/result.json` 与 `output-v2af-*/comparison.json`（第 6 节）。
 
 ```bash
 cd models/qwen2.5-0.5b
-git apply work/af/compile-case.patch && bash ../../runtime/build.sh   # 复现需要先加回 --compile-case
+# 第 1-5 节（v1 口径）：先加回 v1 时代的开关
+git apply work/af/compile-case.patch && bash ../../runtime/build.sh
 bash work/af/phase2.sh   # A: AF 编译证据(dump + DEBUG plog)  B: 干净 infer A/B + 精度  C: bench 矩阵 seed42-44
 bash work/af/phase3.sh   # noAF 图 dump，与 AF 对比算子构成
 bash work/af/phase4.sh   # 7 pass 全开的 AF + seed45-47 配对
 bash work/af/ab2.sh <dyn-noaf|bc-noaf|bc-af|bc-af-all> <seed> <iterations>   # 单轮
 ```
 
-`--instances 5` 的生产口径本轮未测（HBM 被同租户占满）；由于执行图与输出都逐位一致，5 实例只会得到同样的零收益结论，未安排补测。
+第 6 节（v2 口径）没有存档 patch：改动就是编译时按开关改调两参 `CompileGraph(gid, inputs)`、inputs 用样例 case 的主机字节构造，其余流程（summary、`LoadGraph`、执行）一行不动。
+
+`--instances 5` 的生产口径本轮未测（当时 HBM 被同租户占满，每卡仅剩 ~3GB，5 份图实例加载即 `rtMalloc fail`）；由于执行图与输出都逐位一致，5 实例只会得到同样的零收益结论，未安排补测。
