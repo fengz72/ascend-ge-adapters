@@ -28,7 +28,7 @@
 | 项目 | 值 |
 |---|---|
 | SoC | `Ascend950PR_958b` |
-| CANN | 9.2.2（V100R001C12SPC003B201，aarch64-linux） |
+| CANN | ≥ 9.3.0（a5 的 GE 交付件依赖 attached 辅流接口，9.2.x 没有该接口） |
 | NPU 驱动 | npu-smi 25.6.rc3 |
 | Python | 3.12.16（`/usr/local/python3.12.16`） |
 | Torch | 2.12.0+cpu |
