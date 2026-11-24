@@ -44,10 +44,18 @@ B=1 由图钉死；
 边界与限制：
 
 
-- 二进制依赖由本目录 `scripts/prepare.sh` 构建（源码在 `native_proto/`）：
-  chunk proto 需 `LD_PRELOAD`（导出与执行都需要），
-  WeightNzAndMatMulV3Pass 为可选性能 pass（缺省图仍可运行）；
-  causal-conv1d vendor 算子不安装。
+- 二进制依赖由本目录 `scripts/prepare.sh` 构建：chunk proto（源码在
+  `native_proto/`）在导出阶段需 `LD_PRELOAD`；WeightNzAndMatMulV3Pass 为
+  可选性能 pass（缺省图仍可运行）；causal-conv1d vendor 算子（源码在
+  `third_party/ascend-ops/causal-conv1d/`，fla 谱系）装入
+  `$ASCEND_HOME_PATH/opp/vendors/causal_conv1d/`，GDN 前处理的 causal
+  conv+silu 由融合算子 `CausalConv1d` 承担，q/k 逐 head L2 归一保留为两个
+  `npu_rms_norm` 节点（全融合 qkv 变体实测入图更慢）。执行期两个算子库走
+  官方 custom_op_v2 装载：prepare.sh 把它们软链进
+  `work/opp/op_graph/lib/<os>/<arch>/` 交付布局，`ge_execute` 经
+  `ASCEND_CUSTOM_OPP_PATH=work/opp` 由 GE 自行扫描 dlopen；不得对 vendor 库
+  改回 LD_PRELOAD——全局符号暴露会与 CANN 库互窜导致堆损坏（fla-npu#310
+  同根因）。
 - `work/build/text.air` 首次在新目录编译时按形状逐一 TBE 编译，首跑偏慢
   属预期。
 - `work/inputs/readout.json`（`startlux-text-readout/1`）记录每 case 的
@@ -101,7 +109,7 @@ LD_PRELOAD=work/deps/chunk_gated_delta_rule_proto/install/lib/libchunk_gated_del
 ```bash
 source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
 export ASCEND_RT_VISIBLE_DEVICES=4                  # npu-smi 的 Chip Logic ID
-LD_PRELOAD=work/deps/chunk_gated_delta_rule_proto/install/lib/libchunk_gated_delta_rule_compat_proto.so \
+ASCEND_CUSTOM_OPP_PATH="$PWD/work/opp" \
     ../../runtime/build/ge_execute \
     --graph work/build/text.air \
     --cases work/inputs/cases.json \
@@ -119,8 +127,11 @@ LD_PRELOAD=work/deps/chunk_gated_delta_rule_proto/install/lib/libchunk_gated_del
   值是 `force_fp16`，漏传**不会报错**，但 `run.sh` 的精度门禁（cosine
   ≥ 0.999、relative L2 ≤ 0.02）过不去。
 
-`LD_PRELOAD` 在推理阶段同样必需：图里含 `ChunkGatedDeltaRule`，`ge_execute` 的
-`CompileGraph` 也要用到 `native_proto/` 注册的算子原型。
+推理阶段两个算子库经 GE 官方扫描装载（`ASCEND_CUSTOM_OPP_PATH` 指向
+prepare.sh 组装的 `work/opp` 交付树），缺一不可：图里含 `ChunkGatedDeltaRule`，
+`CompileGraph` 要用到 `native_proto/` 注册的算子原型；图里含 `CausalConv1dGE`，
+`LoadGraph` 的 aclnn lowering 要用到 vendor `libcust_opapi.so` 里的 impl
+（缺失报 `Do not find op impl functions`，仅 proto 时甚至直接段错误）。
 
 ## 3. 运行时
 
@@ -147,46 +158,50 @@ golden 同构。
 
 ### 3.2 性能数据
 
-口径：单实例 infer，`fixtures/dev.txt` 全池 18 case，不限核（2026-11-13）。
+口径：单实例 infer，`fixtures/dev.txt` 全池 18 case，不限核，逻辑芯片 4
+（2026-11-24）。
 
 图冷启动（不计入请求时延）：
 
-| 阶段         |        耗时 |
-| ------------ | ----------: |
-| CompileGraph |  17460.2 ms |
-| LoadGraph    | 3676.36 ms |
+| 阶段         |       耗时 |
+| ------------ | ---------: |
+| CompileGraph | 12481.2 ms |
+| LoadGraph    |  2496.8 ms |
 
-首个 case 的 614.693 ms 含首次执行冷开销，单独列出；其余 17 个 case 为稳态：
+首个 case 的 500.819 ms 含首次执行冷开销，单独列出；其余 17 个 case 为稳态：
 
-| 指标 |                ms |
-| ---- | ----------------: |
-| min  |           24.9399 |
-| P50  |           25.0753 |
-| avg  |            25.193 |
-| max  |           25.8392 |
+| 指标 |        ms |
+| ---- | --------: |
+| min  |   21.2450 |
+| P50  |   21.3580 |
+| avg  |   21.4359 |
+| max  |   21.9750 |
+
+稳态 bench（同图，预热 32 + 1000 请求，seed 42）：e2e avg 21.27 ms /
+p50 21.26 / p99 21.39，QPS 47.0，0 错误。
 
 逐 case 模型段耗时（S 为 token 长度）：
 
-| case              |    S |        text ms |
-| ----------------- | ---: | -------------: |
-| dev-intent-q00-r0 | 1001 |        614.693 |
-| dev-intent-q00-r1 | 1001 |        24.9774 |
-| dev-intent-q01-r0 | 1003 |        25.8058 |
-| dev-intent-q01-r1 | 1003 |        25.1426 |
-| dev-intent-q02-r0 | 1005 |        25.5748 |
-| dev-intent-q02-r1 | 1005 |        25.0582 |
-| dev-intent-q03-r0 | 1002 |        25.5652 |
-| dev-intent-q03-r1 | 1002 |        24.9828 |
-| dev-intent-q04-r0 | 1002 |        25.0139 |
-| dev-intent-q04-r1 | 1002 |        24.9828 |
-| dev-intent-q05-r0 | 1004 |        25.8392 |
-| dev-intent-q05-r1 | 1004 |        25.0753 |
-| dev-intent-q06-r0 | 1002 |        24.9399 |
-| dev-intent-q06-r1 | 1002 |        24.9402 |
-| dev-intent-q07-r0 | 1004 |        25.1266 |
-| dev-intent-q07-r1 | 1004 |        25.0217 |
-| dev-intent-q08-r0 | 1004 |        25.1545 |
-| dev-intent-q08-r1 | 1004 |        25.0836 |
+| case              |    S |       text ms |
+| ----------------- | ---: | ------------: |
+| dev-intent-q00-r0 | 1001 |       500.819 |
+| dev-intent-q00-r1 | 1001 |        21.421 |
+| dev-intent-q01-r0 | 1003 |        21.975 |
+| dev-intent-q01-r1 | 1003 |        21.290 |
+| dev-intent-q02-r0 | 1005 |        21.789 |
+| dev-intent-q02-r1 | 1005 |        21.430 |
+| dev-intent-q03-r0 | 1002 |        21.656 |
+| dev-intent-q03-r1 | 1002 |        21.299 |
+| dev-intent-q04-r0 | 1002 |        21.286 |
+| dev-intent-q04-r1 | 1002 |        21.345 |
+| dev-intent-q05-r0 | 1004 |        21.638 |
+| dev-intent-q05-r1 | 1004 |        21.289 |
+| dev-intent-q06-r0 | 1002 |        21.245 |
+| dev-intent-q06-r1 | 1002 |        21.347 |
+| dev-intent-q07-r0 | 1004 |        21.358 |
+| dev-intent-q07-r1 | 1004 |        21.365 |
+| dev-intent-q08-r0 | 1004 |        21.308 |
+| dev-intent-q08-r1 | 1004 |        21.369 |
 
 ### 3.3 并发扩展（case0 固定回放，`aicore_num=12|24`）
 
@@ -220,3 +235,15 @@ golden 同构。
 长尾（排队抖动）；HBM 每实例 ~3.3 GB 线性增长。对照参考：单实例默认
 （不限核）bench 为 ~25.2 ms，`12|24` 限核使单实例慢 ~25%。同为共享机器
 （他人在跑多卡任务），绝对值受整机负载影响。
+
+### 3.4 精度数据
+
+口径：`fixtures/dev.txt` 全池 18 case，CPU fp32 golden（`model/golden.py`）
+对 `ge_execute` 推理输出（`must_keep_origin_dtype`），2026-11-24，逻辑芯片 4。
+
+| 指标           |      值 | 门限    |
+| -------------- | ------: | ------- |
+| cosine 最差    | 0.999993 | ≥ 0.999 |
+| relative L2 最差 | 0.004937 | ≤ 0.02  |
+
+逐 case 明细在 `work/output/comparison.json`。

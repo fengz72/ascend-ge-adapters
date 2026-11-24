@@ -60,6 +60,10 @@ step "检查环境及权重路径"
 # shellcheck disable=SC1091
 source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
 export ASCEND_RT_VISIBLE_DEVICES="$DEVICE_CHIP"
+# 执行期算子库走官方 custom_op_v2 装载：GE 扫描 ASCEND_CUSTOM_OPP_PATH 条目的
+# op_graph/lib/<os>/<arch>/*.so（prepare.sh 组装 work/opp）。不得对 vendor 库
+# 改回 LD_PRELOAD：全局符号暴露会与 CANN 库互窜致堆损坏（fla-npu#310 同根因）。
+OPP_ROOT="$PWD/work/opp"
 mkdir -p work/logs
 
 # ---------------------------------------------------------------- 2. 生成输入
@@ -76,6 +80,8 @@ python3 model/golden.py --inputs-dir work/inputs \
 step "构建／安装 chunk proto 与 WeightNzAndMatMulV3Pass"
 bash scripts/prepare.sh 2>&1 | tee work/logs/prepare.log
 [[ -f "$PROTO_LIB" ]] || die "chunk proto missing after prepare: $PROTO_LIB"
+ls "$OPP_ROOT"/op_graph/lib/*/*/libcust_opapi.so > /dev/null 2>&1 \
+    || die "custom opp root incomplete after prepare: $OPP_ROOT"
 
 # ---------------------------------------------------------------- 5. runtime
 step "构建 ge_execute"
@@ -94,7 +100,8 @@ step "ge_execute 精度推理"
 # 旧 executor 硬编码 must_keep_origin_dtype，ge_execute 默认 force_fp16：
 # 不显式传精度基线不可复现。--device 是进程内设备号（$DEVICE），
 # 不是 npu-smi 的 Chip Logic ID（--device flag 设的是 $DEVICE_CHIP）。
-LD_PRELOAD="$PROTO_LIB" ../../runtime/build/ge_execute \
+ASCEND_CUSTOM_OPP_PATH="$OPP_ROOT${ASCEND_CUSTOM_OPP_PATH:+:$ASCEND_CUSTOM_OPP_PATH}" \
+    ../../runtime/build/ge_execute \
     --graph work/build/text.air \
     --cases work/inputs/cases.json \
     --output-dir work/output \
@@ -116,7 +123,8 @@ if [[ -n "$ITERATIONS" ]]; then
     BENCH_ARGS=(--iterations "$ITERATIONS" --warmup "$WARMUP" --seed "$SEED"
                 --instances "$INSTANCES")
     [[ -n "$AICORE_NUM" ]] && BENCH_ARGS+=(--aicore-num "$AICORE_NUM")
-    LD_PRELOAD="$PROTO_LIB" ../../runtime/build/ge_execute \
+    ASCEND_CUSTOM_OPP_PATH="$OPP_ROOT${ASCEND_CUSTOM_OPP_PATH:+:$ASCEND_CUSTOM_OPP_PATH}" \
+        ../../runtime/build/ge_execute \
         --graph work/build/text.air \
         --cases work/inputs/cases.json \
         --output-dir work/bench \

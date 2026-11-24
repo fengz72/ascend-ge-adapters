@@ -40,4 +40,16 @@ cmake -S "$NZ_PASS_DIR" -B "$NZ_PASS_DIR/build" > /dev/null
 cmake --build "$NZ_PASS_DIR/build" --parallel > /dev/null
 cmake --install "$NZ_PASS_DIR/build" > /dev/null
 
-echo "prepare: chunk proto -> $DEPS/install; WeightNzAndMatMulV3Pass installed"
+# causal-conv1d (vendored fla AscendC CausalConv1d + CausalConv1dGE wrapper):
+# the fused GDN conv+silu op; installs into opp/vendors and pip-registers the
+# torch binding that model/export_air.py imports before dynamo_export.
+bash "$ROOT/third_party/ascend-ops/causal-conv1d/install.sh"
+
+# 官方 custom_op_v2 交付布局：GE 扫描 ASCEND_CUSTOM_OPP_PATH 条目下的
+# op_graph/lib/<os>/<arch>/*.so 并自行 dlopen；执行期两个 .so 软链进 work/opp。
+OPP_GRAPH="$MODEL_DIR/work/opp/op_graph/lib/$(uname -s | tr 'A-Z' 'a-z')/$(uname -m)"
+mkdir -p "$OPP_GRAPH"
+ln -sf "$DEPS/install/lib/libchunk_gated_delta_rule_compat_proto.so" "$OPP_GRAPH/"
+ln -sf "${ASCEND_HOME_PATH}/opp/vendors/causal_conv1d/op_api/lib/libcust_opapi.so" "$OPP_GRAPH/"
+
+echo "prepare: chunk proto -> $DEPS/install; WeightNzAndMatMulV3Pass + causal-conv1d installed; opp root -> $MODEL_DIR/work/opp"

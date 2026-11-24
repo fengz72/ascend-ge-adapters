@@ -28,6 +28,10 @@ if str(ADAPTER_DIR) not in sys.path:
 
 import torch
 
+import causal_conv1d  # noqa: F401  activator: registers torch.ops.ascend_ops.
+# causal_conv1d (Meta + PrivateUse1) and the CausalConv1dGE converter; must
+# precede dynamo_export, fail-loud until the vendor package is installed.
+
 from model import modeling_text
 
 

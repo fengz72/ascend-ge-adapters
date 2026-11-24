@@ -2,8 +2,9 @@
 
 ``StartLuxTextModel.forward(input_ids, position_ids)`` runs embed -> hybrid
 decoder stack (Gated DeltaNet + bidirectional full attention) -> last-token
-readout and returns the float32 [B, 26] scores.  Every host op is torch_npu;
-the independent CPU reference is model/golden.py.
+readout and returns the float32 [B, 26] scores.  Host ops are torch_npu plus
+the vendored ``ascend_ops.causal_conv1d``; the independent CPU reference
+is model/golden.py.
 """
 
 import torch
@@ -16,19 +17,6 @@ from transformers.activations import ACT2FN
 
 def _softplus(x):
     return torch.where(x > 20.0, x, torch.log1p(torch.exp(torch.clamp(x, max=20.0))))
-
-
-def _causal_depthwise_conv(x, weight):
-    _, width, channels = x.shape
-    kernel = weight.shape[2]
-    w = weight.float().reshape(channels, 1, 1, kernel)
-    y = F.conv2d(
-        x.transpose(1, 2).float().unsqueeze(2),
-        w,
-        groups=channels,
-        padding=(0, kernel - 1),
-    )
-    return F.silu(y[..., :width].squeeze(2).to(x.dtype).transpose(1, 2))
 
 
 def _mrope_interleave_index(mrope_section, half):
@@ -99,6 +87,7 @@ class StartLuxGatedDeltaNet(nn.Module):
         self.head_v_dim = config.linear_value_head_dim
         self.key_dim = self.head_k_dim * self.num_k_heads
         self.value_dim = self.head_v_dim * self.num_v_heads
+        self.conv_dim = self.key_dim * 2 + self.value_dim
         self.scaling = self.head_k_dim**-0.5
         self.dt_bias = nn.Parameter(torch.ones(self.num_v_heads))
         self.A_log = nn.Parameter(torch.empty(self.num_v_heads, dtype=torch.float32))
@@ -110,15 +99,15 @@ class StartLuxGatedDeltaNet(nn.Module):
         self.in_proj_z = nn.Linear(self.hidden_size, self.value_dim, bias=False)
         self.in_proj_b = nn.Linear(self.hidden_size, self.num_v_heads, bias=False)
         self.in_proj_a = nn.Linear(self.hidden_size, self.num_v_heads, bias=False)
-        # Checkpoint-shaped only: the real computation is
-        # _causal_depthwise_conv(F.conv2d); only conv1d.weight's name/shape is
-        # consumed, and groups fixes that depthwise weight shape.
+        # Checkpoint-shaped only: the real computation is the vendored
+        # causal_conv1d op; only conv1d.weight's name/shape is consumed,
+        # and groups fixes that depthwise weight shape.
         self.conv1d = nn.Conv1d(
-            self.key_dim * 2 + self.value_dim,
-            self.key_dim * 2 + self.value_dim,
+            self.conv_dim,
+            self.conv_dim,
             bias=False,
             kernel_size=config.linear_conv_kernel_dim,
-            groups=self.key_dim * 2 + self.value_dim,
+            groups=self.conv_dim,
         )
         self.register_buffer(
             "l2_gamma",
@@ -132,7 +121,15 @@ class StartLuxGatedDeltaNet(nn.Module):
         z = self.in_proj_z(hidden).reshape(batch, width, -1, self.head_v_dim)
         b = self.in_proj_b(hidden)
         a = self.in_proj_a(hidden)
-        mixed = _causal_depthwise_conv(mixed_qkv, self.conv1d.weight)
+        # Vendored fla CausalConv1d (CausalConv1dGE in the graph): fused
+        # depthwise conv+silu; weight (C,1,4)->(4,C) constant-folds. q/k L2
+        # stays as two npu_rms_norm nodes (the fully-fused qkv op is slower).
+        mixed = torch.ops.ascend_ops.causal_conv1d(
+            mixed_qkv,
+            self.conv1d.weight.reshape(self.conv_dim, 4).t().contiguous(),
+            None,
+            "silu",
+        )
         q = mixed[..., : self.key_dim].reshape(batch, width, -1, self.head_k_dim)
         k = mixed[..., self.key_dim : 2 * self.key_dim].reshape(
             batch, width, -1, self.head_k_dim
