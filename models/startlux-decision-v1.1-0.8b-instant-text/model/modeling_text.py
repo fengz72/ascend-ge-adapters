@@ -12,7 +12,6 @@ import torch.nn.functional as F
 import torch_npu
 import torchair
 from torch import nn
-from transformers.activations import ACT2FN
 
 
 def _softplus(x):
@@ -71,10 +70,33 @@ class StartLuxMLP(nn.Module):
         self.down_proj = nn.Linear(
             config.intermediate_size, config.hidden_size, bias=False
         )
-        self.act_fn = ACT2FN[config.hidden_act]
+        if config.hidden_act != "silu":
+            raise ValueError(f"npu_swiglu is silu-gated, got {config.hidden_act}")
+        self.register_load_state_dict_post_hook(StartLuxMLP._fuse_gate_up)
 
     def forward(self, x):
-        return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+        # B is pinned to 1, so the 2D [S,H] view lets GE skip the bf16->fp32->bf16
+        # "trans_Cast" pair it otherwise inserts to flatten a 3D BatchMatMul.
+        h = torch.ops.npu.npu_swiglu(self.gate_up_proj(x.squeeze(0)))
+        return self.down_proj(h).unsqueeze(0)
+
+    @staticmethod
+    def _fuse_gate_up(module, incompatible_keys):
+        # npu_swiglu eats [gate; up] on the last dim, folding two 3584
+        # projections into one 7168 matmul. export_air restores the default
+        # dtype before load, so dtype/device are pinned from the source weight.
+        src = module.gate_proj.weight
+        with torch.no_grad():
+            fused = nn.Linear(
+                src.shape[1],
+                src.shape[0] + module.up_proj.weight.shape[0],
+                bias=False,
+                device=src.device,
+                dtype=src.dtype,
+            )
+            fused.weight.copy_(torch.cat([src, module.up_proj.weight], dim=0))
+        module.gate_up_proj = fused
+        del module.gate_proj, module.up_proj
 
 
 class StartLuxGatedDeltaNet(nn.Module):
@@ -117,10 +139,14 @@ class StartLuxGatedDeltaNet(nn.Module):
 
     def forward(self, hidden, zero_state, row_widths):
         batch, width, _ = hidden.shape
-        mixed_qkv = self.in_proj_qkv(hidden)
-        z = self.in_proj_z(hidden).reshape(batch, width, -1, self.head_v_dim)
-        b = self.in_proj_b(hidden)
-        a = self.in_proj_a(hidden)
+        # B is pinned to 1, so projections take the 2D [S,H] view and GE needs no
+        # bf16->fp32->bf16 "trans_Cast" flatten pair. All four switch together: GE
+        # inserts one pair per norm output and the rest reuse it.
+        h2 = hidden.squeeze(0)
+        mixed_qkv = self.in_proj_qkv(h2).unsqueeze(0)
+        z = self.in_proj_z(h2).reshape(width, -1, self.head_v_dim)
+        b = self.in_proj_b(h2)
+        a = self.in_proj_a(h2)
         # Vendored fla CausalConv1d (CausalConv1dGE in the graph): fused
         # depthwise conv+silu; weight (C,1,4)->(4,C) constant-folds. q/k L2
         # stays as two npu_rms_norm nodes (the fully-fused qkv op is slower).
@@ -130,17 +156,18 @@ class StartLuxGatedDeltaNet(nn.Module):
             None,
             "silu",
         )
-        q = mixed[..., : self.key_dim].reshape(batch, width, -1, self.head_k_dim)
-        k = mixed[..., self.key_dim : 2 * self.key_dim].reshape(
-            batch, width, -1, self.head_k_dim
+        q, k, v = torch.split_with_sizes(
+            mixed, [self.key_dim, self.key_dim, self.value_dim], dim=2
         )
-        v = mixed[..., 2 * self.key_dim :].reshape(batch, width, -1, self.head_v_dim)
+        q = q.reshape(batch, width, -1, self.head_k_dim)
+        k = k.reshape(batch, width, -1, self.head_k_dim)
+        v = v.reshape(batch, width, -1, self.head_v_dim)
         beta = b.sigmoid()
         g = -self.A_log.float().exp() * _softplus(a.float() + self.dt_bias)
         q, _ = torch.ops.npu.npu_rms_norm(q, self.l2_gamma, 1e-6 / self.head_k_dim)
         k, _ = torch.ops.npu.npu_rms_norm(k, self.l2_gamma, 1e-6 / self.head_k_dim)
         q, k, v = q.flatten(0, 1), k.flatten(0, 1), v.flatten(0, 1)
-        beta, g = beta.flatten(0, 1), g.flatten(0, 1)
+        # b/a are already 2D [S, num_v_heads], so beta/g need no flatten here.
         out, _final_state = torch.ops.npu.npu_chunk_gated_delta_rule(
             q,
             k,
@@ -153,8 +180,8 @@ class StartLuxGatedDeltaNet(nn.Module):
         )
         out = out.reshape(-1, self.head_v_dim)
         z = z.reshape(-1, self.head_v_dim)
-        out = self.norm(out, z).reshape(batch, width, -1)
-        return self.out_proj(out)
+        out = self.norm(out, z).reshape(width, -1)
+        return self.out_proj(out).unsqueeze(0)
 
 
 class StartLuxAttention(nn.Module):
@@ -192,22 +219,38 @@ class StartLuxAttention(nn.Module):
 
     def forward(self, hidden, cos, sin):
         batch, width, _ = hidden.shape
-        q_gate = self.q_proj(hidden).view(batch, width, -1, self.head_dim * 2)
-        q, gate = q_gate[..., : self.head_dim], q_gate[..., self.head_dim :]
-        gate = gate.reshape(batch, width, -1)
-        q_heads = self.q_norm(q.reshape(batch, width, -1, self.head_dim))
-        k_heads = self.k_norm(self.k_proj(hidden).view(batch, width, -1, self.head_dim))
-        v = self.v_proj(hidden).view(batch, width, -1, self.head_dim)
+        # B is pinned to 1: the three projections consume the 2D [S,H] view so GE
+        # needs no bf16->fp32->bf16 "trans_Cast" flatten pair. All three switch
+        # together because GE inserts one pair per norm output and the rest reuse it.
+        h2 = hidden.squeeze(0)
+        q_gate = self.q_proj(h2).view(width, -1, self.head_dim * 2)
+        q, gate = torch.split_with_sizes(
+            q_gate, [self.head_dim, self.head_dim], dim=2
+        )
+        gate = gate.reshape(width, -1)
+        # RoPE and FIA both require 4D BSND, so restore the batch axis for them.
+        q_heads = self.q_norm(q).unsqueeze(0)
+        k_heads = self.k_norm(
+            self.k_proj(h2).view(width, -1, self.head_dim)
+        ).unsqueeze(0)
+        v = self.v_proj(h2).view(width, -1, self.head_dim).unsqueeze(0)
+        pass_dim = self.head_dim - self.rotary_dim
+        q_rot_in, q_pass = torch.split_with_sizes(
+            q_heads, [self.rotary_dim, pass_dim], dim=3
+        )
+        k_rot_in, k_pass = torch.split_with_sizes(
+            k_heads, [self.rotary_dim, pass_dim], dim=3
+        )
         q_rot, k_rot = torch_npu.npu_apply_rotary_pos_emb(
-            q_heads[..., : self.rotary_dim],
-            k_heads[..., : self.rotary_dim],
+            q_rot_in,
+            k_rot_in,
             cos.unsqueeze(2),
             sin.unsqueeze(2),
             layout="BSND",
             rotary_mode="half",
         )
-        q_heads = torch.cat((q_rot, q_heads[..., self.rotary_dim :]), dim=-1)
-        k_heads = torch.cat((k_rot, k_heads[..., self.rotary_dim :]), dim=-1)
+        q_heads = torch.cat((q_rot, q_pass), dim=-1)
+        k_heads = torch.cat((k_rot, k_pass), dim=-1)
         fia = (
             torchair.ops.npu_fused_infer_attention_score
             if torch.compiler.is_compiling()
@@ -225,8 +268,8 @@ class StartLuxAttention(nn.Module):
             num_key_value_heads=self.num_key_value_heads,
             sparse_mode=0,
         )[0]
-        out = out.reshape(batch, width, -1)
-        return self.o_proj(out * torch.sigmoid(gate))
+        out = out.reshape(width, -1)
+        return self.o_proj(out * torch.sigmoid(gate)).unsqueeze(0)
 
 
 class StartLuxDecoderLayer(nn.Module):

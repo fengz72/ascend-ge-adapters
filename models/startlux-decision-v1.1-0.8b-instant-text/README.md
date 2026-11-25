@@ -158,50 +158,22 @@ golden 同构。
 
 ### 3.2 性能数据
 
-口径：单实例 infer，`fixtures/dev.txt` 全池 18 case，不限核，逻辑芯片 4
-（2026-11-24）。
+口径：逻辑芯片 4，`fixtures/dev.txt` 全池 18 case，单实例闭环，不限核，
+预热 32 + 1000 请求，seed 42（2026-11-25）。计时边界为 e2e
+（H2D+执行+同步+D2H）。
 
-图冷启动（不计入请求时延）：
+| 指标 |      ms |
+| ---- | ------: |
+| min  | 19.0830 |
+| P50  | 19.1740 |
+| avg  | 19.1785 |
+| p99  | 19.2740 |
+| max  | 19.4760 |
 
-| 阶段         |       耗时 |
-| ------------ | ---------: |
-| CompileGraph | 12481.2 ms |
-| LoadGraph    |  2496.8 ms |
+QPS 52.1，0 错误。逐请求原始记录在 `work/bench/result.json` 的 `.records`。
 
-首个 case 的 500.819 ms 含首次执行冷开销，单独列出；其余 17 个 case 为稳态：
-
-| 指标 |        ms |
-| ---- | --------: |
-| min  |   21.2450 |
-| P50  |   21.3580 |
-| avg  |   21.4359 |
-| max  |   21.9750 |
-
-稳态 bench（同图，预热 32 + 1000 请求，seed 42）：e2e avg 21.27 ms /
-p50 21.26 / p99 21.39，QPS 47.0，0 错误。
-
-逐 case 模型段耗时（S 为 token 长度）：
-
-| case              |    S |       text ms |
-| ----------------- | ---: | ------------: |
-| dev-intent-q00-r0 | 1001 |       500.819 |
-| dev-intent-q00-r1 | 1001 |        21.421 |
-| dev-intent-q01-r0 | 1003 |        21.975 |
-| dev-intent-q01-r1 | 1003 |        21.290 |
-| dev-intent-q02-r0 | 1005 |        21.789 |
-| dev-intent-q02-r1 | 1005 |        21.430 |
-| dev-intent-q03-r0 | 1002 |        21.656 |
-| dev-intent-q03-r1 | 1002 |        21.299 |
-| dev-intent-q04-r0 | 1002 |        21.286 |
-| dev-intent-q04-r1 | 1002 |        21.345 |
-| dev-intent-q05-r0 | 1004 |        21.638 |
-| dev-intent-q05-r1 | 1004 |        21.289 |
-| dev-intent-q06-r0 | 1002 |        21.245 |
-| dev-intent-q06-r1 | 1002 |        21.347 |
-| dev-intent-q07-r0 | 1004 |        21.358 |
-| dev-intent-q07-r1 | 1004 |        21.365 |
-| dev-intent-q08-r0 | 1004 |        21.308 |
-| dev-intent-q08-r1 | 1004 |        21.369 |
+图冷启动（不计入请求时延）：CompileGraph 9349.3 ms，LoadGraph 1894.8 ms；
+`kernel_meta/` 为空时首次 CompileGraph 约 504 s，命中缓存后为上值。
 
 ### 3.3 并发扩展（case0 固定回放，`aicore_num=12|24`）
 

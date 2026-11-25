@@ -1048,3 +1048,482 @@ Evidence: `work/devcase/infer-zerostate{,-final}/` (vs `infer-a1hook/`),
 `bench-prehoist-r{1,2}` + `bench-zerostate-r{3,4}` (the clean A/B),
 `bench-zerostate-r{1,2}` (marked polluted), `prof-zerostate-devq00/`, the
 mutation probe logged in validation.md 2026-11-12.
+
+## Appendix: text P1-1/P1-2 A/B measurement (2026-11-25)
+
+A/B of the two adopted text-graph levers (P1-1: MLP gate/up concat +
+`npu_swiglu`; P1-2: `StridedSlice` -> `SplitV` via
+`torch.split_with_sizes(..., dim=positive)`) on pre-built AIRs run through
+`ge_execute`.  Every arm used the identical harness; the chip was logical
+chip 13 (NOT chip 4).  Two independent runs were taken; every arm's occupancy
+window was verified CLEAN by a 5 s HBM sampler (co-tenant threshold
+30,000 MB, never approached) and an occupancy gate required AICore <=5% and
+HBM <=6000 MB for 3 consecutive reads before launch.
+
+| item | value |
+|---|---|
+| date / chip | 2026-11-25, logical chip 13 (run 1 03:52-04:05, run 2 04:11-04:16) |
+| harness | `ge_execute` on a pre-built AIR; `--precision-mode must_keep_origin_dtype`, `--iterations 1000 --warmup 32 --seed 42 --instances 1` |
+| workload | 18 cases / 5 distinct shapes; 0 errors in every arm |
+| occupancy gate | 5 s HBM sampler CLEAN every arm (co-tenant threshold 30,000 MB never approached); AICore <=5% and HBM <=6000 MB for 3 consecutive reads before each arm |
+| baseline drift | run 1 +0.13%, run 2 +0.67% (baseline-1 vs baseline-2) |
+| judgement band | +/-2.8% (summary section 5); P1-2 and the combo exceed it, P1-1 falls inside |
+
+Run 1:
+
+| arm | e2e avg (ms) | p50 (ms) | p99 (ms) | qps |
+|---|---:|---:|---:|---:|
+| baseline-1 | 21.045 | 21.004 | 21.389 | 47.484 |
+| p1-1-swiglu | 20.682 | 20.668 | 20.872 | 48.325 |
+| p1-2-splitv | 20.349 | 20.344 | 20.458 | 49.115 |
+| p1-combo | 20.095 | 20.082 | 20.378 | 49.730 |
+| baseline-2 | 21.073 | 21.067 | 21.212 | 47.430 |
+
+Deltas vs baseline-1: P1-1 -0.363 ms (-1.73%), P1-2 -0.696 ms (-3.31%),
+combo -0.950 ms (-4.51%).
+
+Run 2 (independent repeat):
+
+| arm | e2e avg (ms) | p50 (ms) | p99 (ms) | qps |
+|---|---:|---:|---:|---:|
+| baseline-1 | 21.012 | 20.990 | 21.224 | 47.565 |
+| p1-1-swiglu | 20.716 | 20.713 | 20.866 | 48.243 |
+| p1-2-splitv | 20.228 | 20.225 | 20.364 | 49.412 |
+| p1-combo | 20.138 | 20.136 | 20.208 | 49.633 |
+| baseline-2 | 21.154 | 21.152 | 21.247 | 47.251 |
+
+Deltas vs baseline-1: P1-1 -0.296 ms (-1.41%), P1-2 -0.785 ms (-3.73%),
+combo -0.875 ms (-4.16%).
+
+Pooled: baseline mean 21.071 ms; P1-1 -1.77%, P1-2 -3.71%, combo -4.53%
+(combo mean 20.117 ms).  P1-2 and the combo exceed the +/-2.8% judgement
+band; P1-1 falls inside it and is therefore adopted on kernel-level evidence,
+not e2e.
+
+Precision (`tools/compare.py` vs CPU fp32 golden, gates cosine >=0.999 /
+relative L2 <=0.02, 18 cases):
+
+| arm | worst cosine | worst relative L2 | AIR bytes |
+|---|---:|---:|---:|
+| baseline | 0.999993 | 0.004937 | 1,507,249,630 |
+| P1-1 swiglu | 0.999995 | 0.004146 | 1,507,161,506 |
+| P1-2 splitv | 0.999993 | 0.004937 (bit-identical to baseline; SplitV is pure data movement) | 1,507,073,775 |
+| P1-1+P1-2 combo | 0.999995 | 0.004146 | 1,506,985,651 |
+
+Op-structure evidence:
+
+- P1-1 (AIR level): `SwiGlu` appears (was absent); `Swish` 44->20,
+  `Mul` 68->44, `Cast` 165->141 - each -24, matching the 24 decoder
+  layers' MLPs.
+- P1-2 (AIR level): `StridedSliceV2` 92->**0**, `SplitV` appears
+  (40 occurrences).  Satisfies backlog section 1.5 gate 1 (dynamo did NOT
+  decompose `split_with_sizes` back into slices) and gate 2 (bit-identical
+  output).
+- `npu_swiglu` single-op probe PASSED: `silu(first_half)*second_half`
+  confirmed (relL2 0.001660 correct-order vs 0.613299 swapped-order);
+  `1x[1024->7168]+swiglu` vs `2x[1024->3584]+silu*mul` relL2 0.000042;
+  output bf16 with dim halved.
+
+Cross-chip note: the chip-13 baseline (21.012-21.154 ms) sits ~1% below the
+recorded chip-4 delivery baseline (21.27 ms), inside the documented ~2.8%
+cross-chip spread.  No chip-4 measurement of the optimized arms exists - this
+is an open item; chip-13 numbers must NOT be presented as chip-4 numbers.
+
+Evidence (machine-local, gitignored `work/`):
+
+- bench run 1: `work/bench-ab13-{base1,p11,p12,combo,base2}/`, log
+  `work/logs/ab-perf-chip13.log`
+- bench run 2: `work/bench-ab-{base1,p11,p12,combo,base2}/`, log
+  `work/logs/ab-perf.log`
+- per-arm chip occupancy samplers: `work/logs/bench-ab13-*.chipmon`,
+  `work/logs/bench-ab-*.chipmon`
+- precision outputs: `work/output-p1-1-swiglu/`, `work/output-p1-2-splitv/`,
+  `work/output-p1-combo/`
+- analysis tools: `work/ab_perf.sh`, `work/round.sh`, `work/chip_gate.sh`,
+  `work/probe_swiglu.py`
+
+## Appendix: WeightNzAndMatMulV3Pass on/off A/B measurement (2026-11-25)
+
+Clean same-card same-window A/B of `WeightNzAndMatMulV3Pass` on the current
+delivery text AIR (`work/build/text.air`, the adopted P1-1+P1-2 combo,
+1,506,985,651 bytes).  The pass executes at GE CompileGraph time
+(`third_party/custom_development_code/fusion_pass/WeightNzAndMatMulV3Pass/src/nz_weight_pass.cpp:370-372`,
+`Stage(CustomPassStage::kAfterOriginGraphOptimize)`), NOT at torchair export
+time, so the SAME AIR can be benched twice with the `.so` present vs renamed
+to `.so.off`: the pass state is the only variable and no re-export is needed.
+Each arm self-verified its state via the pass's own `the matmul_match num is
+N` instrumentation (present iff NZ-on).  The `.so` was renamed off only from
+launch until `LoadGraph ok` (140 s exposure for arm B) and restored on exit
+with an EXIT-trap backstop.
+
+| item | value |
+|---|---|
+| date / chip | 2026-11-25, logical chip 11 |
+| target AIR | `work/build/text.air`, 1,506,985,651 bytes (adopted P1-1+P1-2 combo) |
+| harness | `--precision-mode must_keep_origin_dtype --iterations 1000 --warmup 32 --seed 42 --instances 1`; 18 cases / 5 distinct shapes; 0 errors in every valid arm |
+| occupancy gating | every arm CLEAN; per-arm HBM rise 5,075 / 4,845 / 4,042 MB |
+| outlier criterion | avg/p50 must be ~1; the three clean arms are 1.0000-1.0002, the rejected attempt was 7.42 |
+| variance band | +/-2.8% (summary section 5) |
+
+| arm | pass | e2e avg (ms) | p50 (ms) | p99 (ms) | qps | errors | compile (ms) | occupancy / HBM rise |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| A1 | ON | 20.297 | 20.296 | 20.388 | 49.243 | 0 | 11234.5 | CLEAN, 5,075 MB |
+| B | OFF | 20.886 | 20.883 | 21.021 | 47.856 | 0 | 11358.6 | CLEAN, 4,845 MB |
+| A2 | ON | 20.251 | 20.247 | 20.376 | 49.355 | 0 | 11704.2 | CLEAN, 4,042 MB |
+
+- nz-on mean **20.274 ms**; A1->A2 drift **-0.23%**, so the two ON arms
+  bracket B tightly.
+- nz-off - nz-on = **+0.611 ms = +3.02%**: turning the pass OFF is SLOWER, so
+  the pass HELPS and E1 is rejected.  The +3.02% clears the +/-2.8% band but
+  only barely -- a modest, not dramatic, benefit.
+- **Direction reversal vs the plan**: plan section 5 E1 hypothesised that
+  disabling the pass would IMPROVE latency by 0.8-1.5 ms; the measured effect
+  has the OPPOSITE sign (+0.611 ms worse).
+- Structural result (unchanged): at identical iteration (iter 2, S=1001) every
+  op count is identical pass-on vs pass-off (total 826 both; Cast 232 both;
+  StridedSliceV3 90; RmsNorm 67; InplaceAddRmsNorm 48; Swish 42; Sigmoid 24;
+  CausalConv1d 18; ChunkGatedDeltaRule 18), the SOLE difference being
+  `MatMulV3` 186 (MIX_AIC) -> `MatMulV2` 186 (AI_CORE).  This falsifies plan
+  section 4.5 hypothesis #1: the 48 bf16->fp32->bf16 cast pairs survive
+  identically with the pass off.
+- Precision (unchanged): cosine 0.999995 / relative L2 0.005790 (gate passed).
+- The earlier contention-normalised estimate (~30% slower) is superseded and
+  was wrong by roughly an order of magnitude: per-op contention inflation was
+  NOT uniform (measured ratios 1.03 for Sin/Cos to 2.79 for MatMul), so the
+  normalisation factor was not identifiable; depending on the assumption the
+  estimate spanned +29.9% (slower) to -6.4% (faster), crossing zero and unable
+  to support any conclusion.
+
+Discarded attempt: A2 attempt 1 returned `avg=148.191 p50=19.966 p99=20.109
+qps=6.748` and was rejected.  Its HBM sampler scored the window CLEAN (rise
+within budget) because a co-tenant time-sliced AICore without allocating much
+HBM.  It was caught only by the NZ-on control band; the discriminating signal
+is avg/p50 -- the three clean arms are 1.0000-1.0002, the contaminated arm was
+7.42.  Arm B has no control band, but its avg/p50 = 1.0001 confirms no stalls,
+so B is valid.  This ratio check is now `bench_window_ok` in
+`work/chip_gate.sh` (`BENCH_OUTLIER_RATIO_MAX=1.05`).
+
+The first E1 bench (37.712 ms avg / p50 37.664 / p99 39.429 / 26.508 qps) and
+the NZ-off profiling total (37374.4 us/iter) remain discarded as
+contention-contaminated; they are not results.
+
+Evidence (machine-local, gitignored `work/`):
+
+- bench: `work/bench-nz-on1/`, `work/bench-nz-off/`, `work/bench-nz-on2/`;
+  log `work/logs/ab-nzpass.log`
+- per-arm app logs: `work/logs/bench-nz-{on1,off,on2}.app`
+- occupancy samplers: `work/logs/bench-nz-*.chipmon`
+- driver: `work/ab_nzpass.sh`
+- structural profiling: `work/prof-e1-cast/profiling/PROF_000001_20261125030033081_00671647RJLQJOHA/`,
+  log `work/logs/e1-cast.log`; NZ-on reference
+  `work/prof-text/profiling/PROF_000001_20261124113155878_00407364CMQPNPIF/`
+- precision: `work/output-e1/`
+
+## Appendix: text P1-1/P1-2 chip-4 canonical A/B measurement (2026-11-25)
+
+Canonical A/B of P1-1 (MLP gate/up concat + `npu_swiglu`), P1-2
+(`StridedSlice` -> `SplitV`) and their combo on the delivery chip (chip 4,
+the same chip as the README's recorded 21.27 ms baseline).  Five arms ran in
+ONE same-card same-window sequence ordered baseline-1 -> P1-1 -> P1-2 ->
+combo -> baseline-2, so the two baseline arms bracket the variants and expose
+drift.  This supersedes the earlier chip-13 `text P1-1/P1-2 A/B measurement`
+as the canonical basis; the chip-13 runs remain valid corroboration (see the
+cross-chip table below) and are not stale.
+
+| item | value |
+|---|---|
+| date / chip | 2026-11-25 06:14-06:19, logical chip 4 (the delivery chip) |
+| harness | `ge_execute` on a pre-built AIR; `--precision-mode must_keep_origin_dtype`, `--iterations 1000 --warmup 32 --seed 42 --instances 1` |
+| workload | 18 cases / 5 distinct shapes; 0 errors in every arm |
+| occupancy gate | before every arm, AICore <=5% and HBM <=6000 MB for 2 consecutive reads |
+| HBM detector | per-arm HBM rise 4014-4224 MB, consistent with the calibrated clean footprint (10/10 previously-verified clean chip-13 arms peaked at 6922 MB with rise 3977-4042 MB) |
+| avg/p50 detector | all five arms 1.0001-1.0004, within the 1.05 `BENCH_OUTLIER_RATIO_MAX` threshold; added after a contaminated arm elsewhere returned avg 148.191 ms / p50 19.966 ms (ratio 7.42) with an HBM sampler still reading CLEAN -- a co-tenant can time-slice AICore without allocating much HBM, so HBM alone is insufficient |
+| wall reference | 46-58 s per arm vs the ~61 s clean reference |
+
+| arm | e2e avg (ms) | p50 (ms) | p99 (ms) | qps | errors | wall (s) | HBM rise (MB) | avg/p50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| baseline-1 | 21.352 | 21.349 | 21.437 | 46.813 | 0 | 57 | 4017 | 1.0001 |
+| p1-1-swiglu | 20.868 | 20.861 | 20.972 | 47.896 | 0 | 50 | 4045 | 1.0003 |
+| p1-2-splitv | 20.556 | 20.548 | 20.710 | 48.625 | 0 | 48 | 4044 | 1.0004 |
+| p1-combo | 20.109 | 20.104 | 20.266 | 49.698 | 0 | 46 | 4224 | 1.0003 |
+| baseline-2 | 21.259 | 21.251 | 21.426 | 47.019 | 0 | 58 | 4014 | 1.0004 |
+
+Derived:
+
+- baseline drift A1 -> A2 = **-0.44%**.
+- chip-4 baseline mean = **21.3055 ms**, reproducing the README's recorded
+  21.27 ms to within **+0.17%** -- the harness reproduces the delivery
+  baseline on the delivery chip.
+- vs baseline-1 (21.352): P1-1 -0.484 ms (**-2.27%**), P1-2 -0.796 ms
+  (**-3.73%**), combo -1.242 ms (**-5.82%**).
+- vs baseline mean (21.3055): P1-1 -0.438 ms (**-2.05%**), P1-2 -0.750 ms
+  (**-3.52%**), combo -1.197 ms (**-5.62%**).
+- +/-2.8% band: P1-1 falls inside (-2.05%/-2.27%) and is adopted on
+  kernel-level evidence, not e2e; P1-2 and the combo exceed it.
+- **Canonical headline: combo = 20.109 ms on chip 4, -5.62% / -1.197 ms vs
+  the same-window baseline mean** -- a larger gain than the -4.53% previously
+  recorded from chip 13.
+
+Verdict: P1-1 and P1-2 are adopted; the combo is the canonical delivery
+figure.  Against the plan's ~19.5-20.0 ms target and reference graph A's
+19.65 ms, the combo alone sits just above the target range; the later full-2D
+extension (P1-5 appendix, below) reaches 19.178 ms, 0.472 ms better than A.
+The identified lever at this stage was the `trans_Cast` bf16->fp32->bf16
+3D->2D flatten roundtrip (174 nodes / 1386.0 us = 6.86% of AI time), since
+addressed by P1-5; the earlier "cold-compile hang" was a premature kill --
+the cold compile needs 234 s (see the P1-4 appendix below).
+
+Precision is unchanged (baseline 0.999993 / 0.004937; P1-1 and combo
+0.999995 / 0.004146; P1-2 bit-identical to baseline 0.999993 / 0.004937); it
+was not re-measured here.
+
+Cross-chip corroboration (the chip-13 runs are retained, not stale):
+
+| metric | chip 4 (canonical) | chip 13 run 1 | chip 13 run 2 |
+|---|---:|---:|---:|
+| baseline-1 avg (ms) | 21.352 | 21.045 | 21.012 |
+| p1-1 avg (ms) | 20.868 | 20.682 | 20.716 |
+| p1-2 avg (ms) | 20.556 | 20.349 | 20.228 |
+| combo avg (ms) | 20.109 | 20.095 | 20.138 |
+| baseline-2 avg (ms) | 21.259 | 21.073 | 21.154 |
+| baseline drift | -0.44% | +0.13% | +0.67% |
+| combo gain vs baseline mean | -5.62% | -4.58% | -4.48% |
+
+- The combo's ABSOLUTE latency is chip-independent: 20.109 ms on chip 4 vs
+  20.095 / 20.138 on chip 13 (spread 0.21%).
+- The percentage GAIN is NOT chip-independent, because the baselines differ:
+  chip-4 baseline mean 21.306 -> -5.62%; chip-13 baselines 21.059 / 21.083 ->
+  -4.58% / -4.48%.  A chip-13 gain and a chip-4 gain are not interchangeable.
+
+Evidence (machine-local, gitignored `work/`):
+
+- chip 4 (canonical): `work/bench-ab-{base1,p11,p12,combo,base2}/result.json`,
+  log `work/logs/ab-perf.log`, occupancy samplers
+  `work/logs/bench-ab-*.chipmon` (5 files)
+- chip 13 run 1: `work/bench-ab13-{base1,p11,p12,combo,base2}/`, log
+  `work/logs/ab-perf-chip13.log`, samplers `work/logs/bench-ab13-*.chipmon`
+- chip 13 run 2: `work/bench-ab13r2-{base1,p11,p12,combo,base2}/`, log
+  `work/logs/ab-perf-chip13-run2.log`, samplers
+  `work/logs/bench-ab13r2-*.chipmon`
+- drivers / gate: `work/ab_perf.sh`, `work/chip_gate.sh`
+
+## Appendix: text P1-4 MLP explicit-2D measurement (2026-11-25)
+
+P1-4 feeds the MLP an already-2D activation so GE no longer pays the
+`trans_Cast` roundtrip that implements the 3D->2D flatten in front of a
+matmul.  torchair emits `BatchMatMul` for `nn.Linear` on 3D input; GE
+rewrites it to a 2D MatMul and inserts a bf16->fp32->bf16 `trans_Cast` pair
+to do the flatten.  The change, applied on top of the adopted P1-1+P1-2
+combo, is:
+
+`h = torch.ops.npu.npu_swiglu(self.gate_up_proj(x.squeeze(0)))`
+`return self.down_proj(h).unsqueeze(0)`
+
+Legal because B is pinned STATIC 1 (`io_spec()` calls `mark_static` on every
+non-dynamic axis, `export_air.py:153-161`), so `squeeze(0)`/`unsqueeze(0)`
+involve no dynamic shape arithmetic.
+
+**Status: MLP-only incremental stage, pending adoption; NOT the end state.**
+Extending the same pattern to GDN and attention (P1-5) eliminates `trans_Cast`
+entirely and reaches 19.178 ms (see the P1-5 appendix below); the MLP-only
+numbers in this appendix remain valid as the incremental stage.
+
+| item | value |
+|---|---|
+| date / chip | 2026-11-25, logical chip 13 |
+| harness | `ge_execute` on a pre-built AIR; `--precision-mode must_keep_origin_dtype --iterations 1000 --warmup 32 --seed 42 --instances 1` |
+| workload | 18 cases / 5 distinct shapes; 0 errors in every valid arm |
+| design | two independent brackets, each ordered A1(combo) -> B(squeeze) -> A2(combo), so the combo arms bracket squeeze and expose drift |
+| HBM detector | per-arm HBM rise within the 6500 MB budget |
+| avg/p50 detector | all valid arms 1.0001-1.0049, within the 1.05 `BENCH_OUTLIER_RATIO_MAX` threshold (`bench_window_ok` in `work/chip_gate.sh`) |
+| gate worked | one A2 attempt was killed by the live watchdog when a co-tenant pushed HBM rise to 21,801 MB, then auto-retried and passed cleanly |
+
+Structural evidence (op census, iteration 2, S=1001; counts are deterministic
+and therefore contention-immune):
+
+| metric | combo | +MLP squeeze | delta |
+|---|---|---|---|
+| total ops/iter | 724 | 628 | -96 |
+| AI total (us) | 20193.1 | 19536.2 | -656.9 |
+| trans_Cast (GE-inserted) | 174 nodes / 1386.0 us (6.86%) | 78 nodes / 777.1 us (3.98%) | -96 nodes / -608.9 us (-43.9%) |
+| Cast (model-code) | 58 / 358.5 us | 58 / 363.7 us | unchanged -- internal control proving both phases saw equivalent contention |
+| ALL Cast | 232 / 1744.5 us | 136 / 1140.8 us | -96 / -603.7 us |
+| MatMulV3 | 162 | 162 | unchanged |
+
+trans_Cast family detail -- combo: BF16->FLOAT "1,S,1024" x48 (424.6 us);
+FLOAT->BF16 "S,1024" x48 (367.2); FLOAT->BF16 "S,2048" x24 (242.6);
+BF16->FLOAT "1,S,3584" x24 (150.9); FLOAT->BF16 "S,3584" x24 (139.9);
+BF16->FLOAT "1,S,2048" x6 (60.9).  squeeze: the entire 3584 family is GONE
+(0); the 1024 family is HALVED (24+24); FLOAT->BF16 "S,2048" x24 (251.7);
+BF16->FLOAT "1,S,1024" x24 (231.3); FLOAT->BF16 "S,1024" x24 (230.2);
+BF16->FLOAT "1,S,2048" x6 (63.9).  The -96 nodes are exactly the predicted 24
+`gate_up_proj` pairs on 1024 plus 24 `down_proj` pairs on 3584.
+
+Precision: cosine 0.999995 / relative L2 0.004146, IDENTICAL to the combo
+(bit-neutral; 18 cases, `tools/compare.py` PASS, gates >=0.999 / <=0.02).
+
+e2e (chip 13, 2026-11-25; two brackets, combo arms bracket squeeze):
+
+| metric | value |
+|---|---|
+| combo samples (ms) | 19.939, 20.292, 20.387, 20.053 -> mean **20.1678**, spread 2.25% |
+| squeeze samples (ms) | 19.536, 19.682 -> mean **19.6090**, spread 0.75% |
+| combo p50 samples (ms) | 19.935, 20.290, 20.288, 20.047 -> mean **20.1400** |
+| squeeze p50 samples (ms) | 19.534, 19.673 -> mean **19.6035**; p50 delta -0.5365 ms (-2.66%) |
+| pooled delta | **-0.5587 ms (-2.77%)** |
+| qps | combo mean 49.562 -> squeeze mean **50.969** (+2.84%) |
+| distribution overlap | **none on either statistic**: avg max(squeeze) 19.682 < min(combo) 19.939, gap 0.257 ms; p50 max(squeeze) 19.673 < min(combo) 19.935 |
+| per-bracket verdict | bracket 1 -2.88% (just outside +/-2.8%), bracket 2 -2.66% (just inside) |
+| intra-bracket combo drift | bracket 1 +1.77%, bracket 2 -1.64% |
+
+- The e2e -2.77% sits at the +/-2.8% band edge, so per plan section 7 /
+  summary section 5 the kernel-level AI time governs, and it is unambiguous
+  (-96 nodes, -608.9 us trans_Cast, -656.9 us total AI).  With the
+  non-overlapping e2e distributions and bit-neutral precision, P1-4 is
+  adoptable.
+- **Kernel<->e2e cross-validation: 91.8% of the 608.9 us device-time saving
+  materialised as e2e saving (558.7 us)** -- two independent evidence chains
+  agree.
+- **Target status (MLP-only stage)**: squeeze mean **19.609 ms** lands INSIDE
+  the plan's ~19.5-20.0 ms target and beats reference graph A's 19.65 ms by
+  0.041 ms.  The full-module extension (P1-5) goes further to 19.178 ms.
+- **Cold-compile trade-off (disclosed)**: first-ever compile of the squeeze
+  graph cost **234,074.5 ms (234 s)** vs combo's ~11.4-12.8 s.  `kernel_meta/`
+  is gitignored and not shipped, so a fresh deployment pays this once; warm
+  compiles are neutral (squeeze 11,097 / 11,265 ms vs combo 11,356-12,764 ms).
+  The README tracks cold-start CompileGraph as a delivery metric, so this is a
+  real cost, not a footnote.  The earlier "GE CompileGraph hang >8 min" report
+  was a misdiagnosis: the 8-minute kill was premature and the compile would
+  have completed (`kernel_meta/` gained
+  `kernel_meta_temp_9864803020239436846` at 06:54).
+- **Remaining lever (backlog candidate, NOT adopted)**: 78 trans_Cast nodes /
+  777.1 us (3.98% of AI time) remain, all on the attention/GDN projections --
+  FLOAT->BF16 "S,2048" x24 (251.7 us), BF16->FLOAT "1,S,1024" x24 (231.3),
+  FLOAT->BF16 "S,1024" x24 (230.2), BF16->FLOAT "1,S,2048" x6 (63.9).
+  Extending the same squeeze pattern there is the obvious next step.
+
+Evidence (machine-local, gitignored `work/`):
+
+- profiling: `work/prof-combo-ref/`, `work/prof-p15-squeeze/`; logs
+  `work/logs/probe-trans-cast.log`, `work/logs/combo-ref.app`,
+  `work/logs/p15-squeeze.app`
+- AIR: squeeze `work/build/p15-squeeze.air` (1,507,025,968 bytes, sha256 of
+  first 200 MB `c64f323a5a0b`); combo `work/build/p1-combo.air`
+  (1,506,985,651 bytes, `132e47132823`)
+- bench bracket 2: `work/bench-two-{a1,b,a2}/`, log `work/logs/ab-two.log`,
+  samplers `work/logs/bench-two-*.chipmon`
+- bench bracket 1: log `work/logs/ab-two-bracket1.log`, app logs
+  `work/logs/bracket1-{a1,b,a2}.app`
+- drivers / tools: `work/probe_trans_cast.sh`, `work/ab_two.sh`,
+  `work/trans_cast_census.py`, `work/chip_gate.sh`
+
+## Appendix: text P1-5 full-2D (MLP+GDN+attention) measurement (2026-11-25)
+
+P1-5 extends the P1-4 `squeeze(0)`/`unsqueeze(0)` pattern from the MLP to all
+three text modules (MLP + GDN + attention).  The mechanism: GE inserts only
+ONE `trans_Cast` pair per norm output, and the other projections fed by that
+same tensor reuse its flattened result.  Therefore all projections in a
+module must switch to 2D together -- converting only one relocates the cost
+rather than removing it.  This is why MLP-only got 174 -> 78 while the full
+extension gets 174 -> **0**.
+
+Patch: `model/modeling_text.py`, 69 insertions / 26 deletions vs pristine,
+saved at `work/p16-full2d.patch` (162 lines).  MLP as in P1-4; GDN feeds
+`hidden.squeeze(0)` to all four projections and restores 3D immediately after
+`in_proj_qkv` so the vendored `causal_conv1d` and `dim=2`
+`split_with_sizes` are untouched; attention feeds `hidden.squeeze(0)` to
+q/k/v, moves the q/gate split to dim=2, keeps `gate` 2D, and restores 4D
+before RoPE/FIA.
+
+**Status: measured, pending adoption.**  `model/modeling_text.py` holds the
+change, but the delivery `work/build/text.air` is still the combo graph
+(sha256 of first 200 MB `aa48270bda9c`).  The full-2D AIR is
+`work/build/p16-full2d.air` (1,506,933,217 bytes, sha256 of first 200 MB
+`47416bb653a8`).
+
+| item | value |
+|---|---|
+| date / chip | 2026-11-25 07:53-07:57, logical chip 4 (the README/delivery chip) |
+| harness | `ge_execute` on a pre-built AIR; `--precision-mode must_keep_origin_dtype --iterations 1000 --warmup 32 --seed 42 --instances 1` |
+| workload | 18 cases / 5 distinct shapes; 0 errors in every arm |
+| design | bracketed same-card same-window A/B ordered A1(combo) -> B(full2d) -> A2(combo), so the combo arms bracket the variant and expose drift |
+| HBM detector | per-arm HBM rise within the 6500 MB budget |
+| avg/p50 detector | all three arms 1.0002-1.0015, within the 1.05 `BENCH_OUTLIER_RATIO_MAX` threshold (`bench_window_ok` in `work/chip_gate.sh`) |
+
+| arm | e2e avg (ms) | p50 (ms) | p99 (ms) | qps | warm compile (ms) | HBM rise (MB) | avg/p50 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| A1 combo | 20.163 | 20.132 | 20.398 | 49.566 | 11221.6 | 4053 | 1.0015 |
+| B full2d | **19.178** | **19.174** | **19.274** | **52.116** | **9349.3** | **2174** | 1.0002 |
+| A2 combo | 20.115 | 20.110 | 20.273 | 49.687 | 12038.9 | 4046 | 1.0002 |
+
+- combo mean **20.139 ms**; A1 -> A2 drift **-0.24%** (very stable).
+- full2d - combo = **-0.961 ms = -4.77%**, well outside the +/-2.8% band.
+- qps combo mean 49.627 -> full2d 52.116 = **+5.02%**.
+- all three arms CLEAN on both detectors.
+- **Kernel<->e2e cross-validation: AI-time saving 1061.0 us vs e2e saving
+  961.0 us -> 90.6% of the kernel saving materialised end-to-end.**
+- Two secondary wins: full2d's HBM footprint is LOWER (2174 MB rise vs
+  ~4050 MB) and its WARM compile is FASTER (9349 ms vs combo's
+  11222/12039 ms).
+
+Cumulative (all chip 4, README basis):
+
+| state | e2e mean (ms) | vs original baseline |
+|---|---:|:---:|
+| original baseline mean | 21.3055 | -- (README records 21.27) |
+| P1-1+P1-2 (combo) | 20.139 | -5.48% (-1.166 ms) |
+| + full 2D (P1-5) | **19.178** | **-9.99% (-2.127 ms)** |
+
+- 19.178 ms beats reference graph A (19.65 ms) by **0.472 ms** and is below
+  the plan's ~19.5-20.0 ms target.
+
+Structural evidence (op census, iteration 2, S=1001; counts deterministic so
+contention-immune):
+
+| metric | combo (P1-1+P1-2) | MLP-only squeeze (P1-4) | full 2D (P1-5) |
+|---|---|---|---|
+| ops / iter | 724 | 628 | **568** |
+| AI total (us) | 20193.1 | 19536.2 | **19132.1** |
+| trans_Cast (GE-inserted) | 174 nodes / 1386.0 us (6.86%) | 78 / 777.1 us (3.98%) | **0 / 0.0 us** |
+| all Cast | 232 / 1744.5 us | 136 / 1140.8 us | **76 / 575.4 us** |
+| model-code Cast | 58 / 358.5 us | 58 / 363.7 us | 76 / 575.4 us |
+| MatMulV3 | 162 | 162 | 162 |
+
+AI-time saving combo -> full 2D = **-1061.0 us (-5.25%)**.
+
+The model-code Cast rise 58 -> 76 (+18) is NOT a regression: the 18 extra are
+`FLOAT->BF16 "16016,128"` (166.4 us), the gated-norm `.to(x.dtype)` downcast.
+In the combo it was folded INTO the `trans_Cast` downcast leg
+`FLOAT->BF16 "S,2048"`; once the adapter is gone it surfaces as its own node.
+Net is still Cast 232 -> 76 nodes and 1744.5 -> 575.4 us.  The 76 remaining
+casts are all explicit model-code fp32 (and all also present in reference
+graph A): BF16->FLOAT `"16016,128"` x36 (329.5 us, gated norm `gate.float()`);
+FLOAT->BF16 `"16016,128"` x18 (166.4 us, gated norm `.to(x.dtype)`);
+BF16->FLOAT `"1001,16"` x18 (64.0 us, GDR `a.float()`); FLOAT->BF16
+`"1,1001,64"` x2 (11.3 us, rope); INT64->FLOAT `"3,1,1001"` x1 (2.9 us,
+position ids); BF16->FLOAT `"1,1024"` x1 (1.2 us).
+
+Precision: cosine 0.999995 / relative L2 0.004146, IDENTICAL to combo and to
+P1-1 (bit-neutral; 18 cases, `tools/compare.py` PASS, gates >=0.999 / <=0.02).
+
+Cold-compile trade-off (disclosed, not buried): the FIRST compile of the
+full-2D graph cost **504,141.3 ms (504 s)** building new kernels --
+`kernel_meta/` grew from 144 MB/29 entries to 254 MB/34 entries during it,
+which is the proof it was genuinely compiling rather than hung.  `kernel_meta/`
+is gitignored and not shipped, so a fresh deployment pays this once; all warm
+compiles afterwards are ~9.3 s, i.e. faster than combo.  (For reference, the
+MLP-only stage's cold compile was 234 s.)  The README tracks cold-start
+CompileGraph as a delivery metric, so this is a real cost.
+
+Evidence (machine-local, gitignored `work/`):
+
+- profiling + census: `work/prof-p16-full2d/`, `work/logs/p16-full2d.log`,
+  `work/logs/p16-full2d.app`
+- AIR + patch: `work/build/p16-full2d.air`, `work/p16-full2d.patch`
+- bench: `work/bench-two-{a1,b,a2}/`, log `work/logs/ab-two.log`, samplers
+  `work/logs/bench-two-*.chipmon`
+- earlier MLP-only stage: `work/prof-combo-ref/`, `work/prof-p15-squeeze/`,
+  `work/logs/probe-trans-cast.log`, `work/build/p15-squeeze.air`, brackets log
+  `work/logs/ab-two-squeeze-brackets.log`
+- tools: `work/verify_variant.sh`, `work/ab_two.sh`,
+  `work/trans_cast_census.py`, `work/chip_gate.sh`
