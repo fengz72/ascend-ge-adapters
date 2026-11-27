@@ -539,3 +539,38 @@ bench 未在一键流程里跑（`run.sh` 不带 `--iterations` 时跳过第 9 �
 原始数据在 `models/qwen2.5-0.5b/work/{inputs,golden,output,bench,bench-43,bench-44,smoke,logs}`；
 迁移前旧 `executor` 的产物保留在 `work/output-legacy-records3/` 与 `work/bench-legacy/`
 （均 Git 忽略）。
+
+## CANN 9.1.0 精度复测（2026-11-27）
+
+环境：本机容器 CANN 9.1.0（V100R001C11SPC001B243，aarch64-linux）、Ascend910_9382、
+Chip Logic ID 12、npu-smi 25.5.t6.b001、Python 3.12.13、torch 2.12.0+cpu、
+torch_npu 2.12.0（torchair 内联于 `torch_npu.dynamo.torchair`）、transformers 5.8.1、
+numpy 2.5.1、safetensors 0.8.0、ninja 1.13.2、cmake 3.27.9 / GCC 12.3.1
+（openEuler 24.03 sp3）。
+
+Prefix Attention AscendC 算子的 CANN 下界为 9.1.0，两处编译期断点：
+`gert::EagerOpExecutionContext::MallocOutputTensor` 在 9.1.0 只有四参数形式
+（`include/exe_graph/runtime/eager_op_execution_context.h:77`，非 virtual、无重载）；
+host 日志符号裸 `OP` 在 9.1.0 的 `op_common/log/log.h` 中不存在，改用 `OP_MODULE_ID`
+（`:42`，值 63）。两者互斥，9.0.0 与 9.1.0 无共同下界。
+
+| 项目 | 配置 | 结果 |
+|---|---|---|
+| 算子构建 | `scripts/prepare.sh a3`，源码 `third_party/custom_development_code/custom_op/prefix-attention/ascendc` | 通过；`ASCEND_HOME_PATH=/usr/local/Ascend/cann-9.1.0`，vendor 包 `version.info` 记 `custom_opp_compiler_version=9.1.0`，kernel 落在 `ascend910_93/` |
+| 算子单测 | `ascendc/tests/test_torch_binding.py` | 三层全 PASS：eager vs CPU golden `max_diff=1.150668e-04`（阈值 2e-3）；`.tensor` vs `.default` 位级一致（0）；GE 整图 max-autotune（含图复用）vs eager 位级一致（0/0） |
+| 输入池 | `generate_inputs.py --platform a3` | 100 case × batch16 = 1600 业务样本，pool sha256 前 12 位 `cfeed98ec4a6`（与 2026-11-16 / 2026-11-19 记录一致，RNG 未漂移） |
+| AIR 导出 | `model/export_air.py` | `work/build/packed.air` 993755861 字节；NZ pass 命中 `matmul_match num is 169 / matmul_effect num is 169` |
+| 精度 | 全量 100 case，门限 cosine ≥ 0.998 / relative L2 ≤ 0.05 | **PASS**，1600 行、`failed_rows=0`；worst cosine `0.999439489518238`、worst relative L2 `0.033782322638362`；均值 cosine 0.999999061 / relative L2 0.001446939 |
+| 一键流程 | `bash run.sh --platform a3 --device 12` | 08:58:49→09:27:40 全程 exit 0（依赖构建 94 s、golden 11 min、导出 4.1 min、精度推理 12.1 min、比较 <1 s）；第 9 步 bench 未启用 |
+
+对照 2026-11-19 节：worst cosine `0.9994394615744572` → `0.999439489518238`、
+worst relative L2 `0.033784056043048426` → `0.033782322638362`，差异出现在第 8 位小数，
+**跨 CANN 版本数值等价**，精度无回退。AIR 字节数 993754309 → 993755861（+1552），
+按 2026-11-19 节结论 AIR 非逐比特可复现，字节数只作弱指纹；图等价判据仍是
+NZ pass 命中 `169/169` 与下游精度。
+
+未验证范围：性能 bench（未启用 `--iterations`，本次无 QPS / Avg / P99 数字，
+模型 README §4 的 a3 性能三列因此在当前环境无可引用数字）；A5（`--platform a5`，
+需 CANN ≥ 9.3.0 辅流接口，本机无 A5 实机）；torch_npu 2.9.0 未复测。
+
+原始数据在 `models/qwen2.5-0.5b/work/{inputs,golden,build,output,logs}`。

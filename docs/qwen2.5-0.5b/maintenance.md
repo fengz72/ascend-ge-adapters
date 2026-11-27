@@ -17,11 +17,11 @@ revision 统一为该提交；原个人 fork 迁移分支保留，`ascend-ops` �
 这次仅切换仓库来源和固定版本，没有修改算子/pass 实现或 GE 系统库，
 A5 默认 GE 输出缓冲区扩容问题的限制仍适用。
 
-99 / hejun-cann9-qwen25 与 850-a5 / hejun-cann920-cannbotdsl 两处主仓工作区
-均已同步来源、配置、子模块提交与本文记录。99 使用 CANN 9.0.0，A5 使用 CANN 9.3.0；
+两处主仓工作区均已同步来源、配置、子模块提交与本文记录。CANN 依赖按平台区分：
+A3 AscendC 路径要求 9.1.0 及以上，A5 GE 交付件要求 9.3.0 及以上（辅流接口）；
 A5 验证沿用[验证记录](validation.md)中的进程级输出扩容修复库环境。
 
-| 检查 | A3（99） | A5（850-a5） |
+| 检查 | A3 | A5 |
 |---|---|---|
 | A3/A5 配置解析及实际源码检查 | 四项依赖均来自上游，revision 与 HEAD 一致 | 同左 |
 | prepare | Prefix Attention 与 WeightNZ pass 重新构建、安装通过 | 通过 |

@@ -12,14 +12,15 @@
 | 项目 | 值 |
 |---|---|
 | SoC | `Ascend910_9382` |
-| CANN | 9.0.0（V100R001C10SPC001B250，aarch64-linux） |
+| CANN | ≥ 9.1.0（实测 9.1.0，V100R001C11SPC001B243，aarch64-linux）；Prefix AscendC 算子的四参数 `MallocOutputTensor` 与 `OP_MODULE_ID` 日志符号在 9.0.0 不存在 |
 | NPU 驱动 | npu-smi 25.5.t6.b001 |
-| Python | 3.11.15（`/usr/local/python3.11.15`） |
-| Torch | 2.9.0+cpu |
-| TorchNPU | 2.9.0.post2（提供 torchair `dynamo_export`） |
-| Transformers | 5.10.1（只用于 CPU golden） |
-| numpy | 1.26.4 |
-| safetensors | 0.7.0（导出时读 `model.safetensors`） |
+| Python | 3.12.13（`/usr/local/python3.12.13`） |
+| Torch | 2.12.0+cpu |
+| TorchNPU | 2.12.0（torchair 内联于 `torch_npu.dynamo.torchair`，提供 `dynamo_export`） |
+| Transformers | 5.8.1（只用于 CPU golden） |
+| numpy | 2.5.1 |
+| safetensors | 0.8.0（导出时读 `model.safetensors`） |
+| ninja | 1.13.2（`scripts/prepare.sh` 的构建自检 `import ninja`） |
 | cmake / GCC | 3.27.9 / 12.3.1（构建 Prefix 算子与 NZ pass） |
 
 
@@ -93,3 +94,7 @@ work/
 |---|---|---|---|---|---|---|
 | `Ascend910_9382`（a3） | seq: avg 150 p99 218 / prefix=[20, 25] | 0.9994395 | 0.033784 | 2185.282 | 36.556 | 40.862 |
 | `Ascend950PR_958b`（a5） | seq: avg 150 p99 218 / prefix=[20, 25] | 0.9996369 | 0.028409 | 2706.961 | 17.686 | 20.288 |
+
+a3 精度两列为 §2.1 环境下 100 case / 1600 样本全量实测。a3 性能三列口径为 CANN 9.0.0、
+Python 3.11.15、torch 2.9.0，bench `8|16`、5 实例、3000 请求 × 3 轮（seed 42/43/44）的
+业务 QPS 中位数与 e2e avg / p99 中位数。

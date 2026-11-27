@@ -197,6 +197,8 @@ AddGraph+CompileGraph，串行，全部在 `aclrtSetDevice` 之前）、每实�
 
 ## 平台与限制
 
-A5 Prefix 需要 CANN ≥ 9.3.0 的辅流接口；当前 A3（CANN 9.0.0）实测，A5 路径未在
-本机验证。交付 dtype 为 FP16，CPU golden 为 FP32。CANN 辅流接口的分版本核验见
-[CANN 辅流接口核验](../cann-eager-attached-stream-support.md)。
+A5 Prefix 需要 CANN ≥ 9.3.0 的辅流接口（`RequestAttachedStream`、`ReportAttachedStream`、
+`ResourceUsageReporter`）；该下界由 `prefix-attention/cannbot-dsl/ge/CMakeLists.txt` 在
+configure 期以 `check_cxx_source_compiles` 探测，缺失即 `FATAL_ERROR`。A5 路径未在本机
+验证。A3 AscendC 路径实测于 CANN 9.1.0、Ascend910_9382。交付 dtype 为 FP16，CPU golden
+为 FP32。
